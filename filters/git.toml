@@ -16,3 +16,24 @@ pattern = "^\\(use \"git"
 [[rules]]
 type = "suppress_regex"
 pattern = "^no changes added to commit"
+
+# `git commit` verbose mode markers
+# ` create mode 100644 path` → ` create  path`  (drop the always-100644 mode digits)
+[[rules]]
+type = "truncate_match"
+pattern = "^( (?:create|delete) mode) \\d{6} "
+replace = "$1 "
+
+# `git commit` "[main abcdefg] msg" — already short, keep as-is.
+# Drop the rare "(use \"git push\" ...)" hint lines
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\(use \"git push"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Your branch is (ahead|up to date|behind)"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^  \\(use \""

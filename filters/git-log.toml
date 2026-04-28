@@ -1,14 +1,40 @@
 command = "git"
 subcommands = ["log", "show"]
 
+# Truncate 40-char commit SHAs to 8 chars (still uniquely identifies in any repo)
+# `commit 81cda431a68d54a55707179f546a4b6c449e92e2` → `commit 81cda431`
+[[rules]]
+type = "truncate_match"
+pattern = "^commit ([0-9a-f]{8})[0-9a-f]{32}"
+replace = "commit $1"
+
+# Shorten Date line: drop weekday name and timezone offset
+# `Date:   Tue Apr 28 21:05:42 2026 +0200` → `Date: Apr 28 21:05:42 2026`
+[[rules]]
+type = "truncate_match"
+pattern = "^Date:\\s+\\w+ (\\w+ +\\d+ \\d+:\\d+:\\d+ \\d+) [+-]\\d+"
+replace = "Date: $1"
+
+# Drop email part of Author line: `Author: alessio <alessio@example.com>` → `Author: alessio`
+[[rules]]
+type = "truncate_match"
+pattern = "^Author: ([^<]+)<[^>]+>"
+replace = "Author: $1"
+
 # Collapse repeated Author when same person across consecutive commits
 [[rules]]
 type = "collapse_repeats"
-pattern = "^Author: (.+) <"
+pattern = "^Author: (.+)$"
 match_capture = 1
 
-# Collapse repeated Date when same day (YYYY-MM-DD prefix)
+# Collapse repeated Date when same day
 [[rules]]
 type = "collapse_repeats"
-pattern = "^Date:\\s+\\w+ \\w+ (\\d+)"
+pattern = "^Date:.*(\\w+ +\\d+) \\d+:\\d+:\\d+"
 match_capture = 1
+
+# `Merge: abc1234 def5678` parent SHAs — truncate
+[[rules]]
+type = "truncate_match"
+pattern = "^Merge: ([0-9a-f]{8})[0-9a-f]+ ([0-9a-f]{8})[0-9a-f]+"
+replace = "Merge: $1 $2"

@@ -23,6 +23,14 @@ pub enum Rule {
         #[serde(default)]
         match_capture: Option<usize>,
     },
+    /// Replace each match of `pattern` with `replace` (regex replacement
+    /// template — supports `$1`, `$2`, `$name`). Useful for shortening
+    /// long SHAs, paths, or date timestamps without losing the line.
+    /// Only emits a Replace result if the replacement actually changed the line.
+    TruncateMatch {
+        pattern: String,
+        replace: String,
+    },
 }
 
 pub struct CompiledRule {
@@ -35,6 +43,7 @@ pub enum RuleKind {
     SuppressRegex(Regex),
     KeepRegex(Regex),
     CollapseRepeats(Regex, Option<usize>),
+    TruncateMatch(Regex, String),
 }
 
 pub enum RuleState {
@@ -64,6 +73,10 @@ impl Rule {
                 kind: RuleKind::CollapseRepeats(Regex::new(&pattern)?, match_capture),
                 state: RuleState::LastCapture(None),
             }),
+            Rule::TruncateMatch { pattern, replace } => Ok(CompiledRule {
+                kind: RuleKind::TruncateMatch(Regex::new(&pattern)?, replace),
+                state: RuleState::None,
+            }),
         }
     }
 }
@@ -91,6 +104,21 @@ impl CompiledRule {
                     None
                 } else {
                     Some(FilterResult::Suppress)
+                }
+            }
+            RuleKind::TruncateMatch(re, replace) => {
+                let new = re.replace_all(line, replace.as_str());
+                if new == line {
+                    None
+                } else {
+                    // Leak the new bytes into a stable pointer/len that the
+                    // stream pipeline can copy into its own String. The leak
+                    // is bounded by the number of matched lines in a single
+                    // command run.
+                    let bytes = new.into_owned().into_bytes().into_boxed_slice();
+                    let len = bytes.len();
+                    let ptr = Box::leak(bytes).as_mut_ptr() as *mut std::os::raw::c_char;
+                    Some(FilterResult::Replace(ptr, len))
                 }
             }
             RuleKind::CollapseRepeats(re, group) => {
@@ -144,6 +172,34 @@ mod tests {
         assert_eq!(compiled.apply("Author: bob"), None);
         // Same again — suppress
         assert_eq!(compiled.apply("Author: bob"), Some(FilterResult::Suppress));
+    }
+
+    #[test]
+    fn truncate_match_shortens_sha() {
+        let rule = Rule::TruncateMatch {
+            pattern: r"^commit ([0-9a-f]{7})[0-9a-f]{33}".to_string(),
+            replace: "commit $1".to_string(),
+        };
+        let mut compiled = rule.compile().unwrap();
+        let result = compiled.apply("commit 81cda431a68d54a55707179f546a4b6c449e92e2");
+        match result {
+            Some(FilterResult::Replace(ptr, len)) => {
+                let bytes = unsafe { std::slice::from_raw_parts(ptr as *const u8, len) };
+                let s = std::str::from_utf8(bytes).unwrap();
+                assert_eq!(s, "commit 81cda43");
+            }
+            other => panic!("expected Replace, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn truncate_match_no_op_when_no_match() {
+        let rule = Rule::TruncateMatch {
+            pattern: r"^XYZ".to_string(),
+            replace: "abc".to_string(),
+        };
+        let mut compiled = rule.compile().unwrap();
+        assert!(compiled.apply("plain text").is_none());
     }
 
     #[test]

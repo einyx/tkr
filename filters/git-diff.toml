@@ -10,3 +10,10 @@ pattern = "^index [0-9a-f]+\\.\\.[0-9a-f]+"
 [[rules]]
 type = "suppress_regex"
 pattern = "^\\\\ No newline at end of file"
+
+# `@@ -123,5 +130,8 @@ context` hunk headers — drop the trailing context
+# (the function/section hint) which is often very long. Keep the line numbers.
+[[rules]]
+type = "truncate_match"
+pattern = "^(@@ -\\d+(,\\d+)? \\+\\d+(,\\d+)? @@) .+"
+replace = "$1"
