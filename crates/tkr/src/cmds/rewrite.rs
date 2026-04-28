@@ -8,11 +8,13 @@
 
 use anyhow::Result;
 
-/// Tools tkr can usefully proxy. Must match a filter under `filters/`.
+/// Tools tkr can usefully proxy. Each entry must correspond to a filter file
+/// under `filters/` (matched by its `command =` field) or yield meaningful
+/// passthrough behavior.
 static KNOWN_TOOLS: &[&str] = &[
     // languages / build
     "cargo", "go", "swift", "dotnet", "mvn", "gradle", "make", "cmake", "bazel", "ninja",
-    "composer", "turbo", "mix", "swift",
+    "composer", "turbo", "mix",
     // test runners
     "jest", "vitest", "pytest", "rspec", "phpunit", "tox", "nox",
     // web bundlers
@@ -73,7 +75,13 @@ pub fn try_rewrite(command: &str) -> Option<String> {
 /// Conservative rewriter for `&&` / `||` / `;` chained commands.
 /// Splits on these separators (outside quotes), prefixes any segment whose
 /// first token is a known tool, then rejoins.
+///
+/// Bails out (returns input unchanged) on shell constructs the splitter
+/// can't safely parse: backticks, `$()` substitution, and heredocs.
 fn rewrite_compound(input: &str) -> String {
+    if has_unsafe_shell(input) {
+        return input.to_string();
+    }
     let mut out = String::with_capacity(input.len() + 16);
     let mut current = String::new();
     let mut chars = input.chars().peekable();
@@ -121,6 +129,29 @@ fn rewrite_compound(input: &str) -> String {
     }
     push_segment(&mut out, &current);
     out
+}
+
+/// Returns true if `input` contains shell constructs we can't safely tokenize:
+/// backticks, command substitution `$(`, or a heredoc marker.
+/// Quote-state aware: only flags occurrences outside single quotes.
+fn has_unsafe_shell(input: &str) -> bool {
+    let mut chars = input.chars().peekable();
+    let mut in_single = false;
+    let mut in_double = false;
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' if !in_double => in_single = !in_single,
+            '"' if !in_single => in_double = !in_double,
+            '\\' if !in_single => {
+                chars.next(); // skip escaped char
+            }
+            '`' if !in_single => return true,
+            '$' if !in_single && chars.peek() == Some(&'(') => return true,
+            '<' if !in_single && !in_double && chars.peek() == Some(&'<') => return true,
+            _ => {}
+        }
+    }
+    false
 }
 
 fn push_segment(out: &mut String, segment: &str) {
@@ -183,5 +214,35 @@ mod tests {
     fn quoted_separator_not_split() {
         let r = rewrite_compound(r#"echo "git && cargo""#);
         assert_eq!(r, r#"echo "git && cargo""#);
+    }
+
+    #[test]
+    fn single_quoted_separator_not_split() {
+        let r = rewrite_compound("echo 'git && cargo'");
+        assert_eq!(r, "echo 'git && cargo'");
+    }
+
+    #[test]
+    fn backticks_bail_out() {
+        let input = "git status `echo &&`";
+        assert_eq!(rewrite_compound(input), input);
+    }
+
+    #[test]
+    fn dollar_paren_bails_out() {
+        let input = "cmd $(git status && cargo build)";
+        assert_eq!(rewrite_compound(input), input);
+    }
+
+    #[test]
+    fn heredoc_bails_out() {
+        let input = "cat <<EOF\ngit && cargo\nEOF";
+        assert_eq!(rewrite_compound(input), input);
+    }
+
+    #[test]
+    fn empty_input_returns_none() {
+        assert_eq!(try_rewrite(""), None);
+        assert_eq!(try_rewrite("   "), None);
     }
 }

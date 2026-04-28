@@ -19,14 +19,20 @@ use std::io::Read;
 
 pub fn run_claude() -> Result<()> {
     let mut input = String::new();
-    std::io::stdin().read_to_string(&mut input)?;
+    if let Err(e) = std::io::stdin().read_to_string(&mut input) {
+        eprintln!("tkr hook: stdin read failed: {e}");
+        return Ok(());
+    }
     if input.trim().is_empty() {
         return Ok(());
     }
 
     let payload: Value = match serde_json::from_str(&input) {
         Ok(v) => v,
-        Err(_) => return Ok(()), // bad JSON → don't break the host
+        Err(e) => {
+            eprintln!("tkr hook: bad JSON ({e})");
+            return Ok(());
+        }
     };
 
     let cmd = payload
@@ -38,28 +44,32 @@ pub fn run_claude() -> Result<()> {
         return Ok(());
     }
 
-    if let Some(rewritten) = crate::cmds::rewrite::try_rewrite(cmd) {
-        if rewritten == cmd {
-            return Ok(());
-        }
-        // Build response: copy original tool_input, override command.
-        let mut updated = payload
-            .get("tool_input")
-            .cloned()
-            .unwrap_or_else(|| json!({}));
-        if let Some(obj) = updated.as_object_mut() {
-            obj.insert("command".into(), Value::String(rewritten));
-        }
-        let response = json!({
-            "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "allow",
-                "permissionDecisionReason": "tkr auto-rewrite (token filter)",
-                "updatedInput": updated
-            }
-        });
-        println!("{}", response);
+    let Some(rewritten) = crate::cmds::rewrite::try_rewrite(cmd) else {
+        return Ok(());
+    };
+    // Compare against trimmed input — try_rewrite returns the trimmed form
+    // even for already-prefixed commands, and we don't want a whitespace-only
+    // change to fire the hook.
+    if rewritten == cmd.trim_start() {
+        return Ok(());
     }
 
+    // Build response: copy original tool_input, override command.
+    let mut updated = payload
+        .get("tool_input")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    if let Some(obj) = updated.as_object_mut() {
+        obj.insert("command".into(), Value::String(rewritten));
+    }
+    let response = json!({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "permissionDecisionReason": "tkr auto-rewrite (token filter)",
+            "updatedInput": updated
+        }
+    });
+    println!("{}", response);
     Ok(())
 }

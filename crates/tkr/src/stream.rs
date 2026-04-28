@@ -47,8 +47,30 @@ pub fn strip_ansi(input: &str) -> String {
                     chars.next();
                     chars.next(); // consume designator char
                 }
-                _ => {
-                    // unknown escape — drop ESC, keep next as-is
+                Some(&n) if matches!(n, 'P' | '_' | '^' | 'X') => {
+                    // DCS, APC, PM, SOS — string sequences terminated by ST (ESC \) or BEL.
+                    chars.next();
+                    while let Some(&m) = chars.peek() {
+                        if m == '\x07' {
+                            chars.next();
+                            break;
+                        }
+                        if m == '\x1b' {
+                            chars.next();
+                            if let Some(&'\\') = chars.peek() {
+                                chars.next();
+                            }
+                            break;
+                        }
+                        chars.next();
+                    }
+                }
+                Some(_) => {
+                    // Single-shift / two-char escape (SS2/SS3 ESC N/O, RIS ESC c, etc.).
+                    chars.next();
+                }
+                None => {
+                    // Trailing ESC — just drop it.
                 }
             }
             continue;
