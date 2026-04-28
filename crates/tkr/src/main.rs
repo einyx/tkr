@@ -1,3 +1,4 @@
+mod agent_cmd;
 mod cli;
 mod cmds;
 mod config;
@@ -8,7 +9,7 @@ mod session;
 mod stream;
 
 use clap::Parser;
-use cli::{Cli, Commands};
+use cli::{AgentCmd, Cli, Commands};
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
@@ -16,6 +17,9 @@ fn main() -> anyhow::Result<()> {
         Some(Commands::Watch) => cmds::watch::run(),
         Some(Commands::Gain { breakdown }) => cmds::gain::run(breakdown),
         Some(Commands::Discover) => cmds::discover::run(),
+        Some(Commands::Agent { cmd }) => match cmd {
+            AgentCmd::Run { manifest } => agent_cmd::run_agent(&manifest),
+        },
         None => {
             if cli.passthrough.is_empty() {
                 eprintln!("Usage: tkr <command> [args...] or tkr --help");

@@ -21,4 +21,18 @@ pub enum Commands {
     },
     /// Analyze session history for missed savings
     Discover,
+    /// Run an agent from a TOML manifest
+    Agent {
+        #[command(subcommand)]
+        cmd: AgentCmd,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum AgentCmd {
+    /// Execute one agent run
+    Run {
+        /// Path to a TOML manifest
+        manifest: std::path::PathBuf,
+    },
 }
