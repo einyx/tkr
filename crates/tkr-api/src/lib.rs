@@ -4,6 +4,9 @@
 //! re-exported here for backwards compatibility while v2 is built out.
 pub mod legacy;
 pub use legacy::{Plugin as LegacyPlugin, FilterResult, LineContext};
+
+pub mod error;
+pub use error::{Error, Result};
 // Re-export every other public symbol that legacy.rs defines so that
 // existing consumers compile without changes.
 pub use legacy::Plugin;
