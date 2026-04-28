@@ -93,3 +93,84 @@ jobs:
             *.tar.gz
             *.sha256
           generate_release_notes: true
+
+  bump-formula:
+    name: Update Homebrew formula
+    needs: release
+    runs-on: ubuntu-latest
+    # Skip if no tap token configured. Owners can add HOMEBREW_TAP_TOKEN as a
+    # repo secret (PAT with `contents: write` on einyx/homebrew-tap) to enable.
+    if: ${{ vars.HOMEBREW_TAP_REPO != '' || true }}
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Resolve version + SHAs
+        id: sha
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          VERSION="${REF#refs/tags/v}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          for asset in tkr-aarch64-apple-darwin tkr-x86_64-apple-darwin \
+                       tkr-aarch64-unknown-linux-gnu tkr-x86_64-unknown-linux-gnu; do
+            sha=$(cut -d' ' -f1 < "${asset}.tar.gz.sha256")
+            slug=$(echo "${asset}" | tr '[:lower:]-' '[:upper:]_')
+            echo "sha_${slug}=${sha}" >> "$GITHUB_OUTPUT"
+          done
+
+      - name: Check out tap
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.HOMEBREW_TAP_REPO || 'einyx/homebrew-tap' }}
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Bump formula
+        env:
+          VERSION: ${{ steps.sha.outputs.version }}
+          SHA_AARCH64_DARWIN: ${{ steps.sha.outputs.sha_TKR_AARCH64_APPLE_DARWIN }}
+          SHA_X86_64_DARWIN: ${{ steps.sha.outputs.sha_TKR_X86_64_APPLE_DARWIN }}
+          SHA_AARCH64_LINUX: ${{ steps.sha.outputs.sha_TKR_AARCH64_UNKNOWN_LINUX_GNU }}
+          SHA_X86_64_LINUX: ${{ steps.sha.outputs.sha_TKR_X86_64_UNKNOWN_LINUX_GNU }}
+        run: |
+          set -euo pipefail
+          cd tap
+          python3 - <<PYEOF
+          import re, os, pathlib
+          p = pathlib.Path("Formula/tkr.rb")
+          src = p.read_text()
+          src = re.sub(r'^  version "[^"]+"', f'  version "{os.environ["VERSION"]}"', src, count=1, flags=re.M)
+          # Order matches the formula: macOS arm, macOS intel, linux arm, linux intel.
+          mapping = [
+            (r'tkr-aarch64-apple-darwin\.tar\.gz"\n      sha256 "[^"]+"',
+             f'tkr-aarch64-apple-darwin.tar.gz"\n      sha256 "{os.environ["SHA_AARCH64_DARWIN"]}"'),
+            (r'tkr-x86_64-apple-darwin\.tar\.gz"\n      sha256 "[^"]+"',
+             f'tkr-x86_64-apple-darwin.tar.gz"\n      sha256 "{os.environ["SHA_X86_64_DARWIN"]}"'),
+            (r'tkr-aarch64-unknown-linux-gnu\.tar\.gz"\n      sha256 "[^"]+"',
+             f'tkr-aarch64-unknown-linux-gnu.tar.gz"\n      sha256 "{os.environ["SHA_AARCH64_LINUX"]}"'),
+            (r'tkr-x86_64-unknown-linux-gnu\.tar\.gz"\n      sha256 "[^"]+"',
+             f'tkr-x86_64-unknown-linux-gnu.tar.gz"\n      sha256 "{os.environ["SHA_X86_64_LINUX"]}"'),
+          ]
+          for pat, repl in mapping:
+            src = re.sub(pat, repl, src, count=1)
+          p.write_text(src)
+          PYEOF
+
+      - name: Commit + push tap
+        env:
+          VERSION: ${{ steps.sha.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd tap
+          if git diff --quiet; then
+            echo "no formula change to push"
+            exit 0
+          fi
+          git config user.name "tkr-release-bot"
+          git config user.email "tkr-release-bot@users.noreply.github.com"
+          git add Formula/tkr.rb
+          git commit -m "release: tkr v${VERSION}"
+          git push
