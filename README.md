@@ -6,6 +6,8 @@ Token-optimized CLI proxy for LLM development workflows.
 
 ## What's different
 
+- **Plugin contract v2** — structured plugin lifecycle (`on_load`, `on_command_begin`, `on_line`, `on_command_end`), typed capability grants, and vault-backed storage. See `docs/superpowers/specs/2026-04-28-tkr-plugin-contract-v2-design.md` for the full spec.
+- **Encrypted vault** — all plugin state lives in `~/.tkr/vault/` encrypted with age (XChaCha20-Poly1305), master key in the OS keychain. Manage with `tkr vault {status,init,unseal,seal,rotate,export,import,audit}`.
 - **Plugin architecture** — core is thin; filters, semantic dedup, and analytics are independent plugins
 - **Semantic deduplication** — collapses near-duplicate output lines using local embeddings (Ollama or exact-match fallback)
 - **Relevance scoring** — drops low-signal lines that don't relate to the command intent
