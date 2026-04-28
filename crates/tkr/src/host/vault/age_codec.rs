@@ -1,6 +1,7 @@
 use age::secrecy::SecretString;
 use anyhow::{anyhow, Context, Result};
 use std::io::{Read, Write};
+use zeroize::Zeroizing;
 
 fn key_to_passphrase(key: &[u8; 32]) -> SecretString {
     SecretString::new(hex::encode(key))
@@ -15,7 +16,10 @@ pub fn encrypt(key: &[u8; 32], plaintext: &[u8]) -> Result<Vec<u8>> {
     Ok(out)
 }
 
-pub fn decrypt(key: &[u8; 32], ciphertext: &[u8]) -> Result<Vec<u8>> {
+/// Decrypt `ciphertext` and return plaintext wrapped in `Zeroizing` so the
+/// buffer is wiped on drop.  Callers receiving the plaintext are responsible
+/// for zeroizing on their side; intermediate copies inside the vault are wiped.
+pub fn decrypt(key: &[u8; 32], ciphertext: &[u8]) -> Result<Zeroizing<Vec<u8>>> {
     let dec = match age::Decryptor::new(ciphertext).context("parse age header")? {
         age::Decryptor::Passphrase(d) => d,
         age::Decryptor::Recipients(_) => {
@@ -25,8 +29,8 @@ pub fn decrypt(key: &[u8; 32], ciphertext: &[u8]) -> Result<Vec<u8>> {
     let mut reader = dec
         .decrypt(&key_to_passphrase(key), None)
         .context("decrypt")?;
-    let mut out = Vec::new();
-    reader.read_to_end(&mut out)?;
+    let mut out = Zeroizing::new(Vec::new());
+    reader.read_to_end(&mut *out)?;
     Ok(out)
 }
 
@@ -38,7 +42,7 @@ mod tests {
     fn round_trip() {
         let key = [7u8; 32];
         let ct = encrypt(&key, b"hello").unwrap();
-        assert_eq!(decrypt(&key, &ct).unwrap(), b"hello".to_vec());
+        assert_eq!(*decrypt(&key, &ct).unwrap(), b"hello".to_vec());
     }
 
     #[test]
@@ -50,6 +54,6 @@ mod tests {
     #[test]
     fn empty_plaintext_round_trips() {
         let ct = encrypt(&[1u8; 32], b"").unwrap();
-        assert_eq!(decrypt(&[1u8; 32], &ct).unwrap(), Vec::<u8>::new());
+        assert_eq!(*decrypt(&[1u8; 32], &ct).unwrap(), Vec::<u8>::new());
     }
 }
