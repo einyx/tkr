@@ -25,6 +25,9 @@ schemars = "0.8"
 jsonschema = "0.18"
 hex = "0.4"
 zeroize = { version = "1.7", features = ["zeroize_derive"] }
+rand = "0.8"
+sha2 = "0.10"
+hkdf = "0.12"
 
 [profile.release]
 opt-level = 3

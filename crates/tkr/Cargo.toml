@@ -27,3 +27,10 @@ clap = { workspace = true }
 ratatui = "0.28"
 crossterm = "0.27"
 libloading = { workspace = true }
+keyring = { workspace = true }
+rand = { workspace = true }
+age = { workspace = true }
+sha2 = { workspace = true }
+hkdf = { workspace = true }
+hex = { workspace = true }
+zeroize = { workspace = true }

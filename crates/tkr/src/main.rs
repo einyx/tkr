@@ -1,5 +1,6 @@
 mod cli;
 mod cmds;
+mod host;
 mod config;
 mod dispatch;
 mod proxy;
