@@ -1,4 +1,6 @@
 mod rules;
+pub mod v2;
+pub use v2::all_filters_v2;
 
 use anyhow::Result;
 use rules::{CompiledRule, Rule};
@@ -44,6 +46,10 @@ pub struct FilterPlugin {
 }
 
 impl FilterPlugin {
+    pub fn new() -> Self {
+        Self { groups: vec![] }
+    }
+
     pub fn from_toml(toml_str: &str) -> Result<Self> {
         let def: FilterDef = toml::from_str(toml_str)?;
         let group = FilterGroup {
