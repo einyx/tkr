@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use crate::{
     Result,
     bus::{Event, Reply, Request},
@@ -24,7 +25,9 @@ pub enum FilterDecision {
 pub trait Plugin: Send {
     fn manifest(&self) -> Manifest;
 
-    fn on_load(&mut self, host: &dyn Host) -> Result<()>;
+    /// Called once at startup. The plugin may `Arc::clone` the host to retain
+    /// it for later calls (e.g. to access sqlite / kv in `on_command_end`).
+    fn on_load(&mut self, host: Arc<dyn Host>) -> Result<()>;
 
     fn on_start(&mut self) -> Result<()> { Ok(()) }
 
@@ -53,7 +56,7 @@ mod tests {
     struct Noop;
     impl Plugin for Noop {
         fn manifest(&self) -> Manifest { Manifest { name: "noop".into(), version: "0".into(), ..Default::default() } }
-        fn on_load(&mut self, _: &dyn Host) -> crate::Result<()> { Ok(()) }
+        fn on_load(&mut self, _: Arc<dyn Host>) -> crate::Result<()> { Ok(()) }
     }
 
     #[test] fn defaults_compile() {

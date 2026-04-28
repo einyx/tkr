@@ -48,7 +48,7 @@ impl Plugin for FilterPluginV2 {
         }
     }
 
-    fn on_load(&mut self, _host: &dyn Host) -> ApiResult<()> {
+    fn on_load(&mut self, _host: std::sync::Arc<dyn Host>) -> ApiResult<()> {
         Ok(())
     }
 

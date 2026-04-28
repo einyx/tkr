@@ -110,7 +110,7 @@ mod tests {
                 ..Default::default()
             }
         }
-        fn on_load(&mut self, _host: &dyn tkr_api::host::Host) -> tkr_api::Result<()> {
+        fn on_load(&mut self, _host: std::sync::Arc<dyn tkr_api::host::Host>) -> tkr_api::Result<()> {
             Ok(())
         }
         fn on_request(&mut self, req: tkr_api::bus::Request) -> tkr_api::Result<Reply> {

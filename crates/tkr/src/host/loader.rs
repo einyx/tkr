@@ -68,7 +68,7 @@ impl PluginRegistry {
     /// Run `on_load` for every registered plugin; abort startup on first error.
     pub fn load_all(&self) -> Result<()> {
         for e in &self.entries {
-            let host: &dyn tkr_api::host::Host = e.host.as_ref();
+            let host: std::sync::Arc<dyn tkr_api::host::Host> = e.host.clone();
             let mut p = e.plugin.lock().unwrap();
             p.on_load(host)
                 .map_err(|err| anyhow::anyhow!("plugin {}: on_load: {}", e.name, err))?;
@@ -202,7 +202,7 @@ mod tests {
                 ..Default::default()
             }
         }
-        fn on_load(&mut self, _host: &dyn tkr_api::host::Host) -> tkr_api::Result<()> {
+        fn on_load(&mut self, _host: std::sync::Arc<dyn tkr_api::host::Host>) -> tkr_api::Result<()> {
             self.order
                 .lock()
                 .unwrap()
@@ -270,7 +270,7 @@ mod tests {
             }
             fn on_load(
                 &mut self,
-                _h: &dyn tkr_api::host::Host,
+                _h: std::sync::Arc<dyn tkr_api::host::Host>,
             ) -> tkr_api::Result<()> {
                 Ok(())
             }
@@ -324,7 +324,7 @@ mod tests_filters {
                 ..Default::default()
             }
         }
-        fn on_load(&mut self, _h: &dyn tkr_api::host::Host) -> tkr_api::Result<()> { Ok(()) }
+        fn on_load(&mut self, _h: std::sync::Arc<dyn tkr_api::host::Host>) -> tkr_api::Result<()> { Ok(()) }
         fn on_line(&mut self, _line: &str, _ctx: &CommandCtx) -> tkr_api::Result<FilterDecision> {
             self.0.fetch_add(1, Ordering::Relaxed);
             Ok(FilterDecision::Suppress)
