@@ -7,6 +7,12 @@ pub enum SealState {
     FullyUnsealed,
 }
 
+impl Default for SealState {
+    fn default() -> Self {
+        SealState::Sealed
+    }
+}
+
 pub trait Vault: Send + Sync {
     fn state(&self) -> SealState;
     fn read_secret(&self, key: &str) -> Result<Vec<u8>>;
