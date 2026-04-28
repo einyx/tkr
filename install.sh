@@ -34,5 +34,13 @@ mkdir -p "${INSTALL_DIR}"
 curl -fsSL "${URL}" | tar xz -C "${INSTALL_DIR}" "${BIN_NAME}"
 chmod +x "${INSTALL_DIR}/${BIN_NAME}"
 
+# macOS: strip provenance/quarantine xattrs and re-apply an ad-hoc signature.
+# Without this, AppleSystemPolicy can refuse to launch the binary with
+# "load code signature error 2" / SIGKILL on first run after install.
+if [ "${OS}" = "darwin" ]; then
+  xattr -c "${INSTALL_DIR}/${BIN_NAME}" 2>/dev/null || true
+  codesign --force --sign - "${INSTALL_DIR}/${BIN_NAME}" 2>/dev/null || true
+fi
+
 echo "Installed to ${INSTALL_DIR}/tkr"
 echo "Make sure ${INSTALL_DIR} is in your PATH."
