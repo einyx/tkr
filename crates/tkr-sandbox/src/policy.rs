@@ -36,3 +36,36 @@ impl PolicyBuilder {
     }
     pub fn build(self) -> SandboxPolicy { self.inner }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deny_all_is_empty() {
+        let p = SandboxPolicy::deny_all();
+        assert!(p.fs_read.is_empty() && p.fs_write.is_empty() && !p.disabled);
+    }
+
+    #[test]
+    fn builder_chains() {
+        let p = SandboxPolicy::builder().allow_read("/etc").allow_write("/tmp/foo").build();
+        assert_eq!(p.fs_read, vec![PathBuf::from("/etc")]);
+        assert_eq!(p.fs_write, vec![PathBuf::from("/tmp/foo")]);
+    }
+
+    #[test]
+    fn validate_rejects_relative() {
+        let p = SandboxPolicy::builder().allow_read("relative/path").build();
+        assert!(p.validate().is_err());
+    }
+
+    #[test]
+    fn deserializes_from_toml() {
+        let src = r#"fs_read = ["/etc"]
+fs_write = ["/tmp"]"#;
+        let p: SandboxPolicy = toml::from_str(src).unwrap();
+        assert_eq!(p.fs_read.len(), 1);
+        assert_eq!(p.fs_write.len(), 1);
+    }
+}
