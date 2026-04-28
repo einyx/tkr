@@ -191,6 +191,7 @@ fn main() -> anyhow::Result<()> {
         Some(Commands::Agent { cmd }) => match cmd {
             AgentCmd::Run { manifest } => agent_cmd::run_agent(&manifest),
         },
+        Some(Commands::Update { check, force }) => cmds::update::run(check, force),
         None => {
             if cli.passthrough.is_empty() {
                 eprintln!("Usage: tkr <command> [args...] or tkr --help");

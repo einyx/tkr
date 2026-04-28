@@ -76,6 +76,15 @@ pub enum Commands {
         #[command(subcommand)]
         cmd: AgentCmd,
     },
+    /// Self-update: download and install the latest release from GitHub.
+    Update {
+        /// Only check, do not install.
+        #[arg(long)]
+        check: bool,
+        /// Reinstall even if already on the latest version.
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]

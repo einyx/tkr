@@ -6,3 +6,4 @@ pub mod hook;
 pub mod install;
 pub mod rewrite;
 pub mod suggest;
+pub mod update;

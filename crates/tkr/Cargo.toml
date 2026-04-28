@@ -54,6 +54,7 @@ rusqlite = { workspace = true }
 sqlite-vec = { workspace = true }
 tar = { workspace = true }
 flate2 = { workspace = true }
+self_update = { version = "0.44.0", default-features = false, features = ["archive-tar", "compression-flate2", "ureq", "rustls"] }
 
 [dev-dependencies]
 regex = { workspace = true }
