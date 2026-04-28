@@ -6,6 +6,7 @@ mod dispatch;
 mod proxy;
 mod runner;
 mod session;
+mod embedding_ranker;
 mod noise_ranker;
 mod signature;
 mod stream;
