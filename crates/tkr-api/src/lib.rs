@@ -15,6 +15,7 @@ pub mod capability;
 pub mod bus;
 pub mod vault;
 pub mod handles;
+pub mod host;
 // Re-export every other public symbol that legacy.rs defines so that
 // existing consumers compile without changes.
 pub use legacy::Plugin;
