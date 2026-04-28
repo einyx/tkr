@@ -4,7 +4,7 @@ mod cosine;
 use backend::Backend;
 use cosine::cosine_similarity;
 use std::collections::VecDeque;
-use tkr_api::{FilterResult, Plugin};
+use tkr_api::{FilterResult, LegacyPlugin as Plugin};
 
 pub struct SemanticPlugin {
     backend: Backend,

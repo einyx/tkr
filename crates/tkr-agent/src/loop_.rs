@@ -3,7 +3,7 @@ use crate::provider::{ContentBlock, Message, Provider, StopReason};
 use crate::tool::{ToolRegistry, ToolResult};
 use anyhow::{anyhow, Result};
 use tkr_filter::FilterPlugin;
-use tkr_api::{FilterResult, Plugin};
+use tkr_api::{FilterResult, LegacyPlugin as Plugin};
 
 #[derive(Debug, Clone)]
 pub struct RunOutcome {

@@ -37,3 +37,42 @@ pattern = "^Your branch is (ahead|up to date|behind)"
 [[rules]]
 type = "suppress_regex"
 pattern = "^  \\(use \""
+
+# git status section banners
+[[rules]]
+type = "suppress_regex"
+pattern = "^On branch "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Changes (not staged for commit|to be committed):"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Untracked files:"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^nothing to commit, working tree clean"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^You are currently rebasing"
+
+# Truncate git commit's "[branch SHA] subject" — SHA already short, but
+# repeated commit refs in `git log --all` output are noise; this leaves
+# them alone and instead targets the `... files changed` summary's whitespace.
+[[rules]]
+type = "truncate_match"
+pattern = "^ (\\d+) files? changed, (\\d+) insertions?\\(\\+\\), (\\d+) deletions?\\(-\\)"
+replace = " $1f +$2 -$3"
+
+[[rules]]
+type = "truncate_match"
+pattern = "^ (\\d+) files? changed, (\\d+) insertions?\\(\\+\\)"
+replace = " $1f +$2"
+
+[[rules]]
+type = "truncate_match"
+pattern = "^ (\\d+) files? changed, (\\d+) deletions?\\(-\\)"
+replace = " $1f -$2"

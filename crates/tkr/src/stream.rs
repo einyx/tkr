@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use tkr_api::{FilterResult, Plugin};
+use tkr_api::{FilterResult, LegacyPlugin as Plugin};
 
 use crate::signature::signature_of;
 

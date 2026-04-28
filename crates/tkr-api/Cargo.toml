@@ -7,3 +7,11 @@ license = "Apache-2.0"
 [lib]
 name = "tkr_api"
 crate-type = ["rlib"]
+
+[features]
+default = []
+test-host = []
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }

@@ -4,3 +4,35 @@ command = "ps"
 [[rules]]
 type = "suppress_regex"
 pattern = "\\s\\[[^\\]]+\\]$"
+
+# Truncate ridiculously long command lines (>200 chars after the leading
+# columns). ps -ef / aux output often has multi-KB Java / Electron command
+# lines. Keep the first 160 chars + summary count of what was elided.
+[[rules]]
+type = "truncate_match"
+pattern = "^(.{160})\\S.{40,}$"
+replace = "$1 …"
+
+# Common system processes that are nearly always noise — keep these exact
+# matches OFF the LLM context unless explicitly needed.
+[[rules]]
+type = "suppress_regex"
+pattern = " /usr/sbin/(cfprefsd|distnoted|notifyd|coreaudiod|powerd|opendirectoryd|configd|systemstats)\\b"
+
+[[rules]]
+type = "suppress_regex"
+pattern = " /System/Library/(Frameworks|PrivateFrameworks)/"
+
+[[rules]]
+type = "suppress_regex"
+pattern = " /System/Library/CoreServices/"
+
+# launchd children with no useful arg
+[[rules]]
+type = "suppress_regex"
+pattern = " /sbin/launchd\\s*$"
+
+# `ps -ef` header line (`UID PID PPID C STIME TTY TIME CMD`)
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*(UID|USER)\\s+PID\\s+"

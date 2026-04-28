@@ -1,6 +1,9 @@
+pub mod v2;
+pub use v2::AnalyticsPluginV2;
+
 use anyhow::Result;
 use rusqlite::{params, Connection};
-use tkr_api::{FilterResult, Plugin};
+use tkr_api::{FilterResult, LegacyPlugin as Plugin};
 
 pub struct AnalyticsPlugin {
     store: AnalyticsStore,

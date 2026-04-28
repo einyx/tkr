@@ -26,6 +26,18 @@ libloading = "0.8"
 ureq = { version = "2", features = ["json"] }
 thiserror = "1"
 mockito = "1"
+age = "0.10"
+keyring = "3"
+schemars = "0.8"
+jsonschema = "0.18"
+hex = "0.4"
+zeroize = { version = "1.7", features = ["zeroize_derive"] }
+rand = "0.8"
+sha2 = "0.10"
+hkdf = "0.12"
+rusqlite = { version = "0.31", features = ["bundled"] }
+tar = "0.4"
+flate2 = "1"
 
 [profile.release]
 opt-level = 3
