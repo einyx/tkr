@@ -249,6 +249,106 @@ pub fn rotate(old: &HostVault, vault_root: &Path) -> Result<[u8; 32]> {
     Ok(new_master)
 }
 
+// ── Task 5.6: audit ──────────────────────────────────────────────────────────
+
+use crate::host::vault::audit::AuditLog;
+
+pub struct AuditOpts {
+    pub verify: bool,
+    pub last_n: Option<usize>,
+}
+
+pub fn audit(vault_root: &Path, opts: AuditOpts) -> Result<i32> {
+    let log_path = vault_root.join("audit.log");
+    if !log_path.exists() {
+        println!("no audit log yet at {}", log_path.display());
+        return Ok(0);
+    }
+    if opts.verify {
+        // AuditLog::open itself validates the tip against the current log state,
+        // so an Err from open already indicates a verification failure.
+        let ok = match AuditLog::open(&log_path) {
+            Err(_) => false,
+            Ok(log) => log.verify()?,
+        };
+        if ok {
+            println!("audit log OK");
+            return Ok(0);
+        } else {
+            eprintln!("audit log verification FAILED (chain broken or truncated)");
+            return Ok(1);
+        }
+    }
+    // Print events; default last 10.
+    let n = opts.last_n.unwrap_or(10);
+    let s = std::fs::read_to_string(&log_path)?;
+    let lines: Vec<&str> = s.lines().filter(|l| !l.trim().is_empty()).collect();
+    let total = lines.len();
+    let start = total.saturating_sub(n);
+    println!("audit log: {total} entries (showing last {})", total - start);
+    for line in &lines[start..] {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+            if let Some(ev) = v.get("event") {
+                let actor = ev.get("actor").and_then(|x| x.as_str()).unwrap_or("?");
+                let op = ev.get("op").and_then(|x| x.as_str()).unwrap_or("?");
+                let key = ev.get("key").and_then(|x| x.as_str()).unwrap_or("?");
+                let ts = ev.get("ts").and_then(|x| x.as_u64()).unwrap_or(0);
+                println!("  ts={ts} actor={actor} op={op} key={key}");
+            }
+        }
+    }
+    Ok(0)
+}
+
+#[cfg(test)]
+mod tests_audit {
+    use super::*;
+    use tempfile::tempdir;
+    use crate::host::vault::audit::{AuditLog, AuditEvent};
+
+    #[test]
+    fn audit_print_no_log() {
+        let d = tempdir().unwrap();
+        let r = audit(d.path(), AuditOpts { verify: false, last_n: Some(5) }).unwrap();
+        assert_eq!(r, 0);
+    }
+
+    #[test]
+    fn audit_verify_fresh_log_is_ok() {
+        let d = tempdir().unwrap();
+        let log = AuditLog::open(d.path().join("audit.log")).unwrap();
+        log.append(AuditEvent { actor: "p".into(), op: "x".into(), key: "k".into(), ts: 1 }).unwrap();
+        let r = audit(d.path(), AuditOpts { verify: true, last_n: None }).unwrap();
+        assert_eq!(r, 0);
+    }
+
+    #[test]
+    fn audit_verify_detects_truncation() {
+        let d = tempdir().unwrap();
+        let log = AuditLog::open(d.path().join("audit.log")).unwrap();
+        log.append(AuditEvent { actor: "p".into(), op: "x".into(), key: "k".into(), ts: 1 }).unwrap();
+        log.append(AuditEvent { actor: "p".into(), op: "y".into(), key: "k".into(), ts: 2 }).unwrap();
+        // Truncate last line:
+        let path = d.path().join("audit.log");
+        let s = std::fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = s.lines().collect();
+        std::fs::write(&path, lines[..lines.len()-1].join("\n") + "\n").unwrap();
+        let r = audit(d.path(), AuditOpts { verify: true, last_n: None }).unwrap();
+        assert_eq!(r, 1);  // verification failed → non-zero exit
+    }
+
+    #[test]
+    fn audit_print_shows_recent_events() {
+        let d = tempdir().unwrap();
+        let log = AuditLog::open(d.path().join("audit.log")).unwrap();
+        for i in 0..5 {
+            log.append(AuditEvent { actor: "p".into(), op: "op".into(), key: format!("k{i}"), ts: i as u64 }).unwrap();
+        }
+        let r = audit(d.path(), AuditOpts { verify: false, last_n: Some(3) }).unwrap();
+        assert_eq!(r, 0);
+    }
+}
+
 // ── Task 5.5: export / import ─────────────────────────────────────────────────
 
 pub fn export(vault_root: &Path, out_path: &Path) -> anyhow::Result<i32> {
