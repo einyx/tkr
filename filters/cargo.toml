@@ -40,3 +40,29 @@ pattern = "^\\s*Finished "
 [[rules]]
 type = "suppress_regex"
 pattern = "^\\s*Building "
+
+# cargo test scaffolding (passing tests are noise — failures are kept)
+[[rules]]
+type = "suppress_regex"
+pattern = "^test [^ ]+ \\.\\.\\. ok$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^running \\d+ tests?$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^test result: ok\\."
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Running unittests"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Doc-tests "
+
+# cargo tree noise: already-shown deps marked with (*)
+[[rules]]
+type = "suppress_regex"
+pattern = "\\(\\*\\)$"

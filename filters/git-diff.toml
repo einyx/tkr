@@ -1,0 +1,12 @@
+command = "git"
+subcommands = ["diff", "show"]
+
+# `index abc..def 100644` lines — rarely useful for review
+[[rules]]
+type = "suppress_regex"
+pattern = "^index [0-9a-f]+\\.\\.[0-9a-f]+"
+
+# `\\ No newline at end of file` notices
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\\\ No newline at end of file"
