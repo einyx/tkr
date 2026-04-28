@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc, Mutex,
@@ -12,6 +11,25 @@ use tkr_api::{Error, Result};
 use crate::host::vault::HostVault;
 
 static SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// Allocate a buffer with `sqlite3_malloc` and copy `src` into it, returning
+/// an `OwnedData` that SQLite will later free. Used by SqliteImpl::open to
+/// hand the decrypted DB blob to `Connection::deserialize` without ever
+/// writing it to disk.
+fn sqlite3_malloc_copy(src: &[u8]) -> Result<rusqlite::serialize::OwnedData> {
+    use std::ptr::NonNull;
+    if src.is_empty() {
+        // SQLite tolerates a non-null empty buffer better than null; allocate 1 byte.
+        let p = unsafe { rusqlite::ffi::sqlite3_malloc(1) } as *mut u8;
+        let nn = NonNull::new(p).ok_or_else(|| Error::Vault("sqlite3_malloc failed".into()))?;
+        return Ok(unsafe { rusqlite::serialize::OwnedData::from_raw_nonnull(nn, 0) });
+    }
+    let n = src.len();
+    let p = unsafe { rusqlite::ffi::sqlite3_malloc(n as i32) } as *mut u8;
+    let nn = NonNull::new(p).ok_or_else(|| Error::Vault("sqlite3_malloc failed".into()))?;
+    unsafe { std::ptr::copy_nonoverlapping(src.as_ptr(), nn.as_ptr(), n) };
+    Ok(unsafe { rusqlite::serialize::OwnedData::from_raw_nonnull(nn, n) })
+}
 
 /// Register the sqlite-vec extension once at process start so every vault
 /// sqlite connection gets the `vec0` virtual-table module. Required for
@@ -144,13 +162,17 @@ mod tests_kv {
 }
 
 // ─── SqliteImpl ───────────────────────────────────────────────────────────────
+//
+// In-memory SQLite + serialize/deserialize. Decrypted bytes from the vault
+// are deserialized straight into a `:memory:` database, never written to disk.
+// On every write, we serialize back to bytes and re-encrypt into the vault.
+// The previous implementation wrote a plaintext db.sqlite under
+// std::env::temp_dir() which leaked across the entire process lifetime.
 
 pub struct SqliteImpl {
     vault: Arc<HostVault>,
     plugin: String,
     class: SensitivityClass,
-    tmp_dir: PathBuf,
-    tmp_path: PathBuf,
     conn: Mutex<Connection>,
 }
 
@@ -164,23 +186,26 @@ impl SqliteImpl {
         ensure_sqlite_vec_loaded();
         let plugin = plugin.into();
         let key = blob_key(&plugin, class);
-        let n = SEQ.fetch_add(1, Ordering::Relaxed);
-        let tmp_dir = std::env::temp_dir()
-            .join(format!("tkr-sqlite-{}-{}", std::process::id(), n));
-        std::fs::create_dir_all(&tmp_dir)
+        // Bump the seq counter so it's still globally unique (used elsewhere).
+        let _ = SEQ.fetch_add(1, Ordering::Relaxed);
+
+        let mut conn = Connection::open_in_memory()
             .map_err(|e| Error::Vault(e.to_string()))?;
-        let tmp_path = tmp_dir.join("db.sqlite");
 
         if let Some(z) = vault
             .read(class, &key, &plugin)
             .map_err(|e| Error::Vault(e.to_string()))?
         {
-            std::fs::write(&tmp_path, &z[..])
-                .map_err(|e| Error::Vault(e.to_string()))?;
+            // SQLite's deserialize requires a buffer allocated with
+            // sqlite3_malloc (so it can later free / realloc it). Copy our
+            // decrypted bytes into one.
+            let owned = sqlite3_malloc_copy(&z[..])?;
+            unsafe {
+                conn.deserialize(rusqlite::DatabaseName::Main, owned, false)
+                    .map_err(|e| Error::Vault(e.to_string()))?;
+            }
         }
 
-        let conn =
-            Connection::open(&tmp_path).map_err(|e| Error::Vault(e.to_string()))?;
         conn.execute_batch(schema_sql)
             .map_err(|e| Error::Vault(e.to_string()))?;
 
@@ -188,15 +213,17 @@ impl SqliteImpl {
             vault,
             plugin,
             class,
-            tmp_dir,
-            tmp_path,
             conn: Mutex::new(conn),
         })
     }
 
     fn persist(&self) -> Result<()> {
-        let bytes = std::fs::read(&self.tmp_path)
+        let conn = self.conn.lock().unwrap();
+        let serialized = conn
+            .serialize(rusqlite::DatabaseName::Main)
             .map_err(|e| Error::Vault(e.to_string()))?;
+        let bytes = serialized.to_vec();
+        drop(conn);
         let key = blob_key(&self.plugin, self.class);
         self.vault
             .write(self.class, &key, &bytes, &self.plugin)
@@ -281,7 +308,6 @@ impl tkr_api::handles::Sqlite for SqliteImpl {
 impl Drop for SqliteImpl {
     fn drop(&mut self) {
         let _ = self.persist();
-        let _ = std::fs::remove_dir_all(&self.tmp_dir);
     }
 }
 
