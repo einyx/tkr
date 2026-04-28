@@ -18,6 +18,20 @@ const YELLOW: &str = "\x1b[33m";
 const RED: &str = "\x1b[31m";
 
 pub fn run() -> Result<()> {
+    // Lazy: persist embeddings for any noise signatures missing them, so the
+    // vault accumulates a vector index across sessions. No-op without the
+    // `embeddings` cargo feature.
+    let host_handle = crate::host::boot::get_host();
+    let analytics_host = crate::host::RealHost::new(
+        "tkr-analytics",
+        host_handle.vault.clone(),
+        host_handle.bus.clone(),
+    );
+    let new_embeds = crate::embedding_ranker::embed_pending_signatures(&analytics_host, 256);
+    if new_embeds > 0 {
+        eprintln!("tkr suggest: embedded {new_embeds} new noise signatures into the vault");
+    }
+
     let home = dirs::home_dir().unwrap_or_default();
     let db_path = home.join(".tkr/analytics.db");
     if !db_path.exists() {

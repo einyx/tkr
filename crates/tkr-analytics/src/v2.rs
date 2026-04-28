@@ -306,6 +306,49 @@ pub fn nearest_noise_embeddings_via_host(
         .collect())
 }
 
+/// Look up the `noise_signatures.id` for a given (command, signature) pair.
+pub fn noise_signature_id_via_host(
+    host: &dyn Host,
+    command: &str,
+    signature: &str,
+) -> ApiResult<Option<i64>> {
+    let db = host.sqlite(SCHEMA_SQL, SensitivityClass::Public)?;
+    let rows = db.query(
+        "SELECT id FROM noise_signatures WHERE command = ?1 AND signature = ?2 LIMIT 1",
+        &[json!(command), json!(signature)],
+    )?;
+    Ok(rows.into_iter().next().and_then(|r| r.first()?.as_i64()))
+}
+
+/// Return all noise_signatures rows that have no corresponding row in the
+/// noise_embeddings table — the work queue for the lazy embed-and-persist
+/// step in `tkr suggest`.
+pub fn noise_signatures_without_embeddings_via_host(
+    host: &dyn Host,
+    limit: usize,
+) -> ApiResult<Vec<(i64, String)>> {
+    let db = host.sqlite(SCHEMA_SQL, SensitivityClass::Public)?;
+    let rows = db.query(
+        "SELECT s.id, s.sample
+         FROM noise_signatures s
+         WHERE NOT EXISTS (
+             SELECT 1 FROM noise_embeddings e WHERE e.signature_id = s.id
+         )
+         ORDER BY s.total_chars DESC
+         LIMIT ?1",
+        &[json!(limit as i64)],
+    )?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|r| {
+            Some((
+                r.first()?.as_i64()?,
+                r.get(1)?.as_str()?.to_string(),
+            ))
+        })
+        .collect())
+}
+
 /// Persist a noise signature into the vault sqlite using any `Host` impl.
 /// Lets non-plugin code (proxy::run) write learning data directly.
 pub fn record_noise_signature_via_host(

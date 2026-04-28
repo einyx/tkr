@@ -128,6 +128,45 @@ mod imp {
 #[cfg(feature = "embeddings")]
 pub use imp::EmbeddingRanker;
 
+/// Embed any noise_signatures rows that have no embedding yet, persist into
+/// the vault's `noise_embeddings` vec0 table. Lazy / batched — meant to be
+/// called once at the start of `tkr suggest --features embeddings`. Returns
+/// the number of new embeddings persisted.
+///
+/// Stub when the `embeddings` feature is off (always returns 0).
+#[allow(unused_variables)]
+pub fn embed_pending_signatures(host: &dyn tkr_api::host::Host, batch: usize) -> usize {
+    #[cfg(not(feature = "embeddings"))]
+    {
+        0
+    }
+    #[cfg(feature = "embeddings")]
+    {
+        use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
+        let pending = match tkr_analytics::noise_signatures_without_embeddings_via_host(host, batch)
+        {
+            Ok(v) if !v.is_empty() => v,
+            _ => return 0,
+        };
+        let model = match TextEmbedding::try_new(InitOptions::new(EmbeddingModel::AllMiniLML6V2)) {
+            Ok(m) => m,
+            Err(_) => return 0,
+        };
+        let texts: Vec<&str> = pending.iter().map(|(_, s)| s.as_str()).collect();
+        let embeddings = match model.embed(texts, None) {
+            Ok(v) => v,
+            Err(_) => return 0,
+        };
+        let mut written = 0;
+        for ((sig_id, _sample), emb) in pending.iter().zip(embeddings.iter()) {
+            if tkr_analytics::upsert_noise_embedding_via_host(host, *sig_id, emb).is_ok() {
+                written += 1;
+            }
+        }
+        written
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
