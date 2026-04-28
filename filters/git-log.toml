@@ -38,3 +38,12 @@ match_capture = 1
 type = "truncate_match"
 pattern = "^Merge: ([0-9a-f]{8})[0-9a-f]+ ([0-9a-f]{8})[0-9a-f]+"
 replace = "Merge: $1 $2"
+
+# Collapse commit-message bodies: keep the subject line + first body line,
+# drop the rest. Body lines are 4-space indented; blanks within don't reset.
+# A non-indented line (next "commit" header) ends the run.
+[[rules]]
+type = "collapse_run"
+pattern = "^    "
+keep_first = 2
+ignore_blanks = true

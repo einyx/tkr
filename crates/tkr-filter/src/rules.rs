@@ -35,10 +35,15 @@ pub enum Rule {
     /// lines (default 3). For runs of unchanged context in diffs, repetitive
     /// log lines, etc. The first `keep_first` matching lines pass through;
     /// subsequent ones are suppressed until a non-matching line ends the run.
+    /// `ignore_blanks` (default false): if true, blank lines (after trim)
+    /// neither match nor reset — they pass through and the run continues.
+    /// Useful for multi-paragraph blocks like commit-message bodies.
     CollapseRun {
         pattern: String,
         #[serde(default = "default_keep_first")]
         keep_first: u32,
+        #[serde(default)]
+        ignore_blanks: bool,
     },
 }
 
@@ -57,7 +62,7 @@ pub enum RuleKind {
     KeepRegex(Regex),
     CollapseRepeats(Regex, Option<usize>),
     TruncateMatch(Regex, String),
-    CollapseRun(Regex, u32),
+    CollapseRun(Regex, u32, bool),
 }
 
 pub enum RuleState {
@@ -93,8 +98,12 @@ impl Rule {
                 kind: RuleKind::TruncateMatch(Regex::new(&pattern)?, replace),
                 state: RuleState::None,
             }),
-            Rule::CollapseRun { pattern, keep_first } => Ok(CompiledRule {
-                kind: RuleKind::CollapseRun(Regex::new(&pattern)?, keep_first),
+            Rule::CollapseRun {
+                pattern,
+                keep_first,
+                ignore_blanks,
+            } => Ok(CompiledRule {
+                kind: RuleKind::CollapseRun(Regex::new(&pattern)?, keep_first, ignore_blanks),
                 state: RuleState::RunCount(0),
             }),
         }
@@ -141,7 +150,7 @@ impl CompiledRule {
                     Some(FilterResult::Replace(ptr, len))
                 }
             }
-            RuleKind::CollapseRun(re, keep_first) => {
+            RuleKind::CollapseRun(re, keep_first, ignore_blanks) => {
                 if re.is_match(line) {
                     let count = match self.state {
                         RuleState::RunCount(n) => n + 1,
@@ -153,6 +162,9 @@ impl CompiledRule {
                     } else {
                         None
                     }
+                } else if *ignore_blanks && line.trim().is_empty() {
+                    // Blank line — neither matches nor resets the run.
+                    None
                 } else {
                     self.state = RuleState::RunCount(0);
                     None
@@ -234,6 +246,7 @@ mod tests {
         let rule = Rule::CollapseRun {
             pattern: r"^ ".to_string(),
             keep_first: 2,
+            ignore_blanks: false,
         };
         let mut compiled = rule.compile().unwrap();
         // First 2 matches: pass
@@ -248,6 +261,23 @@ mod tests {
         assert_eq!(compiled.apply("+added"), None);
         // After reset, first match passes again
         assert_eq!(compiled.apply(" line 4"), None);
+    }
+
+    #[test]
+    fn collapse_run_ignore_blanks_keeps_run_alive() {
+        let rule = Rule::CollapseRun {
+            pattern: r"^    ".to_string(),
+            keep_first: 1,
+            ignore_blanks: true,
+        };
+        let mut compiled = rule.compile().unwrap();
+        assert_eq!(compiled.apply("    subject"), None); // first matches: keep
+        assert_eq!(compiled.apply(""), None); // blank: passes, doesn't reset
+        // Second matching line, count=2, suppressed
+        assert_eq!(
+            compiled.apply("    body"),
+            Some(FilterResult::SuppressWithNote(0))
+        );
     }
 
     #[test]

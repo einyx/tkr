@@ -11,14 +11,14 @@ pattern = "^index [0-9a-f]+\\.\\.[0-9a-f]+"
 type = "suppress_regex"
 pattern = "^\\\\ No newline at end of file"
 
-# Long unchanged context blocks: keep first 3 context lines per run, suppress
+# Long unchanged context blocks: keep first 1 context line per run, suppress
 # the rest. A diff context line starts with a single space (vs. `+`/`-`).
-# Only fires when there are 4+ consecutive context lines, so small hunks are
-# unaffected.
+# Big runs of unchanged code that bracket small changes get heavily compressed
+# while small hunks are unaffected.
 [[rules]]
 type = "collapse_run"
 pattern = "^ "
-keep_first = 3
+keep_first = 1
 
 # `@@ -123,5 +130,8 @@ context` hunk headers — drop the trailing context
 # (the function/section hint) which is often very long. Keep the line numbers.
