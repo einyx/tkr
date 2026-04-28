@@ -1,0 +1,13 @@
+command = "tox"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\S+: install_deps>"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\S+: freeze>"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s+congratulations :\\)"

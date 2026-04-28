@@ -1,0 +1,21 @@
+command = "flyctl"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Setting VM"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^==> Verifying app config"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^--> Pushing image"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^--> Building image"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^--> Verifying"

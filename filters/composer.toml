@@ -1,0 +1,25 @@
+command = "composer"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Loading composer repositories"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Updating dependencies"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Lock file operations:"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Writing lock file"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Generating "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Nothing to install, update or remove"

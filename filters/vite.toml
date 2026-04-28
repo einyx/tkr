@@ -1,0 +1,17 @@
+command = "vite"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*VITE v"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*➜  Local:"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*➜  Network:"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*ready in \\d+"

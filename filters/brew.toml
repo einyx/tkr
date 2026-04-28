@@ -1,0 +1,25 @@
+command = "brew"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^==> Downloading"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^==> Pouring"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^==> Installing"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^==> Updating Homebrew"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^==> Already downloaded:"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Already up-to-date"

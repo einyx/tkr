@@ -1,0 +1,13 @@
+command = "webpack"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^assets by chunk"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^modules by path "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^webpack \\d+\\.\\d+\\.\\d+ compiled successfully"

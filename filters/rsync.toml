@@ -1,0 +1,13 @@
+command = "rsync"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^sending incremental file list"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^sent \\d+ bytes  received \\d+ bytes"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^total size is"

@@ -1,0 +1,21 @@
+command = "poetry"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Installing dependencies from lock file"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Package operations: "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^  - Installing "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^  - Updating "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Resolving dependencies\\.\\.\\."

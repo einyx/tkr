@@ -1,0 +1,13 @@
+command = "sst"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\|  "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Building "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Deploying \\d+ stacks?"

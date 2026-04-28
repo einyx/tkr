@@ -1,0 +1,22 @@
+command = "systemctl"
+subcommands = ["status"]
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Loaded: loaded "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*CGroup:"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Tasks: "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Memory: "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*CPU: "

@@ -1,0 +1,6 @@
+command = "ps"
+
+# Drop kernel threads (process names in [brackets])
+[[rules]]
+type = "suppress_regex"
+pattern = "\\s\\[[^\\]]+\\]$"

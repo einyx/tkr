@@ -1,0 +1,5 @@
+command = "eslint"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*\\d+:\\d+\\s+warning\\s"

@@ -1,0 +1,11 @@
+command = "systemd-analyze"
+subcommands = ["blame"]
+
+# Drop entries below 1ms (noise)
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*\\d+us "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*0ms "

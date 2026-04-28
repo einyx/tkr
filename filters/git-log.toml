@@ -1,0 +1,14 @@
+command = "git"
+subcommands = ["log", "show"]
+
+# Collapse repeated Author when same person across consecutive commits
+[[rules]]
+type = "collapse_repeats"
+pattern = "^Author: (.+) <"
+match_capture = 1
+
+# Collapse repeated Date when same day (YYYY-MM-DD prefix)
+[[rules]]
+type = "collapse_repeats"
+pattern = "^Date:\\s+\\w+ \\w+ (\\d+)"
+match_capture = 1

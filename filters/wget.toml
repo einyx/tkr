@@ -1,0 +1,25 @@
+command = "wget"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Resolving "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Connecting to "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^HTTP request sent, awaiting response"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Length: "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Saving to: "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*\\d+%\\["

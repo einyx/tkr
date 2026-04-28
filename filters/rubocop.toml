@@ -1,0 +1,13 @@
+command = "rubocop"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Inspecting \\d+ files?"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^[.C]+$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\d+ files? inspected, no offenses detected"

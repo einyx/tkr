@@ -1,0 +1,9 @@
+command = "nox"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^nox > "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Sessions selected:"

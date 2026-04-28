@@ -1,0 +1,25 @@
+command = "bazel"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^INFO: Analyzed "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^INFO: Found "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^INFO: Build completed successfully"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^INFO: Elapsed time:"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Loading: \\d+"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\[\\d+ / \\d+\\] "

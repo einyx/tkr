@@ -1,0 +1,25 @@
+command = "pip"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Requirement already satisfied"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Collecting "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^  Using cached "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^  Downloading "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Successfully installed "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Installing collected packages: "

@@ -1,0 +1,17 @@
+command = "rspec"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Randomized with seed "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Run options:"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Finished in [\\d.]+ seconds"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\d+ examples?, 0 failures"

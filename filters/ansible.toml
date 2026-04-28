@@ -1,0 +1,17 @@
+command = "ansible-playbook"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^ok: \\["
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^skipping: \\["
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^PLAY RECAP "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^TASK \\["

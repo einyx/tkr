@@ -1,0 +1,17 @@
+command = "nix"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^copying path "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^building '"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^downloading '"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^these \\d+ derivations will be built"

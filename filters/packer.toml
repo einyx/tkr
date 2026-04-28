@@ -1,0 +1,13 @@
+command = "packer"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "==> .+: Provisioning with shell script"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "==> .+: Connecting to "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "==> .+: Sleeping"

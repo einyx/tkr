@@ -1,0 +1,14 @@
+command = "ruff"
+subcommands = ["check", "format"]
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Found \\d+ errors? \\("
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^All checks passed!"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\d+ files? (already formatted|reformatted)"

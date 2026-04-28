@@ -1,0 +1,25 @@
+command = "conda"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Collecting package metadata"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Solving environment:"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Preparing transaction:"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Verifying transaction:"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Executing transaction:"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^# All requested packages already installed"

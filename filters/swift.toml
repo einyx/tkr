@@ -1,0 +1,18 @@
+command = "swift"
+subcommands = ["build", "test"]
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Compiling \\S+ "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Build complete!"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Fetching "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Cloning "

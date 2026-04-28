@@ -1,0 +1,13 @@
+command = "gcloud"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Updates are available"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Your active configuration is"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^WARNING: This command is using service account"

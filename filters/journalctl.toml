@@ -1,0 +1,14 @@
+command = "journalctl"
+
+# Boot/session start markers when paginated
+[[rules]]
+type = "suppress_regex"
+pattern = "^-- Logs begin at"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^-- Reboot --"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^-- No entries --"

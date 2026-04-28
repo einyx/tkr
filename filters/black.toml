@@ -1,0 +1,13 @@
+command = "black"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^All done! "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\d+ files? (would be reformatted|left unchanged|reformatted)"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^reformatted "

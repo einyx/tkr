@@ -1,0 +1,29 @@
+command = "go"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^=== RUN\\s"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^--- PASS:\\s"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^=== PAUSE\\s"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^=== CONT\\s"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^ok\\s+\\S+\\s+[\\d.]+s"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^PASS$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^go: (downloading|finding|extracting) "

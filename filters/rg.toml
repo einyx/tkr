@@ -1,0 +1,26 @@
+command = "rg"
+
+# rg's --stats mode adds summary lines that are noise unless asked for
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\d+ matched lines?$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\d+ files? contained matches"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\d+ files? searched"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\d+ bytes printed"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^[\\d.]+ seconds spent searching"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^[\\d.]+ seconds$"

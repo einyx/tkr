@@ -1,0 +1,13 @@
+command = "biome"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Checked \\d+ files? in"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Formatted \\d+ files? in"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^No fixes applied\\."

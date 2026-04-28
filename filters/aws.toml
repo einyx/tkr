@@ -1,0 +1,10 @@
+command = "aws"
+
+# Pagination markers
+[[rules]]
+type = "suppress_regex"
+pattern = "^NextToken:"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s+\"NextToken\":"

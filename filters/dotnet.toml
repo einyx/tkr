@@ -1,0 +1,31 @@
+command = "dotnet"
+subcommands = ["build", "test", "run", "publish"]
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Determining projects to restore"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Restored "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Build succeeded\\."
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Time Elapsed "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*\\d+ Warning\\(s\\)$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*\\d+ Error\\(s\\)$"
+
+# MSBuild project line
+[[rules]]
+type = "suppress_regex"
+pattern = " -> /\\S+\\.dll$"

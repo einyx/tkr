@@ -1,0 +1,17 @@
+command = "turbo"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*•\\s+(Packages in scope|Running|Remote caching)"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Tasks:\\s+\\d+ successful"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Cached:\\s+"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Time:\\s+"
