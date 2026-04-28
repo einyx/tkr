@@ -135,3 +135,43 @@ mod tests_status {
         assert_eq!(v.state(), tkr_api::vault::SealState::FullyUnsealed);
     }
 }
+
+// ── Task 5.3: unseal / seal ──────────────────────────────────────────────────
+
+pub fn unseal(vault: &HostVault) -> Result<i32> {
+    vault.unseal_full();
+    println!("vault fully unsealed");
+    Ok(0)
+}
+
+pub fn seal(vault: &HostVault) -> Result<i32> {
+    vault.seal();
+    println!("vault sealed");
+    Ok(0)
+}
+
+#[cfg(test)]
+mod tests_seal {
+    use super::*;
+    use tkr_api::vault::SealState;
+    use std::sync::Arc;
+    use crate::host::vault::store::{MemStore, Store};
+
+    #[test]
+    fn unseal_promotes_to_fully_unsealed() {
+        let store: Arc<dyn Store> = Arc::new(MemStore::default());
+        let v = HostVault::new(store, [1u8; 32]);
+        assert_eq!(v.state(), SealState::AutoUnsealed);
+        unseal(&v).unwrap();
+        assert_eq!(v.state(), SealState::FullyUnsealed);
+    }
+
+    #[test]
+    fn seal_drops_to_sealed() {
+        let store: Arc<dyn Store> = Arc::new(MemStore::default());
+        let v = HostVault::new(store, [1u8; 32]);
+        v.unseal_full();
+        seal(&v).unwrap();
+        assert_eq!(v.state(), SealState::Sealed);
+    }
+}
