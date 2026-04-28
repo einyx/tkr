@@ -4,6 +4,7 @@
 //!   - commands tkr is recording but has no filter file for
 //!   - rough estimate of additional tokens we could save
 
+use crate::util::fmt_num;
 use anyhow::Result;
 use std::path::PathBuf;
 use tkr_analytics::AnalyticsStore;
@@ -170,15 +171,3 @@ fn bundled_filter_set() -> Vec<String> {
     commands
 }
 
-fn fmt_num(n: u64) -> String {
-    let s = n.to_string();
-    let bytes = s.as_bytes();
-    let mut out = String::with_capacity(s.len() + s.len() / 3);
-    for (i, c) in bytes.iter().enumerate() {
-        if i > 0 && (bytes.len() - i) % 3 == 0 {
-            out.push(',');
-        }
-        out.push(*c as char);
-    }
-    out
-}

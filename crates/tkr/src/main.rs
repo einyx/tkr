@@ -7,6 +7,7 @@ mod proxy;
 mod runner;
 mod session;
 mod stream;
+mod util;
 
 use clap::Parser;
 use cli::{AgentCmd, Cli, Commands, HookTarget};

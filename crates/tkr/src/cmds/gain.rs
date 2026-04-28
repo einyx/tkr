@@ -1,3 +1,4 @@
+use crate::util::fmt_num;
 use anyhow::Result;
 use std::io::IsTerminal;
 use tkr_analytics::{AnalyticsStore, SavingsRow};
@@ -386,19 +387,6 @@ fn tier_color(s: &Style, pct: f64) -> &'static str {
     } else {
         RED
     }
-}
-
-fn fmt_num(n: u64) -> String {
-    let s = n.to_string();
-    let bytes = s.as_bytes();
-    let mut out = String::with_capacity(s.len() + s.len() / 3);
-    for (i, c) in bytes.iter().enumerate() {
-        if i > 0 && (bytes.len() - i) % 3 == 0 {
-            out.push(',');
-        }
-        out.push(*c as char);
-    }
-    out
 }
 
 fn truncate(s: &str, max: usize) -> String {

@@ -2,8 +2,9 @@
 //! savings ratio. Useful for tuning filters and showing users the win on
 //! their actual workloads.
 
+use crate::util::fmt_num;
 use anyhow::{Context, Result};
-use std::io::{Read, Write};
+use std::io::Read;
 use std::process::{Command, Stdio};
 
 pub fn run(parts: &[String]) -> Result<()> {
@@ -38,9 +39,17 @@ pub fn run(parts: &[String]) -> Result<()> {
     };
 
     println!();
-    println!("  raw output     {:>10} chars  ({} tokens approx)", fmt(raw_chars), fmt(raw_chars / 4));
-    println!("  filtered       {:>10} chars  ({} tokens approx)", fmt(filt_chars), fmt(filt_chars / 4));
-    println!("  saved          {:>10} chars", fmt(saved));
+    println!(
+        "  raw output     {:>10} chars  ({} tokens approx)",
+        fmt_num(raw_chars as u64),
+        fmt_num((raw_chars / 4) as u64)
+    );
+    println!(
+        "  filtered       {:>10} chars  ({} tokens approx)",
+        fmt_num(filt_chars as u64),
+        fmt_num((filt_chars / 4) as u64)
+    );
+    println!("  saved          {:>10} chars", fmt_num(saved as u64));
     println!("  reduction      {:>9.1}%", ratio);
     println!();
     Ok(())
@@ -66,19 +75,3 @@ fn capture_combined(cmd: &str, args: &[&str]) -> Result<String> {
     Ok(out)
 }
 
-fn fmt(n: usize) -> String {
-    let s = n.to_string();
-    let bytes = s.as_bytes();
-    let mut out = String::new();
-    for (i, c) in bytes.iter().enumerate() {
-        if i > 0 && (bytes.len() - i) % 3 == 0 {
-            out.push(',');
-        }
-        out.push(*c as char);
-    }
-    out
-}
-
-// Silence dead-import lint when this file is compiled standalone; Write isn't used here.
-#[allow(dead_code)]
-fn _unused_write(_w: &mut dyn Write) {}
