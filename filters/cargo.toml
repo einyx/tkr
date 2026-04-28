@@ -28,3 +28,15 @@ pattern = "^\\s*Blocking "
 [[rules]]
 type = "suppress_regex"
 pattern = "^\\s*Fresh "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Checking "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Finished "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Building "
