@@ -132,12 +132,12 @@ fn main() -> anyhow::Result<()> {
         match raw_args[1].as_str() {
             "vault" => {
                 let sub = raw_args.get(2).map(|s| s.as_str()).unwrap_or("status");
-                let extra = raw_args[3..].to_vec();
+                let extra = if raw_args.len() > 3 { raw_args[3..].to_vec() } else { Vec::new() };
                 return run_vault_subcommand(sub, &extra);
             }
             "admin" => {
                 let sub = raw_args.get(2).map(|s| s.as_str()).unwrap_or("help");
-                let extra = raw_args[3..].to_vec();
+                let extra = if raw_args.len() > 3 { raw_args[3..].to_vec() } else { Vec::new() };
                 return run_admin_subcommand(sub, &extra);
             }
             _ => {}
