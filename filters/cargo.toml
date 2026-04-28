@@ -41,6 +41,13 @@ pattern = "^\\s*Finished "
 type = "suppress_regex"
 pattern = "^\\s*Building "
 
+# Drop the trailing `(/path/to/repo/crates/foo)` from cargo's lines that
+# survive — saves ~30-60 chars per surviving line.
+[[rules]]
+type = "truncate_match"
+pattern = " \\(/[^)]+\\)$"
+replace = ""
+
 # cargo test scaffolding (passing tests are noise — failures are kept)
 [[rules]]
 type = "suppress_regex"

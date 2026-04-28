@@ -83,12 +83,44 @@ pub fn strip_ansi(input: &str) -> String {
     out
 }
 
+/// Universal per-line preprocessing applied before any plugin sees the line:
+///   1. Strip ANSI escape sequences (saves all the tokens of color codes)
+///   2. Shorten $HOME paths to `~` (saves ~15-25 chars on every error/trace line)
+///   3. Trim trailing whitespace (lossless)
+pub fn normalize_line(raw: &str) -> String {
+    let s = strip_ansi(raw);
+    let s = shorten_home(&s);
+    let s = s.trim_end();
+    s.to_string()
+}
+
+/// Replace occurrences of $HOME with `~` so `/Users/alice/proj/foo` → `~/proj/foo`.
+/// Avoids tokens that LLMs don't need (the user's literal home path).
+fn shorten_home(line: &str) -> String {
+    let home = match dirs::home_dir() {
+        Some(p) => p.to_string_lossy().into_owned(),
+        None => return line.to_string(),
+    };
+    if home.is_empty() || !line.contains(&home) {
+        return line.to_string();
+    }
+    line.replace(&home, "~")
+}
+
 pub fn run_pipeline<I>(lines: I, chain: &mut [Box<dyn Plugin>], command: &str, args: &str) -> PipelineResult
 where I: Iterator<Item = Result<String>>,
 {
     let mut emitted = Vec::new();
     let mut chars_in: u64 = 0;
     let mut chars_suppressed: u64 = 0;
+    let mut blank_run: u32 = 0;
+    // --max-tokens budget. None = unlimited. Read once at start.
+    let max_tokens = std::env::var("TKR_MAX_TOKENS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok());
+    let mut emitted_chars: u64 = 0;
+    let mut budget_exceeded = false;
+    let mut elided_lines: u64 = 0;
 
     for (index, line_result) in lines.enumerate() {
         let raw = match line_result {
@@ -97,9 +129,20 @@ where I: Iterator<Item = Result<String>>,
         };
         chars_in += raw.len() as u64;
 
-        // Strip ANSI escapes before any plugin sees the line — saves tokens
-        // and lets regex rules match on clean text.
-        let line = strip_ansi(&raw);
+        // Pre-process: strip ANSI, shorten $HOME paths, trim trailing whitespace.
+        let line = normalize_line(&raw);
+
+        // Collapse runs of blank lines: keep at most ONE blank between content.
+        if line.trim().is_empty() {
+            blank_run += 1;
+            if blank_run > 1 {
+                chars_suppressed += raw.len() as u64;
+                continue;
+            }
+        } else {
+            blank_run = 0;
+        }
+
         let mut current = line.clone();
         let mut suppressed = false;
 
@@ -129,10 +172,37 @@ where I: Iterator<Item = Result<String>>,
 
         if suppressed {
             chars_suppressed += line.len() as u64;
-        } else {
-            println!("{current}");
-            emitted.push(current);
+            continue;
         }
+
+        // --max-tokens budget — once exceeded, stop emitting and count elided.
+        if let Some(max) = max_tokens {
+            if budget_exceeded {
+                elided_lines += 1;
+                chars_suppressed += line.len() as u64;
+                continue;
+            }
+            if chars_to_tokens(emitted_chars + current.len() as u64) > max {
+                budget_exceeded = true;
+                elided_lines += 1;
+                chars_suppressed += line.len() as u64;
+                continue;
+            }
+            emitted_chars += current.len() as u64;
+        }
+
+        println!("{current}");
+        emitted.push(current);
+    }
+
+    if budget_exceeded {
+        let msg = format!(
+            "(... {} more lines elided — TKR_MAX_TOKENS={} reached)",
+            elided_lines,
+            max_tokens.unwrap_or(0)
+        );
+        println!("{}", msg);
+        emitted.push(msg);
     }
 
     for plugin in chain.iter_mut() {
@@ -218,6 +288,16 @@ mod tests {
         // Regression: bug where strip_ansi iterated bytes and corrupted UTF-8.
         let input = "├── \x1b[1manyhow\x1b[0m v1.0.102";
         assert_eq!(strip_ansi(input), "├── anyhow v1.0.102");
+    }
+
+    #[test]
+    fn normalize_strips_ansi_and_trailing_ws() {
+        assert_eq!(normalize_line("\x1b[1mhello\x1b[0m   \t  "), "hello");
+    }
+
+    #[test]
+    fn shorten_home_no_op_when_no_home_in_line() {
+        assert_eq!(shorten_home("just text"), "just text");
     }
 
     #[test]

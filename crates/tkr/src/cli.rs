@@ -6,6 +6,11 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
 
+    /// Hard token-output budget; lines past this point are elided with a
+    /// `(... N more lines elided)` marker. Equivalent to `TKR_MAX_TOKENS=N`.
+    #[arg(long)]
+    pub max_tokens: Option<u64>,
+
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     pub passthrough: Vec<String>,
 }
@@ -28,6 +33,8 @@ pub enum Commands {
     },
     /// Analyze session history for missed savings
     Discover,
+    /// Suggest concrete filter improvements based on your analytics
+    Suggest,
     /// Rewrite a shell command to use tkr (used by hooks).
     /// Exit 0 + stdout: rewrite found. Exit 1: no rewrite available.
     Rewrite {

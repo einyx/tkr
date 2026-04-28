@@ -17,3 +17,17 @@ pattern = "^\\\\ No newline at end of file"
 type = "truncate_match"
 pattern = "^(@@ -\\d+(,\\d+)? \\+\\d+(,\\d+)? @@) .+"
 replace = "$1"
+
+# `mode 100644` / `new file mode` lines that survived — truncate the always-100644
+[[rules]]
+type = "truncate_match"
+pattern = "^(new file|deleted file|old|new) mode \\d{6}$"
+replace = "$1 mode"
+
+# similarity index XX% — drop, the rename arrow already conveys it
+[[rules]]
+type = "suppress_regex"
+pattern = "^similarity index \\d+%"
+[[rules]]
+type = "suppress_regex"
+pattern = "^dissimilarity index"

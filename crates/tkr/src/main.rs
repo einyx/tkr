@@ -42,6 +42,7 @@ fn main() -> anyhow::Result<()> {
             cmds::gain::run(breakdown, &sort, plain)
         }
         Some(Commands::Discover) => cmds::discover::run(),
+        Some(Commands::Suggest) => cmds::suggest::run(),
         Some(Commands::Rewrite { command }) => cmds::rewrite::run(&command),
         Some(Commands::Hook { target }) => match target {
             HookTarget::Claude => cmds::hook::run_claude(),
@@ -55,6 +56,10 @@ fn main() -> anyhow::Result<()> {
             if cli.passthrough.is_empty() {
                 eprintln!("Usage: tkr <command> [args...] or tkr --help");
                 std::process::exit(1);
+            }
+            // Wire --max-tokens through env so stream.rs picks it up.
+            if let Some(n) = cli.max_tokens {
+                std::env::set_var("TKR_MAX_TOKENS", n.to_string());
             }
             let cfg = config::load()?;
             proxy::run(cfg, &cli.passthrough)

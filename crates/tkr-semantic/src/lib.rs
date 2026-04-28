@@ -59,6 +59,14 @@ impl SemanticPlugin {
         }
     }
 
+    /// Window cap grows with how much we've already seen — long outputs get
+    /// to dedupe over a wider history, short ones stay tight.
+    fn adaptive_cap(&self) -> usize {
+        let seen = self.window.len() + self.exact_window.len();
+        let base = self.window_size.max(1);
+        if seen < base { base } else { (base * 2).min(2000) }
+    }
+
     pub fn set_intent(&mut self, command: &str, args: &str) {
         let intent_text = format!("{command} {args}");
         self.intent_vec = self.backend.embed(&intent_text);
@@ -87,14 +95,17 @@ impl Plugin for SemanticPlugin {
                     return FilterResult::SuppressWithNote(0);
                 }
             }
-            if self.window.len() >= self.window_size { self.window.pop_front(); }
+            // Adaptive window: cap at 2× configured size for very long outputs.
+            let cap = self.adaptive_cap();
+            if self.window.len() >= cap { self.window.pop_front(); }
             self.window.push_back(embedding);
         } else {
             if self.exact_window.contains(&line.to_string()) {
                 self.dedup_count += 1;
                 return FilterResult::SuppressWithNote(0);
             }
-            if self.exact_window.len() >= self.window_size { self.exact_window.pop_front(); }
+            let cap = self.adaptive_cap();
+            if self.exact_window.len() >= cap { self.exact_window.pop_front(); }
             self.exact_window.push_back(line.to_string());
         }
 
