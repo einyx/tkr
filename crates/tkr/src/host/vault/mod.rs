@@ -2,6 +2,7 @@ pub mod age_codec;
 pub mod audit;
 pub mod keychain;
 pub mod seal;
+pub mod storage;
 pub mod store;
 
 use std::sync::{Arc, Mutex};
