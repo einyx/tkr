@@ -52,6 +52,18 @@ tkr cargo test
 tkr watch
 tkr gain --breakdown</code></pre>
 
+<h2>Real measurements</h2>
+<p>Benchmark on this repo's working tree:</p>
+<pre><code>cargo test --workspace   97.6%  saved
+cargo check (cold)       86.3%
+cargo build (cold)       86.3%
+cargo tree -p tkr        85.0%
+git log -20              12.7%
+git diff HEAD~1          11.4%
+git status               10.0%
+
+aggregate                57.5%  (4593 / 7970 tokens)</code></pre>
+
 <h2>Source</h2>
 <p><a href="https://github.com/einyx/tkr">github.com/einyx/tkr</a></p>
 
