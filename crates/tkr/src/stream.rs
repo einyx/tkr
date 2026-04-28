@@ -154,14 +154,21 @@ where I: Iterator<Item = Result<String>>,
         };
         chars_in += raw.len() as u64;
 
-        // Pre-process: strip ANSI, shorten $HOME paths, trim trailing whitespace.
+        // Pre-process: strip ANSI, shorten $HOME paths, trim trailing whitespace,
+        // truncate excessively long single lines.
         let line = normalize_line(&raw);
+
+        // Anything dropped by normalize (mostly: huge-line truncation, ANSI codes,
+        // trailing whitespace) counts as savings.
+        if raw.len() > line.len() {
+            chars_suppressed += (raw.len() - line.len()) as u64;
+        }
 
         // Collapse runs of blank lines: keep at most ONE blank between content.
         if line.trim().is_empty() {
             blank_run += 1;
             if blank_run > 1 {
-                chars_suppressed += raw.len() as u64;
+                chars_suppressed += line.len() as u64;
                 continue;
             }
         } else {
@@ -198,6 +205,12 @@ where I: Iterator<Item = Result<String>>,
         if suppressed {
             chars_suppressed += line.len() as u64;
             continue;
+        }
+
+        // Filter rule shortened the line via TruncateMatch — count the diff
+        // as suppressed too.
+        if current.len() < line.len() {
+            chars_suppressed += (line.len() - current.len()) as u64;
         }
 
         // --max-tokens budget — once exceeded, stop emitting and count elided.

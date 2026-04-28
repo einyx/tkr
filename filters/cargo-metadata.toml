@@ -1,0 +1,40 @@
+# `cargo metadata` outputs a single huge JSON blob (often 200K+ chars). When
+# pretty-printed (`--format-version 1` happens to default to pretty under
+# debug shells, or via `| jq`), it's mostly fields an LLM doesn't need.
+# This filter targets the pretty-printed form. For one-line JSON we still
+# truncate via the 800-char single-line cap in stream.rs, but for multi-line
+# we kill the noise here.
+command = "cargo"
+subcommands = ["metadata"]
+
+# Pure metadata fields almost never useful for code reasoning
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*\"(checksum|edition|version_req|source|links|publish|workspace_root|target_directory)\":"
+
+# Identity strings that pin a node by URL+version+source — extremely repetitive
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*\"id\":\\s*\"[^\"]+\""
+
+# Manifest paths
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*\"manifest_path\":\\s*\""
+
+# Long absolute paths in any string value
+[[rules]]
+type = "truncate_match"
+pattern = "(\"path\":\\s*\")[^\"]{40,}(\")"
+replace = "$1<elided>$2"
+
+# Empty/null entries
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*\"\\w+\":\\s*(null|\\[\\]|\\{\\}),?\\s*$"
+
+# Repeating brace/bracket lines from pretty-printed JSON
+[[rules]]
+type = "collapse_run"
+pattern = "^\\s*[\\[\\]\\{\\}],?\\s*$"
+keep_first = 1

@@ -83,7 +83,13 @@ pub fn run(cfg: Config, args: &[String]) -> Result<()> {
         // Subcommand is the first positional arg, skipping flags and their
         // values (`git -C path status` → "status", `cargo --version` → "").
         let subcmd = first_positional(cmd_args);
-        let _ = store.record(cmd, subcmd, result.chars_in, result.chars_suppressed);
+        // Normalize the command name: if it's a path, use the basename so
+        // `/Users/alice/.cargo/bin/cargo` and `cargo` aggregate together.
+        let cmd_name = std::path::Path::new(cmd.as_str())
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(cmd.as_str());
+        let _ = store.record(cmd_name, subcmd, result.chars_in, result.chars_suppressed);
     }
 
     Ok(())
