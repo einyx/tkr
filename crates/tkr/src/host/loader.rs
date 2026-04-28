@@ -37,6 +37,10 @@ impl PluginRegistry {
     }
 
     /// Register a plugin instance. Does not call `on_load` yet; that happens in `load_all`.
+    ///
+    /// TODO(6.3): auto-register a bus handler for `<plugin_name>::cli.invoke` that forwards
+    /// to the plugin's `on_request`. This will allow the CLI dispatcher in `host::cli` to
+    /// route through the bus without manual handler wiring in tests or production startup.
     pub fn register(&mut self, plugin: Box<dyn Plugin>) -> Result<()> {
         let m = plugin.manifest();
         let name = m.name.clone();
