@@ -3,52 +3,10 @@ pub use v2::AnalyticsPluginV2;
 
 use anyhow::Result;
 use rusqlite::{params, Connection};
-use tkr_api::{FilterResult, LegacyPlugin as Plugin};
 
-pub struct AnalyticsPlugin {
-    store: AnalyticsStore,
-    command: String,
-    args: String,
-    chars_in: u64,
-    chars_suppressed: u64,
-}
-
-impl AnalyticsPlugin {
-    pub fn new(db_path: &str) -> Result<Self> {
-        Ok(Self {
-            store: AnalyticsStore::open(db_path)?,
-            command: String::new(),
-            args: String::new(),
-            chars_in: 0,
-            chars_suppressed: 0,
-        })
-    }
-}
-
-impl Plugin for AnalyticsPlugin {
-    fn init(_config: &str) -> Box<dyn Plugin> where Self: Sized {
-        let home = dirs::home_dir().unwrap_or_default();
-        let db = home.join(".tkr/analytics.db");
-        std::fs::create_dir_all(db.parent().unwrap()).ok();
-        let p = Self::new(db.to_str().unwrap_or(":memory:"))
-            .unwrap_or_else(|_| Self::new(":memory:").unwrap());
-        Box::new(p)
-    }
-
-    fn filter(&mut self, line: &str, command: &str, args: &str, index: u64) -> FilterResult {
-        if index == 0 { self.command = command.to_string(); self.args = args.to_string(); }
-        self.chars_in += line.len() as u64;
-        FilterResult::Pass
-    }
-
-    fn flush(&mut self) -> String {
-        let subcmd = self.args.split_whitespace().next().unwrap_or("");
-        let _ = self.store.record(&self.command, subcmd, self.chars_in, self.chars_suppressed);
-        self.chars_in = 0;
-        self.chars_suppressed = 0;
-        String::new()
-    }
-}
+// Legacy AnalyticsPlugin (implements LegacyPlugin) has been removed in favour
+// of AnalyticsPluginV2 (implements tkr_api::plugin::Plugin, vault-backed).
+// AnalyticsStore is kept for the `tkr gain` / `tkr suggest` read path.
 
 pub struct AnalyticsStore {
     conn: Connection,

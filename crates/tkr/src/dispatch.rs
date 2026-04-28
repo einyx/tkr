@@ -1,17 +1,21 @@
+// Legacy filter-chain builder kept for reference; no longer called — the v2
+// PluginRegistry (host::boot) is the canonical filter chain since Task 6.3.
+// This module is kept to avoid breaking any external code that may reference it,
+// but build_chain is now dead code.
+
 use crate::config::Config;
 use anyhow::Result;
 use tkr_api::LegacyPlugin as Plugin;
-use tkr_analytics::AnalyticsPlugin;
 use tkr_filter::FilterPlugin;
 use tkr_semantic::{SemanticConfig, SemanticPlugin};
 
+#[allow(dead_code)]
 pub fn build_chain(cfg: &Config, _command: &str) -> Result<Vec<Box<dyn Plugin>>> {
     let mut chain: Vec<Box<dyn Plugin>> = Vec::new();
 
     for plugin_name in &cfg.plugins.chain {
         match plugin_name.as_str() {
             "tkr-filter" => {
-                // Load bundled filters first, then user overrides on top.
                 let mut plugin = FilterPlugin::from_toml("").unwrap();
                 if let Some(bundled) = crate::config::bundled_filters_dir() {
                     let _ = plugin.load_dir(&bundled);
@@ -32,11 +36,9 @@ pub fn build_chain(cfg: &Config, _command: &str) -> Result<Vec<Box<dyn Plugin>>>
                 chain.push(Box::new(SemanticPlugin::new(&sc)));
             }
             "tkr-analytics" => {
-                let db = &cfg.plugins.analytics.db_path;
-                std::fs::create_dir_all(
-                    std::path::Path::new(db).parent().unwrap_or(std::path::Path::new(".")),
-                ).ok();
-                if let Ok(p) = AnalyticsPlugin::new(db) { chain.push(Box::new(p)); }
+                // AnalyticsPlugin (legacy) removed — analytics now handled by
+                // AnalyticsPluginV2 in the v2 PluginRegistry (host::boot).
+                // This arm is a no-op to avoid panicking if config still lists it.
             }
             other => {
                 eprintln!("tkr: unknown built-in plugin '{other}', skipping");

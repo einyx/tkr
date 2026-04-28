@@ -21,6 +21,26 @@ const SCHEMA_SQL: &str = "
         runs        INTEGER NOT NULL DEFAULT 0,
         UNIQUE(command)
     );
+    CREATE TABLE IF NOT EXISTS noise_signatures (
+        id          INTEGER PRIMARY KEY,
+        command     TEXT NOT NULL,
+        signature   TEXT NOT NULL,
+        sample      TEXT NOT NULL,
+        occurrences INTEGER NOT NULL DEFAULT 0,
+        total_chars INTEGER NOT NULL DEFAULT 0,
+        last_seen   INTEGER NOT NULL,
+        UNIQUE(command, signature)
+    );
+    CREATE INDEX IF NOT EXISTS idx_noise_command ON noise_signatures(command);
+";
+
+const NOISE_UPSERT_SQL: &str = "
+    INSERT INTO noise_signatures (command, signature, sample, occurrences, total_chars, last_seen)
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+    ON CONFLICT(command, signature) DO UPDATE SET
+        occurrences = occurrences + excluded.occurrences,
+        total_chars = total_chars + excluded.total_chars,
+        last_seen   = excluded.last_seen
 ";
 
 const UPSERT_SQL: &str = "
@@ -65,6 +85,37 @@ impl AnalyticsPluginV2 {
             Ok(db) => Some(f(db)),
             Err(_) => None,
         }
+    }
+
+    /// Persist a learned noise signature into the vault sqlite. Idempotent —
+    /// duplicate (command, signature) pairs are upserted with summed totals.
+    /// Returns true if recorded, false if no vault is available.
+    pub fn record_noise_signature(
+        &self,
+        command: &str,
+        signature: &str,
+        sample: &str,
+        occurrences: u64,
+        total_chars: u64,
+    ) -> bool {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        self.with_sqlite(|db| {
+            let _ = db.execute(
+                NOISE_UPSERT_SQL,
+                &[
+                    json!(command),
+                    json!(signature),
+                    json!(sample),
+                    json!(occurrences as i64),
+                    json!(total_chars as i64),
+                    json!(now),
+                ],
+            );
+        })
+        .is_some()
     }
 }
 
@@ -239,6 +290,47 @@ fn migrate_legacy_db(host: &dyn Host) -> ApiResult<()> {
                             json!(cmd),
                             json!(per_run_chars_in),
                             json!(per_run_chars_saved),
+                        ],
+                    );
+                }
+            }
+        }
+    }
+
+    // Migrate noise_signatures (filter-learning candidates) from the legacy DB.
+    if let Ok(conn) = rusqlite::Connection::open(&legacy_path) {
+        let sig_rows: Vec<(String, String, String, i64, i64, i64)> = match conn
+            .prepare(
+                "SELECT command, signature, sample, occurrences, total_chars, last_seen
+                 FROM noise_signatures",
+            ) {
+            Ok(mut stmt) => stmt
+                .query_map([], |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, i64>(3)?,
+                        r.get::<_, i64>(4)?,
+                        r.get::<_, i64>(5)?,
+                    ))
+                })
+                .and_then(|iter| iter.collect::<rusqlite::Result<Vec<_>>>())
+                .unwrap_or_default(),
+            Err(_) => Vec::new(),
+        };
+        if !sig_rows.is_empty() {
+            if let Ok(db) = host.sqlite(SCHEMA_SQL, SensitivityClass::Public) {
+                for (cmd, sig, sample, occ, chars, ts) in sig_rows {
+                    let _ = db.execute(
+                        NOISE_UPSERT_SQL,
+                        &[
+                            json!(cmd),
+                            json!(sig),
+                            json!(sample),
+                            json!(occ),
+                            json!(chars),
+                            json!(ts),
                         ],
                     );
                 }
