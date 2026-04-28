@@ -30,6 +30,8 @@ sha2 = "0.10"
 hkdf = "0.12"
 tempfile = "3"
 rusqlite = { version = "0.31", features = ["bundled"] }
+tar = "0.4"
+flate2 = "1"
 
 [profile.release]
 opt-level = 3

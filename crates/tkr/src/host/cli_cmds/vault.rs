@@ -249,6 +249,117 @@ pub fn rotate(old: &HostVault, vault_root: &Path) -> Result<[u8; 32]> {
     Ok(new_master)
 }
 
+// ── Task 5.5: export / import ─────────────────────────────────────────────────
+
+pub fn export(vault_root: &Path, out_path: &Path) -> anyhow::Result<i32> {
+    use anyhow::Context;
+    use flate2::Compression;
+    use flate2::write::GzEncoder;
+    let f = std::fs::File::create(out_path).context("create export bundle")?;
+    let gz = GzEncoder::new(f, Compression::default());
+    let mut tar = tar::Builder::new(gz);
+    add_dir_to_tar(&mut tar, vault_root, vault_root)?;
+    tar.into_inner()?.finish()?;
+    println!("exported vault → {}", out_path.display());
+    Ok(0)
+}
+
+fn add_dir_to_tar<W: std::io::Write>(
+    tar: &mut tar::Builder<W>,
+    root: &Path,
+    current: &Path,
+) -> anyhow::Result<()> {
+    for entry in std::fs::read_dir(current)? {
+        let entry = entry?;
+        let p = entry.path();
+        let rel = p.strip_prefix(root).unwrap();
+        if entry.file_type()?.is_dir() {
+            add_dir_to_tar(tar, root, &p)?;
+        } else {
+            let mut f = std::fs::File::open(&p)?;
+            tar.append_file(rel, &mut f)?;
+        }
+    }
+    Ok(())
+}
+
+pub fn import(bundle_path: &Path, vault_root: &Path) -> anyhow::Result<i32> {
+    use anyhow::Context;
+    use flate2::read::GzDecoder;
+    if vault_root.exists() && std::fs::read_dir(vault_root)?.next().is_some() {
+        anyhow::bail!(
+            "import target {} already exists and is not empty",
+            vault_root.display()
+        );
+    }
+    std::fs::create_dir_all(vault_root)?;
+    let f = std::fs::File::open(bundle_path).context("open bundle")?;
+    let gz = GzDecoder::new(f);
+    let mut tar = tar::Archive::new(gz);
+    tar.unpack(vault_root)?;
+    println!(
+        "imported vault from {} → {}",
+        bundle_path.display(),
+        vault_root.display()
+    );
+    Ok(0)
+}
+
+#[cfg(test)]
+mod tests_export_import {
+    use super::*;
+    use std::sync::Arc;
+    use tempfile::tempdir;
+    use crate::host::vault::{HostVault, store::{FsStore, Store}};
+    use tkr_api::manifest::SensitivityClass;
+
+    #[test]
+    fn export_then_import_round_trip() {
+        let d = tempdir().unwrap();
+        let src = d.path().join("vault");
+        std::fs::create_dir_all(&src).unwrap();
+        let master = [4u8; 32];
+        {
+            let store: Arc<dyn Store> = Arc::new(FsStore::new(&src).unwrap());
+            let v = HostVault::new(store, master);
+            v.unseal_full();
+            v.write(SensitivityClass::Public, "k", b"hello", "test").unwrap();
+            v.write(SensitivityClass::Private, "p", b"private", "test").unwrap();
+        }
+
+        let bundle = d.path().join("vault.tar.gz");
+        export(&src, &bundle).unwrap();
+        assert!(bundle.exists());
+
+        let dst = d.path().join("restored");
+        import(&bundle, &dst).unwrap();
+
+        // Open the restored vault with the same master and verify entries.
+        let store: Arc<dyn Store> = Arc::new(FsStore::new(&dst).unwrap());
+        let v = HostVault::new(store, master);
+        v.unseal_full();
+        let bytes = v.read(SensitivityClass::Public, "k", "test").unwrap().unwrap();
+        assert_eq!(&bytes[..], b"hello");
+        let bytes = v.read(SensitivityClass::Private, "p", "test").unwrap().unwrap();
+        assert_eq!(&bytes[..], b"private");
+    }
+
+    #[test]
+    fn import_into_nonempty_dir_fails() {
+        let d = tempdir().unwrap();
+        let src = d.path().join("vault");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("anything"), b"x").unwrap();
+        let bundle = d.path().join("v.tar.gz");
+        // Make a tiny empty bundle to import.
+        let f = std::fs::File::create(&bundle).unwrap();
+        let gz = flate2::write::GzEncoder::new(f, flate2::Compression::default());
+        tar::Builder::new(gz).into_inner().unwrap().finish().unwrap();
+
+        assert!(import(&bundle, &src).is_err());
+    }
+}
+
 #[cfg(test)]
 mod tests_rotate {
     use super::*;

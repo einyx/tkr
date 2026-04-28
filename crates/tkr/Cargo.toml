@@ -36,6 +36,8 @@ hkdf = { workspace = true }
 hex = { workspace = true }
 zeroize = { workspace = true }
 rusqlite = { workspace = true }
+tar = { workspace = true }
+flate2 = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
