@@ -11,6 +11,7 @@ use crate::host::vault::{HostVault, storage::{FsImpl, KvImpl, SqliteImpl}};
 
 pub mod bus;
 pub mod cli;
+pub mod cli_cmds;
 pub mod config;
 pub mod loader;
 pub mod vault;
