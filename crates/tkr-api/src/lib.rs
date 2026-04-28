@@ -7,6 +7,9 @@ pub use legacy::{Plugin as LegacyPlugin, FilterResult, LineContext};
 
 pub mod error;
 pub use error::{Error, Result};
+
+pub mod manifest;
+pub use manifest::SensitivityClass;
 // Re-export every other public symbol that legacy.rs defines so that
 // existing consumers compile without changes.
 pub use legacy::Plugin;
