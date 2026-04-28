@@ -31,6 +31,19 @@ pub enum Rule {
         pattern: String,
         replace: String,
     },
+    /// Suppress consecutive matches of `pattern` past the first `keep_first`
+    /// lines (default 3). For runs of unchanged context in diffs, repetitive
+    /// log lines, etc. The first `keep_first` matching lines pass through;
+    /// subsequent ones are suppressed until a non-matching line ends the run.
+    CollapseRun {
+        pattern: String,
+        #[serde(default = "default_keep_first")]
+        keep_first: u32,
+    },
+}
+
+fn default_keep_first() -> u32 {
+    3
 }
 
 pub struct CompiledRule {
@@ -44,11 +57,14 @@ pub enum RuleKind {
     KeepRegex(Regex),
     CollapseRepeats(Regex, Option<usize>),
     TruncateMatch(Regex, String),
+    CollapseRun(Regex, u32),
 }
 
 pub enum RuleState {
     None,
     LastCapture(Option<String>),
+    /// Number of consecutive matches accumulated for CollapseRun.
+    RunCount(u32),
 }
 
 impl Rule {
@@ -76,6 +92,10 @@ impl Rule {
             Rule::TruncateMatch { pattern, replace } => Ok(CompiledRule {
                 kind: RuleKind::TruncateMatch(Regex::new(&pattern)?, replace),
                 state: RuleState::None,
+            }),
+            Rule::CollapseRun { pattern, keep_first } => Ok(CompiledRule {
+                kind: RuleKind::CollapseRun(Regex::new(&pattern)?, keep_first),
+                state: RuleState::RunCount(0),
             }),
         }
     }
@@ -119,6 +139,23 @@ impl CompiledRule {
                     let len = bytes.len();
                     let ptr = Box::leak(bytes).as_mut_ptr() as *mut std::os::raw::c_char;
                     Some(FilterResult::Replace(ptr, len))
+                }
+            }
+            RuleKind::CollapseRun(re, keep_first) => {
+                if re.is_match(line) {
+                    let count = match self.state {
+                        RuleState::RunCount(n) => n + 1,
+                        _ => 1,
+                    };
+                    self.state = RuleState::RunCount(count);
+                    if count > *keep_first {
+                        Some(FilterResult::SuppressWithNote(0))
+                    } else {
+                        None
+                    }
+                } else {
+                    self.state = RuleState::RunCount(0);
+                    None
                 }
             }
             RuleKind::CollapseRepeats(re, group) => {
@@ -190,6 +227,27 @@ mod tests {
             }
             other => panic!("expected Replace, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn collapse_run_keeps_first_n_then_suppresses() {
+        let rule = Rule::CollapseRun {
+            pattern: r"^ ".to_string(),
+            keep_first: 2,
+        };
+        let mut compiled = rule.compile().unwrap();
+        // First 2 matches: pass
+        assert_eq!(compiled.apply(" line 1"), None);
+        assert_eq!(compiled.apply(" line 2"), None);
+        // 3rd match: suppress
+        assert_eq!(
+            compiled.apply(" line 3"),
+            Some(FilterResult::SuppressWithNote(0))
+        );
+        // Non-match: reset
+        assert_eq!(compiled.apply("+added"), None);
+        // After reset, first match passes again
+        assert_eq!(compiled.apply(" line 4"), None);
     }
 
     #[test]
