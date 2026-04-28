@@ -5,6 +5,8 @@ members = [
     "crates/tkr-filter",
     "crates/tkr-semantic",
     "crates/tkr-analytics",
+    "crates/tkr-agent",
+    "crates/tkr-providers",
     "crates/tkr",
 ]
 
@@ -19,6 +21,8 @@ chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
 libloading = "0.8"
 ureq = { version = "2", features = ["json"] }
+thiserror = "1"
+mockito = "1"
 
 [profile.release]
 opt-level = 3
