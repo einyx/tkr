@@ -10,3 +10,4 @@ pub use tool::{Tool, ToolRegistry, ToolResult};
 pub use provider::{Provider, Message, ContentBlock, StopReason, ProviderResponse};
 pub use loop_::{run, RunOutcome};
 pub use receipt::RunReceipt;
+pub use tools::process::ProcessTool;
