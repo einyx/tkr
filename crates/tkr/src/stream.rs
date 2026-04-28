@@ -1,5 +1,63 @@
 use anyhow::Result;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use tkr_api::{FilterResult, Plugin};
+
+use crate::signature::signature_of;
+
+/// Cap on unique (command, signature) pairs held per process. Past this we stop
+/// inserting new signatures (sample-and-drop) but keep updating existing ones,
+/// so a single noisy run doesn't blow memory.
+const SIG_BUFFER_CAP: usize = 1000;
+
+#[derive(Default)]
+pub struct SigEntry {
+    pub sample: String,
+    pub occurrences: u64,
+    pub total_chars: u64,
+}
+
+thread_local! {
+    static SIG_BUFFER: RefCell<HashMap<(String, String), SigEntry>> =
+        RefCell::new(HashMap::new());
+}
+
+fn record_emit(command: &str, line: &str) {
+    let sig = signature_of(line);
+    SIG_BUFFER.with(|b| {
+        let mut buf = b.borrow_mut();
+        let key = (command.to_string(), sig);
+        if let Some(entry) = buf.get_mut(&key) {
+            entry.occurrences += 1;
+            entry.total_chars += line.len() as u64;
+            return;
+        }
+        if buf.len() >= SIG_BUFFER_CAP {
+            return;
+        }
+        buf.insert(
+            key,
+            SigEntry {
+                sample: line.to_string(),
+                occurrences: 1,
+                total_chars: line.len() as u64,
+            },
+        );
+    });
+}
+
+/// Drain the per-process signature buffer. Called by the proxy at end of run
+/// to flush into the analytics store in one transaction.
+pub fn take_signature_buffer() -> Vec<(String, String, SigEntry)> {
+    SIG_BUFFER.with(|b| {
+        let mut buf = b.borrow_mut();
+        let drained: HashMap<(String, String), SigEntry> = std::mem::take(&mut *buf);
+        drained
+            .into_iter()
+            .map(|((cmd, sig), entry)| (cmd, sig, entry))
+            .collect()
+    })
+}
 
 pub struct PipelineResult {
     pub emitted: Vec<String>,
@@ -229,6 +287,7 @@ where I: Iterator<Item = Result<String>>,
             emitted_chars += current.len() as u64;
         }
 
+        record_emit(command, &current);
         println!("{current}");
         emitted.push(current);
     }

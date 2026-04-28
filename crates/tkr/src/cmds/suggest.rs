@@ -4,6 +4,7 @@
 //!   - commands tkr is recording but has no filter file for
 //!   - rough estimate of additional tokens we could save
 
+use crate::signature::signature_to_regex;
 use crate::util::fmt_num;
 use anyhow::Result;
 use std::path::PathBuf;
@@ -125,6 +126,8 @@ pub fn run() -> Result<()> {
         );
     }
 
+    print_noise_section(&store, on)?;
+
     println!();
     println!(
         "  {}docs: https://github.com/einyx/tkr#custom-filters{}",
@@ -132,6 +135,44 @@ pub fn run() -> Result<()> {
         p(RESET)
     );
     println!();
+    Ok(())
+}
+
+fn print_noise_section(store: &AnalyticsStore, on: bool) -> Result<()> {
+    let p = |c: &'static str| if on { c } else { "" };
+    let rows = store.top_noise_signatures(5, 100)?;
+    if rows.is_empty() {
+        return Ok(());
+    }
+    println!();
+    println!(
+        "  {}{}Noise patterns to filter{}",
+        p(BOLD),
+        p(CYAN),
+        p(RESET)
+    );
+    println!(
+        "  {}repeated line shapes that survived filtering — candidate suppress_regex rules{}",
+        p(DIM),
+        p(RESET)
+    );
+    println!();
+    for row in rows.iter().take(8) {
+        let regex = signature_to_regex(&row.signature);
+        println!(
+            "  {}{}{}: shape {}{}{} (×{}, {} chars)",
+            p(BOLD),
+            row.command,
+            p(RESET),
+            p(YELLOW),
+            row.signature,
+            p(RESET),
+            fmt_num(row.occurrences),
+            fmt_num(row.total_chars),
+        );
+        println!("     sample: {}{}{}", p(DIM), row.sample, p(RESET));
+        println!("     suppress_regex = '{}'", regex);
+    }
     Ok(())
 }
 

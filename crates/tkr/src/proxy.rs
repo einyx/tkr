@@ -90,6 +90,18 @@ pub fn run(cfg: Config, args: &[String]) -> Result<()> {
             .and_then(|n| n.to_str())
             .unwrap_or(cmd.as_str());
         let _ = store.record(cmd_name, subcmd, result.chars_in, result.chars_suppressed);
+
+        // Flush the per-run signature buffer into the noise table.
+        let key = format!("{cmd_name} {subcmd}").trim().to_string();
+        for (_buf_cmd, sig, entry) in crate::stream::take_signature_buffer() {
+            let _ = store.record_signature(
+                &key,
+                &sig,
+                &entry.sample,
+                entry.occurrences,
+                entry.total_chars,
+            );
+        }
     }
 
     Ok(())

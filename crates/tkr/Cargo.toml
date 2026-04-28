@@ -29,3 +29,6 @@ clap = { workspace = true }
 ratatui = "0.28"
 crossterm = "0.27"
 libloading = { workspace = true }
+
+[dev-dependencies]
+regex = { workspace = true }
