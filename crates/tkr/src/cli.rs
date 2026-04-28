@@ -21,4 +21,24 @@ pub enum Commands {
     },
     /// Analyze session history for missed savings
     Discover,
+    /// Rewrite a shell command to use tkr (used by hooks).
+    /// Exit 0 + stdout: rewrite found. Exit 1: no rewrite available.
+    Rewrite {
+        /// The full shell command line to rewrite.
+        command: String,
+    },
+    /// Hook integration. Reads JSON from stdin, emits JSON on stdout.
+    Hook {
+        #[command(subcommand)]
+        target: HookTarget,
+    },
+    /// Print the version.
+    Version,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum HookTarget {
+    /// Claude Code PreToolUse Bash hook. Reads `{"tool_input":{"command":...}}`,
+    /// emits the rewritten command with `permissionDecision: allow`.
+    Claude,
 }
