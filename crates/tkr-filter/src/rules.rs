@@ -45,6 +45,19 @@ pub enum Rule {
         #[serde(default)]
         ignore_blanks: bool,
     },
+    /// Suppress consecutive lines sharing the same first `prefix_len` chars
+    /// past the first `keep_first` (default 1). Useful for log lines like
+    /// `[2026-04-28T21:00:00] req=abc123 ...` that share a long timestamp prefix.
+    CollapseCommonPrefix {
+        #[serde(default = "default_prefix_len")]
+        prefix_len: usize,
+        #[serde(default = "default_keep_first")]
+        keep_first: u32,
+    },
+}
+
+fn default_prefix_len() -> usize {
+    24
 }
 
 fn default_keep_first() -> u32 {
@@ -63,6 +76,7 @@ pub enum RuleKind {
     CollapseRepeats(Regex, Option<usize>),
     TruncateMatch(Regex, String),
     CollapseRun(Regex, u32, bool),
+    CollapseCommonPrefix(usize, u32),
 }
 
 pub enum RuleState {
@@ -70,6 +84,8 @@ pub enum RuleState {
     LastCapture(Option<String>),
     /// Number of consecutive matches accumulated for CollapseRun.
     RunCount(u32),
+    /// (last_prefix, count) for CollapseCommonPrefix
+    PrefixRun(Option<String>, u32),
 }
 
 impl Rule {
@@ -105,6 +121,13 @@ impl Rule {
             } => Ok(CompiledRule {
                 kind: RuleKind::CollapseRun(Regex::new(&pattern)?, keep_first, ignore_blanks),
                 state: RuleState::RunCount(0),
+            }),
+            Rule::CollapseCommonPrefix {
+                prefix_len,
+                keep_first,
+            } => Ok(CompiledRule {
+                kind: RuleKind::CollapseCommonPrefix(prefix_len, keep_first),
+                state: RuleState::PrefixRun(None, 0),
             }),
         }
     }
@@ -148,6 +171,23 @@ impl CompiledRule {
                     let len = bytes.len();
                     let ptr = Box::leak(bytes).as_mut_ptr() as *mut std::os::raw::c_char;
                     Some(FilterResult::Replace(ptr, len))
+                }
+            }
+            RuleKind::CollapseCommonPrefix(prefix_len, keep_first) => {
+                if line.len() < *prefix_len {
+                    self.state = RuleState::PrefixRun(None, 0);
+                    return None;
+                }
+                let cur_prefix: String = line.chars().take(*prefix_len).collect();
+                let new_count = match &self.state {
+                    RuleState::PrefixRun(Some(p), n) if p == &cur_prefix => n + 1,
+                    _ => 1,
+                };
+                self.state = RuleState::PrefixRun(Some(cur_prefix), new_count);
+                if new_count > *keep_first {
+                    Some(FilterResult::SuppressWithNote(0))
+                } else {
+                    None
                 }
             }
             RuleKind::CollapseRun(re, keep_first, ignore_blanks) => {

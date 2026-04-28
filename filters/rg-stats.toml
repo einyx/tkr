@@ -1,0 +1,6 @@
+# Already have rg.toml; this adds for `rg --files` / `rg --type-list`
+command = "rg"
+subcommands = ["--type-list", "--files"]
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*$"

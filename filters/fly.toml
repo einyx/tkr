@@ -1,0 +1,7 @@
+command = "fly"
+[[rules]]
+type = "suppress_regex"
+pattern = "^==> .+: Verifying"
+[[rules]]
+type = "suppress_regex"
+pattern = "^Setting"

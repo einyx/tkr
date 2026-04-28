@@ -102,9 +102,14 @@ pub fn run() -> Result<()> {
                 .constraints([Constraint::Length(3), Constraint::Min(0), Constraint::Length(3)])
                 .split(size);
 
+            let ratio_pct: f64 = if s.total_in > 0 {
+                (s.total_saved as f64 / s.total_in as f64) * 100.0
+            } else {
+                0.0
+            };
             let header_text = format!(
-                " tkr watch  |  session commands: {}  |  saved: ~{} tokens",
-                s.command_count, s.total_saved
+                " tkr watch  ·  cmds: {}  ·  saved: {} / {} tokens  ·  reduction: {:.0}%",
+                s.command_count, s.total_saved, s.total_in, ratio_pct
             );
             let header = Paragraph::new(header_text)
                 .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
@@ -151,6 +156,9 @@ pub fn run() -> Result<()> {
 
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    // Clean shutdown — remove our socket so the next process doesn't see
+    // a stale endpoint. (On crash this is recovered by remove_file before bind.)
+    let _ = std::fs::remove_file(&sock_path);
     Ok(())
 }
 

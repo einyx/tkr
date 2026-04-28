@@ -1,0 +1,20 @@
+command = "kubectl"
+subcommands = ["describe"]
+[[rules]]
+type = "suppress_regex"
+pattern = "^Annotations:        \\<none\\>"
+[[rules]]
+type = "suppress_regex"
+pattern = "^Labels:             \\<none\\>"
+[[rules]]
+type = "suppress_regex"
+pattern = "^Events:\\s+\\<none\\>"
+[[rules]]
+type = "suppress_regex"
+pattern = "^Tolerations:.*not-ready"
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s+kubernetes.io/"
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s+managed-by:"

@@ -56,6 +56,13 @@ pub enum Commands {
     },
     /// Install the tkr Claude Code Bash hook into ~/.claude/settings.json.
     Install,
+    /// Benchmark how much tkr would save on a given command.
+    /// Runs raw vs filtered, compares chars/tokens, prints ratio.
+    Bench {
+        /// The command + args to benchmark (e.g. `tkr bench cargo check`).
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
+        command: Vec<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]

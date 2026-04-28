@@ -1,0 +1,7 @@
+command = "wrangler"
+[[rules]]
+type = "suppress_regex"
+pattern = "^ ⛅️ wrangler"
+[[rules]]
+type = "suppress_regex"
+pattern = "^─+$"

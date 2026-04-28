@@ -1,0 +1,7 @@
+command = "lsof"
+[[rules]]
+type = "suppress_regex"
+pattern = "\\(NLOCK\\)$"
+[[rules]]
+type = "suppress_regex"
+pattern = "/private/var/folders/"

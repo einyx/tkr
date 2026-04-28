@@ -1,0 +1,10 @@
+command = "dig"
+[[rules]]
+type = "suppress_regex"
+pattern = "^;; "
+[[rules]]
+type = "suppress_regex"
+pattern = "^; <<>> DiG"
+[[rules]]
+type = "suppress_regex"
+pattern = "^;.*\\(\\d+ servers found\\)"
