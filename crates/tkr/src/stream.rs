@@ -212,4 +212,18 @@ mod tests {
         let input = "\x1b]0;tab title\x07actual content";
         assert_eq!(strip_ansi(input), "actual content");
     }
+
+    #[test]
+    fn strip_ansi_preserves_utf8_box_drawing() {
+        // Regression: bug where strip_ansi iterated bytes and corrupted UTF-8.
+        let input = "├── \x1b[1manyhow\x1b[0m v1.0.102";
+        assert_eq!(strip_ansi(input), "├── anyhow v1.0.102");
+    }
+
+    #[test]
+    fn strip_ansi_handles_dcs_string() {
+        // DCS ESC P ... ST. Body should be dropped, surrounding text kept.
+        let input = "before\x1bP1$rmsg\x1b\\after";
+        assert_eq!(strip_ansi(input), "beforeafter");
+    }
 }

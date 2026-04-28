@@ -62,6 +62,10 @@ pub fn try_rewrite(command: &str) -> Option<String> {
     }
     let bare = first.rsplit('/').next().unwrap_or(first);
 
+    // Bail out on shell constructs we can't tokenize safely.
+    if has_unsafe_shell(trimmed) {
+        return None;
+    }
     let rewritten = rewrite_compound(trimmed);
     if rewritten != trimmed {
         return Some(rewritten);
