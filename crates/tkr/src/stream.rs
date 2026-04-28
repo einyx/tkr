@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use tkr_api::{FilterResult, LegacyPlugin as Plugin};
 
 use crate::signature::signature_of;
+use crate::host::loader::PluginRegistry;
 
 /// Cap on unique (command, signature) pairs held per process. Past this we stop
 /// inserting new signatures (sample-and-drop) but keep updating existing ones,
@@ -303,6 +304,155 @@ where I: Iterator<Item = Result<String>>,
     }
 
     for plugin in chain.iter_mut() {
+        let summary = plugin.flush();
+        if !summary.is_empty() {
+            for summary_line in summary.lines() {
+                println!("{summary_line}");
+                emitted.push(summary_line.to_string());
+            }
+        }
+    }
+
+    PipelineResult { emitted, chars_in, chars_suppressed }
+}
+
+/// V2 pipeline: filters via the plugin registry (v2 `on_line`), then passes
+/// remaining lines through the legacy semantic chain. Analytics is NOT done
+/// here — the v2 `AnalyticsPluginV2` accumulates chars via its own `on_line`.
+///
+/// The caller must call `registry.filters_command_begin` before this function
+/// and `registry.filters_command_end` after it.
+pub fn run_pipeline_v2<I>(
+    lines: I,
+    registry: &PluginRegistry,
+    semantic_chain: &mut [Box<dyn Plugin>],
+    command: &str,
+    args: &str,
+) -> PipelineResult
+where
+    I: Iterator<Item = Result<String>>,
+{
+    use tkr_api::plugin::CommandCtx;
+
+    let mut emitted = Vec::new();
+    let mut chars_in: u64 = 0;
+    let mut chars_suppressed: u64 = 0;
+    let mut blank_run: u32 = 0;
+    let max_tokens = std::env::var("TKR_MAX_TOKENS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok());
+    let mut emitted_chars: u64 = 0;
+    let mut budget_exceeded = false;
+    let mut elided_lines: u64 = 0;
+
+    for (index, line_result) in lines.enumerate() {
+        let raw = match line_result {
+            Ok(l) => l,
+            Err(e) => { eprintln!("tkr: read error: {e}"); continue; }
+        };
+        chars_in += raw.len() as u64;
+
+        let line = normalize_line(&raw);
+
+        if raw.len() > line.len() {
+            chars_suppressed += (raw.len() - line.len()) as u64;
+        }
+
+        // Collapse runs of blank lines.
+        if line.trim().is_empty() {
+            blank_run += 1;
+            if blank_run > 1 {
+                chars_suppressed += line.len() as u64;
+                continue;
+            }
+        } else {
+            blank_run = 0;
+        }
+
+        // --- V2 filter registry ---
+        let ctx = CommandCtx {
+            command: command.to_string(),
+            args: args.to_string(),
+            line_index: index as u64,
+        };
+        let after_v2 = registry.run_filters_line(line.clone(), &ctx);
+        let current = match after_v2 {
+            None => {
+                chars_suppressed += line.len() as u64;
+                continue;
+            }
+            Some(s) => s,
+        };
+
+        // --- Legacy semantic chain ---
+        let mut current = current;
+        let mut suppressed = false;
+        for plugin in semantic_chain.iter_mut() {
+            let result = plugin.filter(&current, command, args, index as u64);
+            match result {
+                FilterResult::Pass => {}
+                FilterResult::Replace(ptr, len) => {
+                    if !ptr.is_null() {
+                        let bytes = unsafe { std::slice::from_raw_parts(ptr as *const u8, len) };
+                        current = String::from_utf8_lossy(bytes).into_owned();
+                    }
+                }
+                FilterResult::Suppress | FilterResult::SuppressWithNote(_) => {
+                    suppressed = true;
+                    break;
+                }
+                FilterResult::Annotate(ptr, len) => {
+                    if !ptr.is_null() {
+                        let ann = unsafe { std::slice::from_raw_parts(ptr as *const u8, len) };
+                        current.push(' ');
+                        current.push_str(&String::from_utf8_lossy(ann));
+                    }
+                }
+            }
+        }
+
+        if suppressed {
+            chars_suppressed += line.len() as u64;
+            continue;
+        }
+
+        if current.len() < line.len() {
+            chars_suppressed += (line.len() - current.len()) as u64;
+        }
+
+        // --max-tokens budget.
+        if let Some(max) = max_tokens {
+            if budget_exceeded {
+                elided_lines += 1;
+                chars_suppressed += line.len() as u64;
+                continue;
+            }
+            if chars_to_tokens(emitted_chars + current.len() as u64) > max {
+                budget_exceeded = true;
+                elided_lines += 1;
+                chars_suppressed += line.len() as u64;
+                continue;
+            }
+            emitted_chars += current.len() as u64;
+        }
+
+        record_emit(command, &current);
+        println!("{current}");
+        emitted.push(current);
+    }
+
+    if budget_exceeded {
+        let msg = format!(
+            "(... {} more lines elided — TKR_MAX_TOKENS={} reached)",
+            elided_lines,
+            max_tokens.unwrap_or(0)
+        );
+        println!("{}", msg);
+        emitted.push(msg);
+    }
+
+    // Flush legacy semantic plugin summaries.
+    for plugin in semantic_chain.iter_mut() {
         let summary = plugin.flush();
         if !summary.is_empty() {
             for summary_line in summary.lines() {

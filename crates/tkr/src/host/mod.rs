@@ -9,6 +9,7 @@ use tkr_api::vault::Vault;
 use crate::host::bus::InProcBus;
 use crate::host::vault::{HostVault, storage::{FsImpl, KvImpl, SqliteImpl}};
 
+pub mod boot;
 pub mod bus;
 pub mod cli;
 pub mod cli_cmds;
