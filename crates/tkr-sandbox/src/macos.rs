@@ -2,6 +2,7 @@ use crate::error::SandboxError;
 use crate::policy::SandboxPolicy;
 use crate::exec::SandboxOutput;
 use std::io::Write;
+use std::path::PathBuf;
 use std::process::Command;
 
 pub fn run(command: &str, args: &[&str], policy: &SandboxPolicy) -> Result<SandboxOutput, SandboxError> {
@@ -19,6 +20,11 @@ pub fn run(command: &str, args: &[&str], policy: &SandboxPolicy) -> Result<Sandb
     })
 }
 
+/// Resolve a path to its canonical form, falling back to the original if canonicalization fails.
+fn canonical(p: &std::path::Path) -> PathBuf {
+    std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
+}
+
 pub(crate) fn build_profile(policy: &SandboxPolicy) -> String {
     let mut s = String::from("(version 1)\n(deny default)\n");
     s.push_str("(allow process-fork process-exec)\n");
@@ -26,17 +32,33 @@ pub(crate) fn build_profile(policy: &SandboxPolicy) -> String {
     s.push_str("(allow sysctl-read)\n");
     s.push_str("(allow signal (target self))\n");
     s.push_str("(allow file-read* (subpath \"/usr/lib\"))\n");
+    s.push_str("(allow file-read* (subpath \"/usr/bin\"))\n");
     s.push_str("(allow file-read* (subpath \"/System/Library\"))\n");
     s.push_str("(allow file-read* (subpath \"/Library/Apple/System\"))\n");
+    s.push_str("(allow file-read* (subpath \"/private/var/folders\"))\n");
     s.push_str("(allow file-read* (literal \"/dev/null\") (literal \"/dev/urandom\"))\n");
     s.push_str("(allow file-write* (literal \"/dev/null\"))\n");
     for p in &policy.fs_read {
-        s.push_str(&format!("(allow file-read* (subpath \"{}\"))\n", esc(&p.to_string_lossy())));
+        let canon = canonical(p);
+        let path_str = canon.to_string_lossy();
+        s.push_str(&format!("(allow file-read* (subpath \"{}\"))\n", esc(&path_str)));
+        // Also allow the original path in case they differ
+        if canon != *p {
+            s.push_str(&format!("(allow file-read* (subpath \"{}\"))\n", esc(&p.to_string_lossy())));
+        }
     }
     for p in &policy.fs_write {
-        let e = esc(&p.to_string_lossy());
+        let canon = canonical(p);
+        let canon_str = canon.to_string_lossy();
+        let e = esc(&canon_str);
         s.push_str(&format!("(allow file-read* (subpath \"{}\"))\n", e));
         s.push_str(&format!("(allow file-write* (subpath \"{}\"))\n", e));
+        // Also allow the original path
+        if canon != *p {
+            let orig = esc(&p.to_string_lossy());
+            s.push_str(&format!("(allow file-read* (subpath \"{}\"))\n", orig));
+            s.push_str(&format!("(allow file-write* (subpath \"{}\"))\n", orig));
+        }
     }
     s
 }
@@ -55,6 +77,7 @@ mod tests {
     fn profile_includes_writable_paths() {
         let p = SandboxPolicy::builder().allow_write("/tmp/foo").build();
         let s = build_profile(&p);
-        assert!(s.contains("(allow file-write* (subpath \"/tmp/foo\"))"));
+        assert!(s.contains("(allow file-write* (subpath \"/tmp/foo\"))") ||
+                s.contains("(allow file-write* (subpath \"/private/tmp/foo\"))"));
     }
 }
