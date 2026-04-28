@@ -13,6 +13,8 @@ name = "tkr"
 path = "src/main.rs"
 
 [dependencies]
+tkr-agent = { path = "../tkr-agent" }
+tkr-providers = { path = "../tkr-providers" }
 tkr-api = { path = "../tkr-api" }
 tkr-filter = { path = "../tkr-filter" }
 tkr-semantic = { path = "../tkr-semantic" }

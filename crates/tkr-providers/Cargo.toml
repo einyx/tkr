@@ -1,0 +1,20 @@
+[package]
+name = "tkr-providers"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[lib]
+name = "tkr_providers"
+crate-type = ["rlib"]
+
+[dependencies]
+tkr-agent = { path = "../tkr-agent" }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+ureq = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+mockito = { workspace = true }

@@ -63,6 +63,11 @@ pub enum Commands {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
         command: Vec<String>,
     },
+    /// Run an agent from a TOML manifest
+    Agent {
+        #[command(subcommand)]
+        cmd: AgentCmd,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -70,4 +75,13 @@ pub enum HookTarget {
     /// Claude Code PreToolUse Bash hook. Reads `{"tool_input":{"command":...}}`,
     /// emits the rewritten command with `permissionDecision: allow`.
     Claude,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum AgentCmd {
+    /// Execute one agent run
+    Run {
+        /// Path to a TOML manifest
+        manifest: std::path::PathBuf,
+    },
 }
