@@ -28,6 +28,7 @@ zeroize = { version = "1.7", features = ["zeroize_derive"] }
 rand = "0.8"
 sha2 = "0.10"
 hkdf = "0.12"
+tempfile = "3"
 
 [profile.release]
 opt-level = 3

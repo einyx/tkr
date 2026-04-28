@@ -34,3 +34,6 @@ sha2 = { workspace = true }
 hkdf = { workspace = true }
 hex = { workspace = true }
 zeroize = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
