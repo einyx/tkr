@@ -171,6 +171,13 @@ fn print_noise_section(store: &AnalyticsStore, on: bool) -> Result<()> {
         p(RESET)
     );
     println!();
+    let host_handle = crate::host::boot::get_host();
+    let analytics_host = crate::host::RealHost::new(
+        "tkr-analytics",
+        host_handle.vault.clone(),
+        host_handle.bus.clone(),
+    );
+
     for row in rows.iter().take(8) {
         let regex = signature_to_regex(&row.signature);
         println!(
@@ -186,6 +193,42 @@ fn print_noise_section(store: &AnalyticsStore, on: bool) -> Result<()> {
         );
         println!("     sample: {}{}{}", p(DIM), row.sample, p(RESET));
         println!("     suppress_regex = '{}'", regex);
+
+        // If this signature has an embedding in the vault, surface its k-NN
+        // family — patterns that probably want the same suppress rule.
+        if let Ok(Some(sig_id)) = tkr_analytics::noise_signature_id_via_host(
+            &analytics_host,
+            &row.command,
+            &row.signature,
+        ) {
+            if let Ok(neighbors) =
+                tkr_analytics::nearest_to_signature_via_host(&analytics_host, sig_id, 3)
+            {
+                let close: Vec<_> = neighbors.into_iter().filter(|(_, _, _, d)| *d < 0.6).collect();
+                if !close.is_empty() {
+                    println!(
+                        "     {}near-duplicate family ({} signatures):{}",
+                        p(DIM),
+                        close.len(),
+                        p(RESET)
+                    );
+                    for (_id, cmd, sig, dist) in close {
+                        println!(
+                            "       {}└─{} {} {}{}{} ({}d={:.2}{})",
+                            p(DIM),
+                            p(RESET),
+                            cmd,
+                            p(YELLOW),
+                            sig,
+                            p(RESET),
+                            p(DIM),
+                            dist,
+                            p(RESET),
+                        );
+                    }
+                }
+            }
+        }
     }
     Ok(())
 }

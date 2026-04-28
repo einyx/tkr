@@ -270,6 +270,42 @@ pub fn upsert_noise_embedding_via_host(
     Ok(())
 }
 
+/// kNN by an existing signature row. Returns up to `k` near-neighbors of
+/// the embedding stored at `signature_id`, sorted nearest first. The query
+/// row itself is excluded from the results (distance 0).
+pub fn nearest_to_signature_via_host(
+    host: &dyn Host,
+    signature_id: i64,
+    k: usize,
+) -> ApiResult<Vec<(i64, String, String, f32)>> {
+    let db = host.sqlite(SCHEMA_SQL, SensitivityClass::Public)?;
+    // sqlite-vec lets us pass a subquery into MATCH so we don't have to
+    // round-trip the embedding bytes through Rust.
+    let rows = db.query(
+        "SELECT s.id, s.command, s.signature, n.distance
+         FROM noise_embeddings n
+         JOIN noise_signatures s ON s.id = n.signature_id
+         WHERE n.embedding MATCH (
+             SELECT embedding FROM noise_embeddings WHERE signature_id = ?1
+         )
+           AND n.signature_id != ?1
+           AND k = ?2
+         ORDER BY n.distance",
+        &[json!(signature_id), json!(k as i64)],
+    )?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|r| {
+            Some((
+                r.first()?.as_i64()?,
+                r.get(1)?.as_str()?.to_string(),
+                r.get(2)?.as_str()?.to_string(),
+                r.get(3)?.as_f64()? as f32,
+            ))
+        })
+        .collect())
+}
+
 /// kNN over `noise_embeddings`. Returns up to `k` (signature_id, distance)
 /// pairs, sorted nearest first. Distance is L2 by default in sqlite-vec.
 pub fn nearest_noise_embeddings_via_host(
