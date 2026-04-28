@@ -241,22 +241,16 @@ where I: Iterator<Item = Result<String>>,
             let result = plugin.filter(&current, command, args, index as u64);
             match result {
                 FilterResult::Pass => {}
-                FilterResult::Replace(ptr, len) => {
-                    if !ptr.is_null() {
-                        let bytes = unsafe { std::slice::from_raw_parts(ptr as *const u8, len) };
-                        current = String::from_utf8_lossy(bytes).into_owned();
-                    }
+                FilterResult::Replace(s) => {
+                    current = s;
                 }
                 FilterResult::Suppress | FilterResult::SuppressWithNote(_) => {
                     suppressed = true;
                     break;
                 }
-                FilterResult::Annotate(ptr, len) => {
-                    if !ptr.is_null() {
-                        let ann = unsafe { std::slice::from_raw_parts(ptr as *const u8, len) };
-                        current.push(' ');
-                        current.push_str(&String::from_utf8_lossy(ann));
-                    }
+                FilterResult::Annotate(s) => {
+                    current.push(' ');
+                    current.push_str(&s);
                 }
             }
         }
@@ -395,22 +389,16 @@ where
             let result = plugin.filter(&current, command, args, index as u64);
             match result {
                 FilterResult::Pass => {}
-                FilterResult::Replace(ptr, len) => {
-                    if !ptr.is_null() {
-                        let bytes = unsafe { std::slice::from_raw_parts(ptr as *const u8, len) };
-                        current = String::from_utf8_lossy(bytes).into_owned();
-                    }
+                FilterResult::Replace(s) => {
+                    current = s;
                 }
                 FilterResult::Suppress | FilterResult::SuppressWithNote(_) => {
                     suppressed = true;
                     break;
                 }
-                FilterResult::Annotate(ptr, len) => {
-                    if !ptr.is_null() {
-                        let ann = unsafe { std::slice::from_raw_parts(ptr as *const u8, len) };
-                        current.push(' ');
-                        current.push_str(&String::from_utf8_lossy(ann));
-                    }
+                FilterResult::Annotate(s) => {
+                    current.push(' ');
+                    current.push_str(&s);
                 }
             }
         }

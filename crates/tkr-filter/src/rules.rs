@@ -164,14 +164,7 @@ impl CompiledRule {
                 if new == line {
                     None
                 } else {
-                    // Leak: the FilterResult::Replace variant carries a raw
-                    // pointer + len for the C ABI. The pipeline copies the
-                    // bytes before the next filter call, so the leak is
-                    // bounded by matched-line count per command run.
-                    let bytes = new.into_owned().into_bytes().into_boxed_slice();
-                    let len = bytes.len();
-                    let ptr = Box::leak(bytes).as_mut_ptr() as *mut std::os::raw::c_char;
-                    Some(FilterResult::Replace(ptr, len))
+                    Some(FilterResult::Replace(new.into_owned()))
                 }
             }
             CompiledRule::CollapseCommonPrefix {
@@ -277,11 +270,7 @@ mod tests {
         let mut compiled = rule.compile().unwrap();
         let result = compiled.apply("commit 81cda431a68d54a55707179f546a4b6c449e92e2");
         match result {
-            Some(FilterResult::Replace(ptr, len)) => {
-                let bytes = unsafe { std::slice::from_raw_parts(ptr as *const u8, len) };
-                let s = std::str::from_utf8(bytes).unwrap();
-                assert_eq!(s, "commit 81cda43");
-            }
+            Some(FilterResult::Replace(s)) => assert_eq!(s, "commit 81cda43"),
             other => panic!("expected Replace, got {:?}", other),
         }
     }

@@ -3,7 +3,7 @@
 //! v1 (legacy C-ABI line-filter) types live under `legacy::*` and are
 //! re-exported here for backwards compatibility while v2 is built out.
 pub mod legacy;
-pub use legacy::{Plugin as LegacyPlugin, FilterResult, LineContext};
+pub use legacy::{Plugin as LegacyPlugin, FilterResult};
 
 pub mod error;
 pub use error::{Error, Result};
@@ -21,6 +21,3 @@ pub use plugin::{Plugin, CommandCtx, FilterDecision};
 
 #[cfg(feature = "test-host")]
 pub mod test_host;
-// Re-export every other public symbol that legacy.rs defines so that
-// existing consumers compile without changes.
-pub use legacy::{FnInit, FnFilter, FnFlush, FnDestroy};

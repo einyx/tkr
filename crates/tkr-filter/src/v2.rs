@@ -67,14 +67,12 @@ impl Plugin for FilterPluginV2 {
         // C-string pointers (used only in the C-ABI path).  The built-in Rust
         // rules engine (rules.rs) never produces those variants — it returns
         // only Pass or Suppress.  We handle all arms defensively: the pointer
-        // variants are treated as Pass so we never dereference them here.
         let decision = match result {
             FilterResult::Pass => FilterDecision::Pass,
             FilterResult::Suppress => FilterDecision::Suppress,
             FilterResult::SuppressWithNote(n) => FilterDecision::SuppressWithNote(n),
-            // Raw-pointer variants not produced by the Rust rules engine;
-            // pass-through is the safe fallback.
-            FilterResult::Replace(_, _) | FilterResult::Annotate(_, _) => FilterDecision::Pass,
+            FilterResult::Replace(s) => FilterDecision::Replace(s),
+            FilterResult::Annotate(_) => FilterDecision::Pass,
         };
         Ok(decision)
     }

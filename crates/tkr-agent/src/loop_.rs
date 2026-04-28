@@ -131,14 +131,8 @@ fn apply_filter(plugin: &mut FilterPlugin, tool_name: &str, content: &str) -> St
         match plugin.filter(line, tool_name, "", idx as u64) {
             FilterResult::Pass => { out.push_str(line); out.push('\n'); }
             FilterResult::Suppress | FilterResult::SuppressWithNote(_) => {}
-            FilterResult::Replace(p, len) => {
-                let bytes = unsafe { std::slice::from_raw_parts(p as *const u8, len) };
-                if let Ok(s) = std::str::from_utf8(bytes) {
-                    out.push_str(s); out.push('\n');
-                }
-                unsafe { let _ = Box::from_raw(p as *mut u8); }
-            }
-            FilterResult::Annotate(_, _) => { out.push_str(line); out.push('\n'); }
+            FilterResult::Replace(s) => { out.push_str(&s); out.push('\n'); }
+            FilterResult::Annotate(_) => { out.push_str(line); out.push('\n'); }
         }
     }
     let summary = plugin.flush();
