@@ -2,6 +2,8 @@ use crate::manifest::Manifest;
 use crate::provider::{ContentBlock, Message, Provider, StopReason};
 use crate::tool::{ToolRegistry, ToolResult};
 use anyhow::{anyhow, Result};
+use tkr_filter::FilterPlugin;
+use tkr_api::{FilterResult, Plugin};
 
 #[derive(Debug, Clone)]
 pub struct RunOutcome {
@@ -17,6 +19,7 @@ pub fn run(
     manifest: &Manifest,
     provider: &dyn Provider,
     tools: &mut ToolRegistry,
+    filter: Option<&mut FilterPlugin>,
 ) -> Result<RunOutcome> {
     let schemas = tools.schemas();
 
@@ -30,6 +33,7 @@ pub fn run(
     let mut raw_bytes_total = 0usize;
     let mut filtered_bytes_total = 0usize;
     let mut final_text = String::new();
+    let mut filter = filter;
 
     while steps < manifest.max_steps {
         steps += 1;
@@ -57,19 +61,21 @@ pub fn run(
                 });
             }
             StopReason::ToolUse => {
-                let tool_results = run_tool_calls(&resp.content, tools)?;
-                for (_id, tr) in &tool_results {
+                let raw_results = run_tool_calls(&resp.content, tools)?;
+                let mut blocks = Vec::with_capacity(raw_results.len());
+                for (id, mut tr, tool_name) in raw_results {
                     raw_bytes_total += tr.raw_bytes;
+                    if let Some(f) = filter.as_deref_mut() {
+                        tr.content = apply_filter(f, &tool_name, &tr.content);
+                        tr.filtered_bytes = tr.content.len();
+                    }
                     filtered_bytes_total += tr.filtered_bytes;
-                }
-                let blocks: Vec<ContentBlock> = tool_results
-                    .into_iter()
-                    .map(|(id, res)| ContentBlock::ToolResult {
+                    blocks.push(ContentBlock::ToolResult {
                         tool_use_id: id,
-                        content: res.content,
-                        is_error: res.exit != 0,
-                    })
-                    .collect();
+                        content: tr.content,
+                        is_error: tr.exit != 0,
+                    });
+                }
                 messages.push(Message::User { content: blocks });
             }
             StopReason::Other(s) => {
@@ -102,7 +108,7 @@ fn collect_text(blocks: &[ContentBlock]) -> String {
 fn run_tool_calls(
     blocks: &[ContentBlock],
     tools: &mut ToolRegistry,
-) -> Result<Vec<(String, ToolResult)>> {
+) -> Result<Vec<(String, ToolResult, String)>> {
     let mut out = Vec::new();
     for b in blocks {
         if let ContentBlock::ToolUse { id, name, input } = b {
@@ -110,10 +116,31 @@ fn run_tool_calls(
                 .get_mut(name)
                 .ok_or_else(|| anyhow!("unknown tool: {}", name))?;
             let res = tool.run(input)?;
-            out.push((id.clone(), res));
+            out.push((id.clone(), res, name.clone()));
         }
     }
     Ok(out)
+}
+
+fn apply_filter(plugin: &mut FilterPlugin, tool_name: &str, content: &str) -> String {
+    let mut out = String::new();
+    for (idx, line) in content.lines().enumerate() {
+        match plugin.filter(line, tool_name, "", idx as u64) {
+            FilterResult::Pass => { out.push_str(line); out.push('\n'); }
+            FilterResult::Suppress | FilterResult::SuppressWithNote(_) => {}
+            FilterResult::Replace(p, len) => {
+                let bytes = unsafe { std::slice::from_raw_parts(p as *const u8, len) };
+                if let Ok(s) = std::str::from_utf8(bytes) {
+                    out.push_str(s); out.push('\n');
+                }
+                unsafe { let _ = Box::from_raw(p as *mut u8); }
+            }
+            FilterResult::Annotate(_, _) => { out.push_str(line); out.push('\n'); }
+        }
+    }
+    let summary = plugin.flush();
+    if !summary.is_empty() { out.push_str(&summary); }
+    out
 }
 
 #[cfg(test)]
@@ -156,7 +183,6 @@ mod tests {
     }
 
     fn manifest() -> Manifest {
-        // ToolDecl.config requires a TOML Value; create an empty inline table.
         let _ = AgentMode::Approve;
         Manifest {
             name: "t".into(),
@@ -179,7 +205,7 @@ mod tests {
             }]),
         };
         let mut tools = ToolRegistry::new();
-        let out = run(&manifest(), &provider, &mut tools).unwrap();
+        let out = run(&manifest(), &provider, &mut tools, None).unwrap();
         assert_eq!(out.final_text, "hi back");
         assert_eq!(out.steps, 1);
     }
@@ -206,7 +232,7 @@ mod tests {
         };
         let mut tools = ToolRegistry::new();
         tools.register(Box::new(LoudEcho));
-        let out = run(&manifest(), &provider, &mut tools).unwrap();
+        let out = run(&manifest(), &provider, &mut tools, None).unwrap();
         assert_eq!(out.steps, 2);
         assert_eq!(out.final_text, "done");
         assert_eq!(out.raw_bytes_total, 3);
@@ -231,7 +257,53 @@ mod tests {
         tools.register(Box::new(LoudEcho));
         let mut m = manifest();
         m.max_steps = 3;
-        let out = run(&m, &provider, &mut tools).unwrap();
+        let out = run(&m, &provider, &mut tools, None).unwrap();
         assert_eq!(out.steps, 3);
+    }
+
+    #[test]
+    fn filter_compresses_tool_output() {
+        use tkr_filter::FilterPlugin;
+        // Rule schema confirmed from tkr-filter/src/rules.rs:
+        // rules use `type = "suppress_regex"` with `pattern` field.
+        // (Not `match`/`action = "suppress"` as suggested in the plan.)
+        let filter_toml = r#"
+command = "echo"
+[[rules]]
+type = "suppress_regex"
+pattern = "^DROP "
+"#;
+        let mut filter = FilterPlugin::from_toml(filter_toml).unwrap();
+
+        struct NoisyEcho;
+        impl Tool for NoisyEcho {
+            fn name(&self) -> &str { "echo" }
+            fn input_schema(&self) -> serde_json::Value { json!({}) }
+            fn run(&mut self, _input: &serde_json::Value) -> Result<ToolResult> {
+                let s = "KEEP one\nDROP two\nKEEP three\n".to_string();
+                Ok(ToolResult { content: s.clone(), raw_bytes: s.len(), filtered_bytes: s.len(), exit: 0 })
+            }
+        }
+
+        let provider = ScriptedProvider {
+            script: RefCell::new(vec![
+                ProviderResponse {
+                    content: vec![ContentBlock::ToolUse {
+                        id: "tu".into(), name: "echo".into(), input: json!({}),
+                    }],
+                    stop_reason: StopReason::ToolUse,
+                    input_tokens: 0, output_tokens: 0,
+                },
+                ProviderResponse {
+                    content: vec![ContentBlock::Text { text: "ok".into() }],
+                    stop_reason: StopReason::EndTurn,
+                    input_tokens: 0, output_tokens: 0,
+                },
+            ]),
+        };
+        let mut tools = ToolRegistry::new();
+        tools.register(Box::new(NoisyEcho));
+        let out = run(&manifest(), &provider, &mut tools, Some(&mut filter)).unwrap();
+        assert!(out.filtered_bytes_total < out.raw_bytes_total);
     }
 }
