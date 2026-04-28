@@ -7,6 +7,7 @@ members = [
     "crates/tkr-analytics",
     "crates/tkr-agent",
     "crates/tkr-providers",
+    "crates/tkr-sandbox",
     "crates/tkr",
 ]
 
@@ -15,6 +16,8 @@ anyhow = "1.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
+landlock = "0.4"
+tempfile = "3"
 regex = "1"
 dirs = "5"
 chrono = "0.4"
