@@ -10,6 +10,8 @@ pub use error::{Error, Result};
 
 pub mod manifest;
 pub use manifest::SensitivityClass;
+
+pub mod capability;
 // Re-export every other public symbol that legacy.rs defines so that
 // existing consumers compile without changes.
 pub use legacy::Plugin;
