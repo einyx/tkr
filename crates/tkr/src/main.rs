@@ -58,7 +58,14 @@ fn main() -> anyhow::Result<()> {
             Ok(())
         }
         Some(Commands::CleanStats { yes }) => clean_stats(yes),
-        Some(Commands::Install) => cmds::install::run(),
+        Some(Commands::Install { shell }) => match shell.as_deref() {
+            None => cmds::install::run(),
+            Some("zsh") => cmds::install::run_shell_zsh(),
+            Some(other) => {
+                eprintln!("unsupported shell '{}'. Currently supported: zsh", other);
+                std::process::exit(2);
+            }
+        },
         Some(Commands::Bench { command }) => cmds::bench::run(&command),
         Some(Commands::Agent { cmd }) => match cmd {
             AgentCmd::Run { manifest } => agent_cmd::run_agent(&manifest),
