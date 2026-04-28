@@ -155,3 +155,29 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod tests_persistence {
+    use super::*;
+    use tempfile::tempdir;
+    use crate::host::vault::store::FsStore;
+
+    #[test]
+    fn vault_persists_across_reopen() {
+        let d = tempdir().unwrap();
+        let master = [3u8; 32];
+        {
+            let store: Arc<dyn Store> = Arc::new(FsStore::new(d.path()).unwrap());
+            let v = HostVault::new(store, master);
+            v.unseal_full();
+            v.write(SensitivityClass::Private, "k", b"hello", "host").unwrap();
+        }
+        let store: Arc<dyn Store> = Arc::new(FsStore::new(d.path()).unwrap());
+        let v = HostVault::new(store, master);
+        v.unseal_full();
+        assert_eq!(
+            v.read(SensitivityClass::Private, "k", "host").unwrap().unwrap(),
+            b"hello".to_vec()
+        );
+    }
+}
