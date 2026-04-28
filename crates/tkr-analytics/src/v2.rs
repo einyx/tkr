@@ -32,6 +32,13 @@ const SCHEMA_SQL: &str = "
         UNIQUE(command, signature)
     );
     CREATE INDEX IF NOT EXISTS idx_noise_command ON noise_signatures(command);
+    -- Vector index over signature embeddings (384-dim MiniLM L6 v2).
+    -- Empty until something writes to it (currently the embedding ranker
+    -- populates it during `tkr suggest --features embeddings`).
+    CREATE VIRTUAL TABLE IF NOT EXISTS noise_embeddings USING vec0(
+        signature_id INTEGER PRIMARY KEY,
+        embedding FLOAT[384]
+    );
 ";
 
 const NOISE_UPSERT_SQL: &str = "
@@ -233,6 +240,71 @@ impl Plugin for AnalyticsPluginV2 {
 }
 
 // ── Free functions usable without an instance (called by orchestrator) ──────
+
+/// Upsert an embedding for an existing `noise_signatures.id` into the
+/// `noise_embeddings` vec0 table. The vector is a 384-dim float array
+/// (MiniLM L6 v2 dimensionality).
+pub fn upsert_noise_embedding_via_host(
+    host: &dyn Host,
+    signature_id: i64,
+    embedding: &[f32],
+) -> ApiResult<()> {
+    if embedding.is_empty() {
+        return Ok(());
+    }
+    let db = host.sqlite(SCHEMA_SQL, SensitivityClass::Public)?;
+    // sqlite-vec expects the embedding as a JSON array or as a raw bytes blob.
+    // Use the JSON form — simpler, and serde_json gives us a clean roundtrip.
+    let arr = serde_json::Value::Array(
+        embedding
+            .iter()
+            .map(|f| serde_json::Value::from(*f as f64))
+            .collect(),
+    )
+    .to_string();
+    // INSERT OR REPLACE so re-embedding the same signature is a no-op cost.
+    db.execute(
+        "INSERT OR REPLACE INTO noise_embeddings (signature_id, embedding) VALUES (?1, ?2)",
+        &[json!(signature_id), json!(arr)],
+    )?;
+    Ok(())
+}
+
+/// kNN over `noise_embeddings`. Returns up to `k` (signature_id, distance)
+/// pairs, sorted nearest first. Distance is L2 by default in sqlite-vec.
+pub fn nearest_noise_embeddings_via_host(
+    host: &dyn Host,
+    query_embedding: &[f32],
+    k: usize,
+) -> ApiResult<Vec<(i64, f32)>> {
+    if query_embedding.is_empty() {
+        return Ok(Vec::new());
+    }
+    let db = host.sqlite(SCHEMA_SQL, SensitivityClass::Public)?;
+    let arr = serde_json::Value::Array(
+        query_embedding
+            .iter()
+            .map(|f| serde_json::Value::from(*f as f64))
+            .collect(),
+    )
+    .to_string();
+    let rows = db.query(
+        "SELECT signature_id, distance
+         FROM noise_embeddings
+         WHERE embedding MATCH ?1 AND k = ?2
+         ORDER BY distance",
+        &[json!(arr), json!(k as i64)],
+    )?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|r| {
+            Some((
+                r.get(0)?.as_i64()?,
+                r.get(1)?.as_f64()? as f32,
+            ))
+        })
+        .collect())
+}
 
 /// Persist a noise signature into the vault sqlite using any `Host` impl.
 /// Lets non-plugin code (proxy::run) write learning data directly.

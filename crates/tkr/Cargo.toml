@@ -45,6 +45,7 @@ hkdf = { workspace = true }
 hex = { workspace = true }
 zeroize = { workspace = true }
 rusqlite = { workspace = true }
+sqlite-vec = { workspace = true }
 tar = { workspace = true }
 flate2 = { workspace = true }
 

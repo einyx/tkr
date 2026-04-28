@@ -13,6 +13,21 @@ use crate::host::vault::HostVault;
 
 static SEQ: AtomicU64 = AtomicU64::new(0);
 
+/// Register the sqlite-vec extension once at process start so every vault
+/// sqlite connection gets the `vec0` virtual-table module. Required for
+/// embedding-similarity tables.
+fn ensure_sqlite_vec_loaded() {
+    use std::sync::Once;
+    static REGISTER: Once = Once::new();
+    REGISTER.call_once(|| {
+        unsafe {
+            rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
+                sqlite_vec::sqlite3_vec_init as *const (),
+            )));
+        }
+    });
+}
+
 // ─── KvImpl ──────────────────────────────────────────────────────────────────
 
 pub struct KvImpl {
@@ -146,6 +161,7 @@ impl SqliteImpl {
         class: SensitivityClass,
         schema_sql: &str,
     ) -> Result<Self> {
+        ensure_sqlite_vec_loaded();
         let plugin = plugin.into();
         let key = blob_key(&plugin, class);
         let n = SEQ.fetch_add(1, Ordering::Relaxed);
