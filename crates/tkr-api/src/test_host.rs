@@ -37,6 +37,11 @@ impl TestHost {
             fs_pub: TestFs::default(), fs_priv: TestFs::default(), fs_sec: TestFs::default(),
         }
     }
+
+    /// Return all (sql, params) pairs recorded against the public sqlite handle.
+    pub fn sqlite_pub_calls(&self) -> Vec<(String, Vec<serde_json::Value>)> {
+        self.sqlite_pub.calls()
+    }
 }
 
 impl Host for TestHost {

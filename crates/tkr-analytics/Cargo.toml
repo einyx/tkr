@@ -16,3 +16,9 @@ serde_json = { workspace = true }
 rusqlite = { version = "0.31", features = ["bundled"] }
 dirs = { workspace = true }
 chrono = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[features]
+test-host = ["tkr-api/test-host"]

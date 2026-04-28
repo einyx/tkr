@@ -1,3 +1,6 @@
+pub mod v2;
+pub use v2::AnalyticsPluginV2;
+
 use anyhow::Result;
 use rusqlite::{params, Connection};
 use tkr_api::{FilterResult, LegacyPlugin as Plugin};
