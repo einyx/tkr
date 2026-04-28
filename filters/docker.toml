@@ -1,0 +1,40 @@
+command = "docker"
+subcommands = ["build", "pull", "push"]
+
+# Layer pull/push progress bar updates
+[[rules]]
+type = "suppress_regex"
+pattern = ": Pulling fs layer$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = ": Pull complete$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = ": Verifying Checksum$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = ": Download complete$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = ": Waiting$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = ": Preparing$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = ": Layer already exists$"
+
+# BuildKit step decoration
+[[rules]]
+type = "suppress_regex"
+pattern = "^#\\d+ DONE \\d"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^#\\d+ CACHED$"

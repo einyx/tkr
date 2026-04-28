@@ -1,0 +1,7 @@
+command = "kubectl"
+subcommands = ["logs", "get", "describe"]
+
+# Timestamp prefix on log lines (RFC3339Nano) — shrink to compact form
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+Z?\\s+stderr\\s+F\\s"

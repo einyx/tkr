@@ -7,25 +7,67 @@ use tkr_api::{FilterResult, Plugin};
 
 #[derive(Debug, Deserialize)]
 struct FilterDef {
-    #[allow(dead_code)]
+    /// If set, group only applies when proxied command matches.
+    /// Example: "cargo" matches `tkr cargo build`. Omit to match any command.
     command: Option<String>,
+    /// If non-empty, group only applies when first arg matches one of these.
+    /// Example: ["build", "test"] for cargo. Empty/omitted = any subcommand.
+    #[serde(default)]
+    subcommands: Vec<String>,
     #[serde(default)]
     rules: Vec<Rule>,
 }
 
-pub struct FilterPlugin {
+/// One group of rules scoped to a (command, subcommands) selector.
+pub struct FilterGroup {
+    command: Option<String>,
+    subcommands: Vec<String>,
     rules: Vec<CompiledRule>,
+}
+
+impl FilterGroup {
+    fn matches(&self, command: &str, subcommand: &str) -> bool {
+        if let Some(c) = &self.command {
+            if c != command {
+                return false;
+            }
+        }
+        if !self.subcommands.is_empty() && !self.subcommands.iter().any(|s| s == subcommand) {
+            return false;
+        }
+        true
+    }
+}
+
+pub struct FilterPlugin {
+    groups: Vec<FilterGroup>,
 }
 
 impl FilterPlugin {
     pub fn from_toml(toml_str: &str) -> Result<Self> {
         let def: FilterDef = toml::from_str(toml_str)?;
-        let rules = def.rules.into_iter().map(|r| r.compile()).collect::<Result<Vec<_>>>()?;
-        Ok(Self { rules })
+        let group = FilterGroup {
+            command: def.command,
+            subcommands: def.subcommands,
+            rules: def
+                .rules
+                .into_iter()
+                .map(|r| r.compile())
+                .collect::<Result<Vec<_>>>()?,
+        };
+        Ok(Self {
+            groups: vec![group],
+        })
     }
 
     pub fn from_dir(dir: &std::path::Path) -> Result<Self> {
-        let mut all_rules = Vec::new();
+        let mut plugin = Self { groups: Vec::new() };
+        plugin.load_dir(dir)?;
+        Ok(plugin)
+    }
+
+    /// Append all `.toml` filter groups from `dir` to this plugin.
+    pub fn load_dir(&mut self, dir: &std::path::Path) -> Result<()> {
         if dir.is_dir() {
             for entry in std::fs::read_dir(dir)? {
                 let entry = entry?;
@@ -33,63 +75,166 @@ impl FilterPlugin {
                 if path.extension().map_or(false, |e| e == "toml") {
                     let text = std::fs::read_to_string(&path)?;
                     let def: FilterDef = toml::from_str(&text)?;
-                    for r in def.rules { all_rules.push(r.compile()?); }
+                    let rules = def
+                        .rules
+                        .into_iter()
+                        .map(|r| r.compile())
+                        .collect::<Result<Vec<_>>>()?;
+                    self.groups.push(FilterGroup {
+                        command: def.command,
+                        subcommands: def.subcommands,
+                        rules,
+                    });
                 }
             }
         }
-        Ok(Self { rules: all_rules })
+        Ok(())
     }
 }
 
 impl Plugin for FilterPlugin {
-    fn init(_config: &str) -> Box<dyn Plugin> where Self: Sized {
-        Box::new(FilterPlugin { rules: vec![] })
+    fn init(_config: &str) -> Box<dyn Plugin>
+    where
+        Self: Sized,
+    {
+        Box::new(FilterPlugin { groups: vec![] })
     }
-    fn filter(&mut self, line: &str, _command: &str, _args: &str, _index: u64) -> FilterResult {
-        for rule in &self.rules {
-            if let Some(result) = rule.apply(line) { return result; }
+
+    fn filter(&mut self, line: &str, command: &str, args: &str, _index: u64) -> FilterResult {
+        let subcommand = args.split_whitespace().next().unwrap_or("");
+        for group in &mut self.groups {
+            if !group.matches(command, subcommand) {
+                continue;
+            }
+            for rule in &mut group.rules {
+                if let Some(result) = rule.apply(line) {
+                    return result;
+                }
+            }
         }
         FilterResult::Pass
     }
-    fn flush(&mut self) -> String { String::new() }
+
+    fn flush(&mut self) -> String {
+        String::new()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn make(toml: &str) -> FilterPlugin { FilterPlugin::from_toml(toml).unwrap() }
+    fn make(toml: &str) -> FilterPlugin {
+        FilterPlugin::from_toml(toml).unwrap()
+    }
 
     #[test]
     fn suppress_prefix_drops_matching_line() {
-        let mut p = make(r#"command = "git"
+        let mut p = make(
+            r#"command = "git"
 [[rules]]
 type = "suppress_prefix"
 prefix = "warning:"
-"#);
-        assert_eq!(p.filter("warning: something", "git", "", 0), FilterResult::Suppress);
-        assert_eq!(p.filter("modified: file.rs", "git", "", 1), FilterResult::Pass);
+"#,
+        );
+        assert_eq!(
+            p.filter("warning: something", "git", "", 0),
+            FilterResult::Suppress
+        );
+        assert_eq!(
+            p.filter("modified: file.rs", "git", "", 1),
+            FilterResult::Pass
+        );
     }
 
     #[test]
     fn suppress_regex_drops_blank_lines() {
-        let mut p = make(r#"command = "git"
+        let mut p = make(
+            r#"command = "git"
 [[rules]]
 type = "suppress_regex"
 pattern = "^\\s*$"
-"#);
+"#,
+        );
         assert_eq!(p.filter("   ", "git", "", 0), FilterResult::Suppress);
         assert_eq!(p.filter("content", "git", "", 1), FilterResult::Pass);
     }
 
     #[test]
     fn keep_regex_suppresses_non_matching() {
-        let mut p = make(r#"command = "cargo"
+        let mut p = make(
+            r#"command = "cargo"
 [[rules]]
 type = "keep_regex"
 pattern = "^error"
-"#);
-        assert_eq!(p.filter("error[E0001]: blah", "cargo", "", 0), FilterResult::Pass);
-        assert_eq!(p.filter("Compiling foo v0.1.0", "cargo", "", 1), FilterResult::Suppress);
+"#,
+        );
+        assert_eq!(
+            p.filter("error[E0001]: blah", "cargo", "build", 0),
+            FilterResult::Pass
+        );
+        assert_eq!(
+            p.filter("Compiling foo v0.1.0", "cargo", "build", 1),
+            FilterResult::Suppress
+        );
+    }
+
+    #[test]
+    fn group_only_applies_to_matching_command() {
+        // Group scoped to cargo — must NOT fire for git
+        let mut p = make(
+            r#"command = "cargo"
+[[rules]]
+type = "suppress_prefix"
+prefix = "warning:"
+"#,
+        );
+        // git command: rule should be skipped
+        assert_eq!(
+            p.filter("warning: foo", "git", "status", 0),
+            FilterResult::Pass
+        );
+        // cargo command: rule fires
+        assert_eq!(
+            p.filter("warning: foo", "cargo", "build", 0),
+            FilterResult::Suppress
+        );
+    }
+
+    #[test]
+    fn group_only_applies_to_matching_subcommand() {
+        let mut p = make(
+            r#"command = "cargo"
+subcommands = ["test"]
+[[rules]]
+type = "suppress_regex"
+pattern = "^test result: ok"
+"#,
+        );
+        // cargo build: rule should NOT fire
+        assert_eq!(
+            p.filter("test result: ok. 1 passed", "cargo", "build", 0),
+            FilterResult::Pass
+        );
+        // cargo test: rule fires
+        assert_eq!(
+            p.filter("test result: ok. 1 passed", "cargo", "test", 0),
+            FilterResult::Suppress
+        );
+    }
+
+    #[test]
+    fn empty_subcommands_matches_any_subcommand() {
+        let mut p = make(
+            r#"command = "cargo"
+[[rules]]
+type = "suppress_regex"
+pattern = "^Compiling"
+"#,
+        );
+        assert_eq!(
+            p.filter("Compiling x", "cargo", "anything", 0),
+            FilterResult::Suppress
+        );
     }
 }

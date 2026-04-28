@@ -11,14 +11,13 @@ pub fn build_chain(cfg: &Config, _command: &str) -> Result<Vec<Box<dyn Plugin>>>
     for plugin_name in &cfg.plugins.chain {
         match plugin_name.as_str() {
             "tkr-filter" => {
-                let user_dir = std::path::Path::new(&cfg.core.filter_dir);
-                let mut plugin = FilterPlugin::from_dir(user_dir)
-                    .unwrap_or_else(|_| FilterPlugin::from_toml("").unwrap());
+                // Load bundled filters first, then user overrides on top.
+                let mut plugin = FilterPlugin::from_toml("").unwrap();
                 if let Some(bundled) = crate::config::bundled_filters_dir() {
-                    if bundled.is_dir() {
-                        if let Ok(p) = FilterPlugin::from_dir(&bundled) { plugin = p; }
-                    }
+                    let _ = plugin.load_dir(&bundled);
                 }
+                let user_dir = std::path::Path::new(&cfg.core.filter_dir);
+                let _ = plugin.load_dir(user_dir);
                 chain.push(Box::new(plugin));
             }
             "tkr-semantic" => {

@@ -1,0 +1,34 @@
+# Rustc warning/error block decoration — suppresses the multi-line gutter,
+# underline, location pointer, and note/help annotations that surround every
+# warning or error. The first `warning:`/`error:` line itself is kept.
+command = "cargo"
+
+# Pipe gutter from source-line annotations (e.g. "   |", "32 | code")
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*\\d*\\s*\\|"
+
+# Caret/dash underlines pointing at offending code
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*[\\^\\-]+\\s"
+
+# `   --> path/to/file.rs:LINE:COL`
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s+--> "
+
+# `   = note: ...` and `   = help: ...`
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s+= (note|help):"
+
+# Bare `...` continuation indicator from rustc
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*\\.\\.\\.\\s*$"
+
+# Trailing summary like "warning: `foo` (lib) generated 2 warnings"
+[[rules]]
+type = "suppress_regex"
+pattern = "^warning: `[^`]+`.*generated \\d+ warning"

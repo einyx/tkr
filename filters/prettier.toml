@@ -1,0 +1,10 @@
+command = "prettier"
+
+# `<file> 12ms` style "no change" lines — drop, keep only files that changed
+[[rules]]
+type = "suppress_regex"
+pattern = " \\d+ms$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = " \\(unchanged\\)$"

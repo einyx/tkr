@@ -1,0 +1,37 @@
+command = "pytest"
+
+# Per-test pass markers
+[[rules]]
+type = "suppress_regex"
+pattern = " PASSED\\s*(\\[ *\\d+%\\])?\\s*$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "::test_\\w+ \\.+$"
+
+# Collected/rootdir/platform headers
+[[rules]]
+type = "suppress_regex"
+pattern = "^platform "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^rootdir: "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^plugins: "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^collected \\d+ items?"
+
+# Final summary line (only kept if FAILED)
+[[rules]]
+type = "suppress_regex"
+pattern = "^=+ \\d+ passed in [\\d.]+s =+"
+
+# Cache + warnings header
+[[rules]]
+type = "suppress_regex"
+pattern = "^cachedir: "
