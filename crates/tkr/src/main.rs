@@ -14,7 +14,9 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Some(Commands::Watch) => cmds::watch::run(),
-        Some(Commands::Gain { breakdown }) => cmds::gain::run(breakdown),
+        Some(Commands::Gain { breakdown, sort, plain }) => {
+            cmds::gain::run(breakdown, &sort, plain)
+        }
         Some(Commands::Discover) => cmds::discover::run(),
         Some(Commands::Rewrite { command }) => cmds::rewrite::run(&command),
         Some(Commands::Hook { target }) => match target {

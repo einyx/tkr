@@ -16,8 +16,15 @@ pub enum Commands {
     Watch,
     /// Show token savings analytics
     Gain {
+        /// Show all commands instead of top 10
         #[arg(long)]
         breakdown: bool,
+        /// Sort order: savings (default), in, runs, ratio
+        #[arg(long, default_value = "savings")]
+        sort: String,
+        /// Render plain output (no colors / box characters)
+        #[arg(long)]
+        plain: bool,
     },
     /// Analyze session history for missed savings
     Discover,
