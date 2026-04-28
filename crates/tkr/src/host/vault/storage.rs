@@ -312,3 +312,92 @@ mod tests_sqlite {
         assert_eq!(rows[0][0], Value::Number(42.into()));
     }
 }
+
+// ─── FsImpl ──────────────────────────────────────────────────────────────────
+
+pub struct FsImpl {
+    vault: Arc<HostVault>,
+    plugin: String,
+    class: SensitivityClass,
+}
+
+impl FsImpl {
+    pub fn new(
+        vault: Arc<HostVault>,
+        plugin: impl Into<String>,
+        class: SensitivityClass,
+    ) -> Self {
+        Self {
+            vault,
+            plugin: plugin.into(),
+            class,
+        }
+    }
+
+    fn key(&self, p: &str) -> String {
+        format!("fs/{}/{}", self.plugin, p)
+    }
+}
+
+impl tkr_api::handles::Fs for FsImpl {
+    fn read(&self, path: &str) -> Result<Vec<u8>> {
+        let z = self
+            .vault
+            .read(self.class, &self.key(path), &self.plugin)
+            .map_err(|e| Error::Vault(e.to_string()))?
+            .ok_or_else(|| Error::Vault(format!("no fs entry {path}")))?;
+        // Callers receiving plaintext are responsible for zeroizing on their side;
+        // intermediate copies inside the vault are wiped via Zeroizing drop.
+        Ok((*z).clone())
+    }
+
+    fn write(&self, path: &str, data: &[u8]) -> Result<()> {
+        self.vault
+            .write(self.class, &self.key(path), data, &self.plugin)
+            .map_err(|e| Error::Vault(e.to_string()))
+    }
+
+    fn list(&self, prefix: &str) -> Result<Vec<String>> {
+        let full = format!("fs/{}/{}", self.plugin, prefix);
+        let raw = self
+            .vault
+            .list(self.class, &full)
+            .map_err(|e| Error::Vault(e.to_string()))?;
+        let strip = format!("fs/{}/", self.plugin);
+        Ok(raw
+            .into_iter()
+            .filter_map(|k| k.strip_prefix(&strip).map(|s| s.to_string()))
+            .collect())
+    }
+}
+
+#[cfg(test)]
+mod tests_fs {
+    use super::*;
+    use crate::host::vault::store::{MemStore, Store};
+    use std::sync::Arc;
+    use tkr_api::handles::Fs;
+
+    fn vault() -> Arc<HostVault> {
+        let store: Arc<dyn Store> = Arc::new(MemStore::default());
+        let v = HostVault::new(store, [9u8; 32]);
+        v.unseal_full();
+        Arc::new(v)
+    }
+
+    #[test]
+    fn fs_round_trip() {
+        let fs = FsImpl::new(vault(), "demo", SensitivityClass::Private);
+        fs.write("a/b", b"data").unwrap();
+        assert_eq!(fs.read("a/b").unwrap(), b"data".to_vec());
+    }
+
+    #[test]
+    fn fs_namespaced_per_plugin() {
+        let v = vault();
+        let a = FsImpl::new(v.clone(), "alpha", SensitivityClass::Private);
+        let b = FsImpl::new(v.clone(), "beta", SensitivityClass::Private);
+        a.write("p", b"data").unwrap();
+        assert!(b.read("p").is_err());
+    }
+}
