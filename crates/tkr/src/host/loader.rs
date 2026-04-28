@@ -110,6 +110,71 @@ impl PluginRegistry {
     pub fn names(&self) -> Vec<String> {
         self.entries.iter().map(|e| e.name.clone()).collect()
     }
+
+    // ── Filter pipeline ──────────────────────────────────────────────────────
+
+    /// Iterate filter-capable plugins (those whose manifest declares `cap:stdout.filter`)
+    /// and call `on_command_begin` once per plugin before any lines flow.
+    pub fn filters_command_begin(&self, ctx: &tkr_api::plugin::CommandCtx) {
+        for e in self.filter_entries() {
+            let mut p = e.plugin.lock().unwrap();
+            if let Err(err) = p.on_command_begin(ctx) {
+                eprintln!("plugin {}: on_command_begin: {}", e.name, err);
+                e.degraded.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+    }
+
+    /// Run a single line through the registered filter chain. Each plugin's `on_line`
+    /// can transform / suppress the line; the resulting String (or None for suppress) is
+    /// passed to the next plugin. Returns the final transformed line, or None if any
+    /// plugin suppressed it.
+    pub fn run_filters_line(&self, mut line: String, ctx: &tkr_api::plugin::CommandCtx) -> Option<String> {
+        for e in self.filter_entries() {
+            if e.degraded.load(std::sync::atomic::Ordering::Relaxed) { continue; }
+            let mut p = e.plugin.lock().unwrap();
+            match p.on_line(&line, ctx) {
+                Ok(tkr_api::plugin::FilterDecision::Pass) => { /* keep line as-is */ }
+                Ok(tkr_api::plugin::FilterDecision::Suppress)
+                | Ok(tkr_api::plugin::FilterDecision::SuppressWithNote(_)) => return None,
+                Ok(tkr_api::plugin::FilterDecision::Replace(s)) => { line = s; }
+                Ok(tkr_api::plugin::FilterDecision::Annotate(s)) => { line.push_str(&s); }
+                Err(err) => {
+                    eprintln!("plugin {}: on_line: {}; marking degraded", e.name, err);
+                    e.degraded.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+            }
+        }
+        Some(line)
+    }
+
+    /// Call `on_command_end` for each filter plugin and concatenate their newline-delimited
+    /// summaries. Returns the joined summary block (may be empty).
+    pub fn filters_command_end(&self, ctx: &tkr_api::plugin::CommandCtx) -> String {
+        let mut summary = String::new();
+        for e in self.filter_entries() {
+            let mut p = e.plugin.lock().unwrap();
+            match p.on_command_end(ctx) {
+                Ok(s) if !s.is_empty() => {
+                    summary.push_str(&s);
+                    if !s.ends_with('\n') { summary.push('\n'); }
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    eprintln!("plugin {}: on_command_end: {}", e.name, err);
+                    e.degraded.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+            }
+        }
+        summary
+    }
+
+    fn filter_entries(&self) -> impl Iterator<Item = &Entry> {
+        self.entries.iter().filter(|e| {
+            let p = e.plugin.lock().unwrap();
+            p.manifest().capabilities_required.iter().any(|c| c == tkr_api::capability::STDOUT_FILTER)
+        })
+    }
 }
 
 #[cfg(test)]
@@ -233,5 +298,59 @@ mod tests {
         // Only "b" recorded a start because "a"'s on_start returned Err before pushing.
         assert!(observed.contains(&"start:b".to_string()));
         assert!(!observed.contains(&"start:a".to_string()));
+    }
+}
+
+#[cfg(test)]
+mod tests_filters {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use crate::host::vault::store::{MemStore, Store};
+    use std::sync::Arc;
+    use tkr_api::plugin::{CommandCtx, FilterDecision, Plugin};
+
+    struct DropAll(Arc<AtomicUsize>);
+
+    impl Plugin for DropAll {
+        fn manifest(&self) -> tkr_api::manifest::Manifest {
+            tkr_api::manifest::Manifest {
+                name: "drop".into(),
+                version: "0".into(),
+                capabilities_required: vec![tkr_api::capability::STDOUT_FILTER.into()],
+                ..Default::default()
+            }
+        }
+        fn on_load(&mut self, _h: &dyn tkr_api::host::Host) -> tkr_api::Result<()> { Ok(()) }
+        fn on_line(&mut self, _line: &str, _ctx: &CommandCtx) -> tkr_api::Result<FilterDecision> {
+            self.0.fetch_add(1, Ordering::Relaxed);
+            Ok(FilterDecision::Suppress)
+        }
+        fn on_command_end(&mut self, _ctx: &CommandCtx) -> tkr_api::Result<String> {
+            Ok(format!("dropped {}\n", self.0.load(Ordering::Relaxed)))
+        }
+    }
+
+    fn fresh_reg() -> (PluginRegistry, Arc<crate::host::vault::HostVault>) {
+        let store: Arc<dyn Store> = Arc::new(MemStore::default());
+        let v = crate::host::vault::HostVault::new(store, [9u8; 32]);
+        v.unseal_full();
+        let v = Arc::new(v);
+        let reg = PluginRegistry::new(v.clone(), Arc::new(InProcBus::new()));
+        (reg, v)
+    }
+
+    #[test]
+    fn run_filters_suppress() {
+        let (mut reg, _v) = fresh_reg();
+        let count = Arc::new(AtomicUsize::new(0));
+        let mut caps = tkr_api::capability::CapSet::default();
+        caps.grant(tkr_api::capability::STDOUT_FILTER);
+        reg.grant("drop", caps);
+        reg.register(Box::new(DropAll(count.clone()))).unwrap();
+        reg.load_all().unwrap();
+        let ctx = CommandCtx { command: "git".into(), args: "status".into(), line_index: 0 };
+        assert!(reg.run_filters_line("noisy".into(), &ctx).is_none());
+        let summary = reg.filters_command_end(&ctx);
+        assert!(summary.contains("dropped 1"));
     }
 }
