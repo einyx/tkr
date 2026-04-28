@@ -14,6 +14,7 @@ pub use manifest::SensitivityClass;
 pub mod capability;
 pub mod bus;
 pub mod vault;
+pub mod handles;
 // Re-export every other public symbol that legacy.rs defines so that
 // existing consumers compile without changes.
 pub use legacy::Plugin;
