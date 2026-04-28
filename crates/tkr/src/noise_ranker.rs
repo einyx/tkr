@@ -53,9 +53,119 @@ impl NoiseRanker for ShapeRanker {
     }
 }
 
+/// Reciprocal Rank Fusion: combine rankings from multiple `NoiseRanker`s into
+/// a single ranked list. Robust to scale differences between ranker scores —
+/// only positions matter. Standard formula: `score(c) = Σ 1/(k + rank_i(c))`.
+///
+/// Candidates are merged by `(command, signature)`. When the same key appears
+/// in multiple sources, occurrences/total_chars are taken from the source with
+/// the larger count, and `source` is set to "rrf".
+pub struct RrfCombiner {
+    pub k: f64,
+}
+
+impl Default for RrfCombiner {
+    fn default() -> Self {
+        // k=60 is the canonical value from the original RRF paper.
+        Self { k: 60.0 }
+    }
+}
+
+impl RrfCombiner {
+    pub fn fuse(&self, rankings: Vec<Vec<RankedCandidate>>) -> Vec<RankedCandidate> {
+        let mut scored: HashMap<(String, String), (RankedCandidate, f64)> = HashMap::new();
+
+        for ranking in &rankings {
+            for (rank, c) in ranking.iter().enumerate() {
+                let key = (c.command.clone(), c.signature.clone());
+                let contribution = 1.0 / (self.k + rank as f64 + 1.0);
+                let entry = scored.entry(key).or_insert_with(|| (c.clone(), 0.0));
+                // Merge: keep the candidate with the larger occurrence count.
+                if c.occurrences > entry.0.occurrences {
+                    let prev_score = entry.1;
+                    entry.0 = c.clone();
+                    entry.1 = prev_score;
+                }
+                entry.1 += contribution;
+            }
+        }
+
+        let mut fused: Vec<(RankedCandidate, f64)> = scored.into_values().collect();
+        fused.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        fused
+            .into_iter()
+            .map(|(mut c, _)| {
+                c.source = "rrf";
+                c
+            })
+            .collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn cand(cmd: &str, sig: &str, occ: u64, chars: u64) -> RankedCandidate {
+        RankedCandidate {
+            command: cmd.into(),
+            signature: sig.into(),
+            sample: format!("{} sample", sig),
+            occurrences: occ,
+            total_chars: chars,
+            source: "test",
+        }
+    }
+
+    #[test]
+    fn rrf_merges_overlapping_candidates() {
+        let a = vec![
+            cand("git", "alpha", 5, 500),
+            cand("git", "beta", 3, 300),
+        ];
+        let b = vec![
+            cand("git", "beta", 4, 400),
+            cand("git", "alpha", 2, 200),
+            cand("git", "gamma", 6, 600),
+        ];
+        let fused = RrfCombiner::default().fuse(vec![a, b]);
+        assert!(fused.iter().any(|c| c.signature == "alpha"));
+        assert!(fused.iter().any(|c| c.signature == "beta"));
+        assert!(fused.iter().any(|c| c.signature == "gamma"));
+        // alpha+beta both score from two rankers, gamma only from one.
+        // alpha is rank 0 in a and rank 1 in b → highest combined score.
+        assert_eq!(fused[0].signature, "alpha");
+    }
+
+    #[test]
+    fn rrf_picks_higher_occurrence_data() {
+        let a = vec![cand("git", "x", 5, 500)];
+        let b = vec![cand("git", "x", 10, 1000)];
+        let fused = RrfCombiner::default().fuse(vec![a, b]);
+        assert_eq!(fused.len(), 1);
+        assert_eq!(fused[0].occurrences, 10);
+        assert_eq!(fused[0].total_chars, 1000);
+        assert_eq!(fused[0].source, "rrf");
+    }
+
+    #[test]
+    fn rrf_empty_inputs_ok() {
+        let fused = RrfCombiner::default().fuse(vec![]);
+        assert!(fused.is_empty());
+    }
+
+    #[test]
+    fn rrf_single_ranker_passthrough_order() {
+        let single = vec![
+            cand("git", "a", 5, 500),
+            cand("git", "b", 3, 300),
+            cand("git", "c", 2, 200),
+        ];
+        let fused = RrfCombiner::default().fuse(vec![single]);
+        assert_eq!(fused[0].signature, "a");
+        assert_eq!(fused[1].signature, "b");
+        assert_eq!(fused[2].signature, "c");
+    }
 
     #[test]
     fn groups_same_shape_lines() {
