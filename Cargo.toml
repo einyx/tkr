@@ -19,6 +19,12 @@ chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
 libloading = "0.8"
 ureq = { version = "2", features = ["json"] }
+age = "0.10"
+keyring = "3"
+schemars = "0.8"
+jsonschema = "0.18"
+hex = "0.4"
+zeroize = { version = "1.7", features = ["zeroize_derive"] }
 
 [profile.release]
 opt-level = 3
