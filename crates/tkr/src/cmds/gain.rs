@@ -1,7 +1,7 @@
 use crate::util::fmt_num;
 use anyhow::Result;
 use std::io::IsTerminal;
-use tkr_analytics::{AnalyticsStore, SavingsRow};
+use tkr_analytics::SavingsRow;
 
 const RESET: &str = "\x1b[0m";
 const BOLD: &str = "\x1b[1m";
@@ -40,16 +40,14 @@ impl Style {
 }
 
 pub fn run(breakdown: bool, sort: &str, plain: bool) -> Result<()> {
-    let home = dirs::home_dir().unwrap_or_default();
-    let db_path = home.join(".tkr/analytics.db");
-
-    if !db_path.exists() {
-        println!("No analytics data yet. Run some commands with tkr first.");
-        return Ok(());
-    }
-
-    let store = AnalyticsStore::open(db_path.to_str().unwrap_or(":memory:"))?;
-    let mut rows = store.total_savings()?;
+    let host_handle = crate::host::boot::get_host();
+    let analytics_host = crate::host::RealHost::new(
+        "tkr-analytics",
+        host_handle.vault.clone(),
+        host_handle.bus.clone(),
+    );
+    let mut rows = tkr_analytics::total_savings_via_host(&analytics_host)
+        .unwrap_or_default();
     if rows.is_empty() {
         println!("No analytics data yet. Run some commands with tkr first.");
         return Ok(());

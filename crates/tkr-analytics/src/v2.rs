@@ -414,6 +414,71 @@ pub fn record_noise_signature_via_host(
     Ok(())
 }
 
+// ── Read-side helpers usable without a plugin instance ───────────────────────
+
+/// Read all command_stats rows from the vault sqlite, returning them as
+/// `SavingsRow` values. Characters are divided by 4 to approximate tokens
+/// (same conversion as the legacy `AnalyticsStore::total_savings`).
+///
+/// Returns an empty `Vec` if no rows exist or the host cannot open sqlite.
+pub fn total_savings_via_host(host: &dyn Host) -> ApiResult<Vec<crate::SavingsRow>> {
+    let db = host.sqlite(SCHEMA_SQL, SensitivityClass::Public)?;
+    let rows = db.query(SELECT_ALL_SQL, &[])?;
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let command = row.get(0).and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let chars_in = row.get(1).and_then(|v| v.as_i64()).unwrap_or(0).max(0) as u64;
+            let chars_saved = row.get(2).and_then(|v| v.as_i64()).unwrap_or(0).max(0) as u64;
+            let runs = row.get(3).and_then(|v| v.as_i64()).unwrap_or(0).max(0) as u64;
+            crate::SavingsRow {
+                command,
+                tokens_in: chars_in / 4,
+                tokens_saved: chars_saved / 4,
+                runs,
+            }
+        })
+        .collect())
+}
+
+/// Read the top noise signatures from the vault sqlite. Only rows with at least
+/// `min_occurrences` occurrences and at least `min_chars` total characters are
+/// returned, sorted by `total_chars DESC`.
+pub fn top_noise_signatures_via_host(
+    host: &dyn Host,
+    min_occurrences: u64,
+    min_chars: u64,
+) -> ApiResult<Vec<crate::NoiseRow>> {
+    let db = host.sqlite(SCHEMA_SQL, SensitivityClass::Public)?;
+    let rows = db.query(
+        "SELECT command, signature, sample, occurrences, total_chars
+         FROM noise_signatures
+         WHERE occurrences >= ?1 AND total_chars >= ?2
+         ORDER BY total_chars DESC",
+        &[
+            serde_json::json!(min_occurrences as i64),
+            serde_json::json!(min_chars as i64),
+        ],
+    )?;
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let command = row.get(0).and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let signature = row.get(1).and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let sample = row.get(2).and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let occurrences = row.get(3).and_then(|v| v.as_i64()).unwrap_or(0).max(0) as u64;
+            let total_chars = row.get(4).and_then(|v| v.as_i64()).unwrap_or(0).max(0) as u64;
+            crate::NoiseRow {
+                command,
+                signature,
+                sample,
+                occurrences,
+                total_chars,
+            }
+        })
+        .collect())
+}
+
 // ── Legacy migration ──────────────────────────────────────────────────────────
 
 /// Import rows from `~/.tkr/analytics.db` into the vault sqlite, then rename
@@ -698,5 +763,33 @@ mod tests {
         assert!(migrated.exists(), "migrated sentinel file should exist");
 
         unsafe { std::env::remove_var("HOME"); }
+    }
+
+    /// `total_savings_via_host` must return Ok with an empty vec when the host
+    /// sqlite has no rows (TestSqlite always returns empty query results).
+    #[cfg(feature = "test-host")]
+    #[test]
+    fn total_savings_via_host_returns_empty_on_fresh_db() {
+        let host: Arc<dyn Host + 'static> = make_test_host();
+        let rows = super::total_savings_via_host(host.as_ref()).unwrap();
+        assert!(
+            rows.is_empty(),
+            "expected empty rows from fresh db; got {:?}",
+            rows.iter().map(|r| &r.command).collect::<Vec<_>>()
+        );
+    }
+
+    /// `top_noise_signatures_via_host` must return Ok with an empty vec when
+    /// the host sqlite has no rows.
+    #[cfg(feature = "test-host")]
+    #[test]
+    fn top_noise_signatures_via_host_returns_empty_on_fresh_db() {
+        let host: Arc<dyn Host + 'static> = make_test_host();
+        let rows = super::top_noise_signatures_via_host(host.as_ref(), 5, 100).unwrap();
+        assert!(
+            rows.is_empty(),
+            "expected empty noise rows; got {} rows",
+            rows.len()
+        );
     }
 }

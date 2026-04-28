@@ -8,7 +8,6 @@ use crate::signature::signature_to_regex;
 use crate::util::fmt_num;
 use anyhow::Result;
 use std::path::PathBuf;
-use tkr_analytics::AnalyticsStore;
 
 const RESET: &str = "\x1b[0m";
 const BOLD: &str = "\x1b[1m";
@@ -18,28 +17,22 @@ const YELLOW: &str = "\x1b[33m";
 const RED: &str = "\x1b[31m";
 
 pub fn run() -> Result<()> {
-    // Lazy: persist embeddings for any noise signatures missing them, so the
-    // vault accumulates a vector index across sessions. No-op without the
-    // `embeddings` cargo feature.
     let host_handle = crate::host::boot::get_host();
     let analytics_host = crate::host::RealHost::new(
         "tkr-analytics",
         host_handle.vault.clone(),
         host_handle.bus.clone(),
     );
+    // Lazy: persist embeddings for any noise signatures missing them, so the
+    // vault accumulates a vector index across sessions. No-op without the
+    // `embeddings` cargo feature.
     let new_embeds = crate::embedding_ranker::embed_pending_signatures(&analytics_host, 256);
     if new_embeds > 0 {
         eprintln!("tkr suggest: embedded {new_embeds} new noise signatures into the vault");
     }
 
-    let home = dirs::home_dir().unwrap_or_default();
-    let db_path = home.join(".tkr/analytics.db");
-    if !db_path.exists() {
-        println!("No analytics yet. Run some commands first to generate data.");
-        return Ok(());
-    }
-    let store = AnalyticsStore::open(db_path.to_str().unwrap_or(":memory:"))?;
-    let mut rows = store.total_savings()?;
+    let mut rows = tkr_analytics::total_savings_via_host(&analytics_host)
+        .unwrap_or_default();
     if rows.is_empty() {
         println!("No analytics rows yet.");
         return Ok(());
@@ -140,7 +133,7 @@ pub fn run() -> Result<()> {
         );
     }
 
-    print_noise_section(&store, on)?;
+    print_noise_section(&analytics_host, on)?;
 
     println!();
     println!(
@@ -152,9 +145,10 @@ pub fn run() -> Result<()> {
     Ok(())
 }
 
-fn print_noise_section(store: &AnalyticsStore, on: bool) -> Result<()> {
+fn print_noise_section(host: &dyn tkr_api::host::Host, on: bool) -> Result<()> {
     let p = |c: &'static str| if on { c } else { "" };
-    let rows = store.top_noise_signatures(5, 100)?;
+    let rows = tkr_analytics::top_noise_signatures_via_host(host, 5, 100)
+        .unwrap_or_default();
     if rows.is_empty() {
         return Ok(());
     }

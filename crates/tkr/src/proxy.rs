@@ -96,15 +96,7 @@ pub fn run(cfg: Config, args: &[String]) -> Result<()> {
     let tokens_saved = chars_to_tokens(result.chars_suppressed);
     sess.command_end(tokens_in, tokens_saved);
 
-    // Flush the per-run signature buffer into the legacy analytics store so
-    // `tkr gain` (which reads the legacy DB) continues to work.
-    // Analytics savings are also recorded via AnalyticsPluginV2 in the v2 registry
-    // (via on_command_end above), but that DB is vault-backed. The legacy
-    // analytics.db path is kept alive for `tkr gain` until we migrate that command.
-    let db_path = &cfg.plugins.analytics.db_path;
-    if let Some(parent) = std::path::Path::new(db_path).parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
+    // Flush the per-run signature buffer into the vault-backed analytics store.
     let subcmd = first_positional(cmd_args);
     let cmd_name = std::path::Path::new(cmd.as_str())
         .file_name()
@@ -125,21 +117,6 @@ pub fn run(cfg: Config, args: &[String]) -> Result<()> {
         for (_buf_cmd, sig, entry) in &buf {
             let _ = tkr_analytics::record_noise_signature_via_host(
                 &analytics_host,
-                &key,
-                sig,
-                &entry.sample,
-                entry.occurrences,
-                entry.total_chars,
-            );
-        }
-    }
-
-    // Legacy plaintext write (kept for `tkr gain` until that command is
-    // pivoted to read from the vault — drop after the pivot).
-    if let Ok(store) = tkr_analytics::AnalyticsStore::open(db_path) {
-        let _ = store.record(cmd_name, subcmd, result.chars_in, result.chars_suppressed);
-        for (_buf_cmd, sig, entry) in &buf {
-            let _ = store.record_signature(
                 &key,
                 sig,
                 &entry.sample,
