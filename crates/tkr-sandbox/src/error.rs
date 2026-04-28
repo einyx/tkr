@@ -11,3 +11,13 @@ pub enum SandboxError {
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn formats_policy_violation() {
+        let e = SandboxError::PolicyViolation("write to /etc denied".into());
+        assert_eq!(format!("{}", e), "policy violation: write to /etc denied");
+    }
+}
