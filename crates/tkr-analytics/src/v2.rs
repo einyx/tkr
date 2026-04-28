@@ -232,6 +232,37 @@ impl Plugin for AnalyticsPluginV2 {
     }
 }
 
+// ── Free functions usable without an instance (called by orchestrator) ──────
+
+/// Persist a noise signature into the vault sqlite using any `Host` impl.
+/// Lets non-plugin code (proxy::run) write learning data directly.
+pub fn record_noise_signature_via_host(
+    host: &dyn Host,
+    command: &str,
+    signature: &str,
+    sample: &str,
+    occurrences: u64,
+    total_chars: u64,
+) -> ApiResult<()> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let db = host.sqlite(SCHEMA_SQL, SensitivityClass::Public)?;
+    db.execute(
+        NOISE_UPSERT_SQL,
+        &[
+            json!(command),
+            json!(signature),
+            json!(sample),
+            json!(occurrences as i64),
+            json!(total_chars as i64),
+            json!(now),
+        ],
+    )?;
+    Ok(())
+}
+
 // ── Legacy migration ──────────────────────────────────────────────────────────
 
 /// Import rows from `~/.tkr/analytics.db` into the vault sqlite, then rename

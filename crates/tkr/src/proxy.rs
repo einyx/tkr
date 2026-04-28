@@ -105,20 +105,43 @@ pub fn run(cfg: Config, args: &[String]) -> Result<()> {
     if let Some(parent) = std::path::Path::new(db_path).parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    if let Ok(store) = tkr_analytics::AnalyticsStore::open(db_path) {
-        let subcmd = first_positional(cmd_args);
-        let cmd_name = std::path::Path::new(cmd.as_str())
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or(cmd.as_str());
-        let _ = store.record(cmd_name, subcmd, result.chars_in, result.chars_suppressed);
+    let subcmd = first_positional(cmd_args);
+    let cmd_name = std::path::Path::new(cmd.as_str())
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(cmd.as_str());
+    let key = format!("{cmd_name} {subcmd}").trim().to_string();
+    let buf = crate::stream::take_signature_buffer();
 
-        // Flush the per-run signature buffer into the noise table.
-        let key = format!("{cmd_name} {subcmd}").trim().to_string();
-        for (_buf_cmd, sig, entry) in crate::stream::take_signature_buffer() {
+    // Vault-backed write (preferred): each new noise signature lands in the
+    // encrypted analytics-v2 sqlite namespace.
+    {
+        let host_handle = crate::host::boot::get_host();
+        let analytics_host = crate::host::RealHost::new(
+            "tkr-analytics",
+            host_handle.vault.clone(),
+            host_handle.bus.clone(),
+        );
+        for (_buf_cmd, sig, entry) in &buf {
+            let _ = tkr_analytics::record_noise_signature_via_host(
+                &analytics_host,
+                &key,
+                sig,
+                &entry.sample,
+                entry.occurrences,
+                entry.total_chars,
+            );
+        }
+    }
+
+    // Legacy plaintext write (kept for `tkr gain` until that command is
+    // pivoted to read from the vault — drop after the pivot).
+    if let Ok(store) = tkr_analytics::AnalyticsStore::open(db_path) {
+        let _ = store.record(cmd_name, subcmd, result.chars_in, result.chars_suppressed);
+        for (_buf_cmd, sig, entry) in &buf {
             let _ = store.record_signature(
                 &key,
-                &sig,
+                sig,
                 &entry.sample,
                 entry.occurrences,
                 entry.total_chars,

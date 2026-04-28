@@ -119,22 +119,24 @@ mod tests {
 
     #[test]
     fn rrf_merges_overlapping_candidates() {
+        // alpha appears at rank 0 in BOTH rankings (unambiguous winner).
+        // beta appears at rank 1 in both. gamma only appears in b.
         let a = vec![
             cand("git", "alpha", 5, 500),
             cand("git", "beta", 3, 300),
         ];
         let b = vec![
-            cand("git", "beta", 4, 400),
             cand("git", "alpha", 2, 200),
+            cand("git", "beta", 4, 400),
             cand("git", "gamma", 6, 600),
         ];
         let fused = RrfCombiner::default().fuse(vec![a, b]);
         assert!(fused.iter().any(|c| c.signature == "alpha"));
         assert!(fused.iter().any(|c| c.signature == "beta"));
         assert!(fused.iter().any(|c| c.signature == "gamma"));
-        // alpha+beta both score from two rankers, gamma only from one.
-        // alpha is rank 0 in a and rank 1 in b → highest combined score.
-        assert_eq!(fused[0].signature, "alpha");
+        assert_eq!(fused[0].signature, "alpha"); // best position in both
+        assert_eq!(fused[1].signature, "beta");  // second in both
+        assert_eq!(fused[2].signature, "gamma"); // only in one ranker
     }
 
     #[test]

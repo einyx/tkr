@@ -1,5 +1,5 @@
 pub mod v2;
-pub use v2::AnalyticsPluginV2;
+pub use v2::{AnalyticsPluginV2, record_noise_signature_via_host};
 
 use anyhow::Result;
 use rusqlite::{params, Connection};
