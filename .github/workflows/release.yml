@@ -57,6 +57,47 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: cargo build --release -p tkr --target "$TARGET"
 
+      - name: Import Apple Developer ID
+        if: contains(matrix.target, 'apple-darwin') && env.APPLE_CERT_P12_BASE64 != ''
+        env:
+          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.APPLE_CERT_KEYCHAIN_PASSWORD || 'temp-build-pwd' }}
+        run: |
+          set -euo pipefail
+          echo "$APPLE_CERT_P12_BASE64" | base64 --decode > /tmp/cert.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -lut 7200 build.keychain
+          security import /tmp/cert.p12 -k build.keychain \
+            -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          rm /tmp/cert.p12
+          security find-identity -v -p codesigning build.keychain
+
+      - name: Sign macOS binary
+        if: contains(matrix.target, 'apple-darwin')
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          BIN="target/${TARGET}/release/tkr"
+          IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
+            | grep "Developer ID Application" \
+            | head -1 \
+            | sed -E 's/^[[:space:]]*[0-9]+\)[[:space:]]+([A-F0-9]{40}).*/\1/' || true)
+          if [ -n "$IDENTITY" ]; then
+            codesign --force --sign "$IDENTITY" \
+              --options runtime --timestamp "$BIN"
+            codesign --verify --verbose=2 "$BIN"
+            codesign -dvv "$BIN" 2>&1 | head -10
+          else
+            echo "::warning::No Developer ID Application identity found; binary remains ad-hoc signed"
+            codesign --force --sign - "$BIN"
+          fi
+
       - name: Package
         env:
           TARGET: ${{ matrix.target }}
