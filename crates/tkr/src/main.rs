@@ -19,13 +19,28 @@ use std::io::IsTerminal;
 
 fn clean_stats(yes: bool) -> anyhow::Result<()> {
     let home = dirs::home_dir().unwrap_or_default();
-    let db = home.join(".tkr/analytics.db");
-    if !db.exists() {
-        println!("No analytics database to clean.");
+    let legacy_db = home.join(".tkr/analytics.db");
+    let migrated_db = home.join(".tkr/analytics.db.migrated");
+    let vault_dir = home.join(".tkr/vault");
+
+    let mut targets: Vec<std::path::PathBuf> = Vec::new();
+    for p in [&legacy_db, &migrated_db, &vault_dir] {
+        if p.exists() {
+            targets.push(p.clone());
+        }
+    }
+
+    if targets.is_empty() {
+        println!("Nothing to clean.");
         return Ok(());
     }
+
     if !yes && std::io::stdin().is_terminal() {
-        eprint!("Delete {}? [y/N] ", db.display());
+        eprintln!("Will remove:");
+        for p in &targets {
+            eprintln!("  {}", p.display());
+        }
+        eprint!("Continue? [y/N] ");
         use std::io::Write;
         let _ = std::io::stderr().flush();
         let mut answer = String::new();
@@ -35,8 +50,18 @@ fn clean_stats(yes: bool) -> anyhow::Result<()> {
             return Ok(());
         }
     }
-    std::fs::remove_file(&db)?;
-    println!("Removed {}.", db.display());
+
+    for p in &targets {
+        let r = if p.is_dir() {
+            std::fs::remove_dir_all(p)
+        } else {
+            std::fs::remove_file(p)
+        };
+        match r {
+            Ok(_) => println!("Removed {}.", p.display()),
+            Err(e) => eprintln!("Failed to remove {}: {e}", p.display()),
+        }
+    }
     Ok(())
 }
 
