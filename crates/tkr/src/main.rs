@@ -52,6 +52,7 @@ fn main() -> anyhow::Result<()> {
             Ok(())
         }
         Some(Commands::CleanStats { yes }) => clean_stats(yes),
+        Some(Commands::Install) => cmds::install::run(),
         None => {
             if cli.passthrough.is_empty() {
                 eprintln!("Usage: tkr <command> [args...] or tkr --help");

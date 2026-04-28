@@ -54,6 +54,8 @@ pub enum Commands {
         #[arg(long)]
         yes: bool,
     },
+    /// Install the tkr Claude Code Bash hook into ~/.claude/settings.json.
+    Install,
 }
 
 #[derive(Subcommand, Debug)]

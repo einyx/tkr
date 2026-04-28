@@ -83,15 +83,40 @@ pub fn strip_ansi(input: &str) -> String {
     out
 }
 
+/// Default cap on a single line's length. Prevents one obnoxious base64/minified
+/// blob from blowing context. Past this, line is truncated with an elision marker.
+const MAX_LINE_LEN: usize = 800;
+
 /// Universal per-line preprocessing applied before any plugin sees the line:
 ///   1. Strip ANSI escape sequences (saves all the tokens of color codes)
 ///   2. Shorten $HOME paths to `~` (saves ~15-25 chars on every error/trace line)
 ///   3. Trim trailing whitespace (lossless)
+///   4. Truncate excessively long single lines
 pub fn normalize_line(raw: &str) -> String {
     let s = strip_ansi(raw);
     let s = shorten_home(&s);
     let s = s.trim_end();
-    s.to_string()
+    truncate_long_line(s)
+}
+
+fn truncate_long_line(s: &str) -> String {
+    if s.len() <= MAX_LINE_LEN {
+        return s.to_string();
+    }
+    let elided = s.len() - MAX_LINE_LEN;
+    // Use chars() to avoid mid-codepoint truncation.
+    let mut head = String::with_capacity(MAX_LINE_LEN + 24);
+    let mut taken = 0usize;
+    for c in s.chars() {
+        let w = c.len_utf8();
+        if taken + w > MAX_LINE_LEN {
+            break;
+        }
+        head.push(c);
+        taken += w;
+    }
+    head.push_str(&format!(" … (+{} chars truncated)", elided));
+    head
 }
 
 /// Replace occurrences of $HOME with `~` so `/Users/alice/proj/foo` → `~/proj/foo`.
