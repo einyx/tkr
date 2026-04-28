@@ -53,16 +53,26 @@ tkr watch
 tkr gain --breakdown</code></pre>
 
 <h2>Real measurements</h2>
-<p>Benchmark on this repo's working tree:</p>
-<pre><code>cargo test --workspace   97.6%  saved
+<p>Per-command savings on real output:</p>
+<pre><code>cargo test --workspace   97.7%
 cargo check (cold)       86.3%
 cargo build (cold)       86.3%
 cargo tree -p tkr        85.0%
-git log -20              12.7%
-git diff HEAD~1          11.4%
-git status               10.0%
+git log --pretty=fuller  20.0%
+git diff HEAD~2          13.3%
+ls -laR                  13.3%
+git status               10.0%</code></pre>
 
-aggregate                57.5%  (4593 / 7970 tokens)</code></pre>
+<h2>Coverage — 79 tools out of the box</h2>
+<p>Languages &amp; build:&nbsp; <code>cargo</code> · <code>go</code> · <code>swift</code> · <code>dotnet</code> · <code>mix</code> · <code>maven</code> · <code>gradle</code> · <code>make</code> · <code>cmake</code> · <code>bazel</code> · <code>ninja</code> · <code>composer</code> · <code>turbo</code></p>
+<p>Test runners:&nbsp; <code>cargo test</code> · <code>nextest</code> · <code>jest</code> · <code>vitest</code> · <code>pytest</code> · <code>rspec</code> · <code>phpunit</code> · <code>tox</code> · <code>nox</code> · <code>go test</code></p>
+<p>Web bundlers / dev:&nbsp; <code>next</code> · <code>vite</code> · <code>webpack</code> · <code>esbuild</code></p>
+<p>Linters / formatters:&nbsp; <code>eslint</code> · <code>biome</code> · <code>ruff</code> · <code>black</code> · <code>mypy</code> · <code>rubocop</code> · <code>prettier</code></p>
+<p>Package managers:&nbsp; <code>npm</code> · <code>pnpm</code> · <code>yarn</code> · <code>pip</code> · <code>poetry</code> · <code>conda</code> · <code>bundle</code> · <code>brew</code> · <code>apt</code> · <code>nix</code></p>
+<p>Cloud / DevOps:&nbsp; <code>docker</code> · <code>kubectl</code> · <code>helm</code> · <code>terraform</code> · <code>pulumi</code> · <code>ansible</code> · <code>packer</code> · <code>vault</code> · <code>aws</code> · <code>gcloud</code> · <code>minikube</code> · <code>skaffold</code> · <code>flyctl</code> · <code>heroku</code> · <code>sst</code></p>
+<p>Network &amp; system:&nbsp; <code>curl</code> · <code>wget</code> · <code>ssh</code> · <code>rsync</code> · <code>nmap</code> · <code>tcpdump</code> · <code>openssl</code> · <code>systemctl</code> · <code>journalctl</code> · <code>ps</code> · <code>df</code> · <code>du</code> · <code>ip</code> · <code>rg</code></p>
+<p>Databases:&nbsp; <code>psql</code> · <code>redis-cli</code></p>
+<p>Git:&nbsp; <code>git status / log / diff / show / commit</code> with author-collapse</p>
 
 <h2>Source</h2>
 <p><a href="https://github.com/einyx/tkr">github.com/einyx/tkr</a></p>
