@@ -59,6 +59,7 @@ mod tests {
             output_tokens_total: 50,
             raw_bytes_total: raw,
             filtered_bytes_total: filt,
+            messages: vec![],
         }
     }
 

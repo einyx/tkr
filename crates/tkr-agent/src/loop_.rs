@@ -13,6 +13,7 @@ pub struct RunOutcome {
     pub output_tokens_total: u32,
     pub raw_bytes_total: usize,
     pub filtered_bytes_total: usize,
+    pub messages: Vec<Message>,
 }
 
 pub fn run(
@@ -58,6 +59,7 @@ pub fn run(
                     output_tokens_total,
                     raw_bytes_total,
                     filtered_bytes_total,
+                    messages,
                 });
             }
             StopReason::ToolUse => {
@@ -91,6 +93,7 @@ pub fn run(
         output_tokens_total,
         raw_bytes_total,
         filtered_bytes_total,
+        messages,
     })
 }
 
