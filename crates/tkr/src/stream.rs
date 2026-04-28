@@ -344,6 +344,10 @@ where
     let mut emitted_chars: u64 = 0;
     let mut budget_exceeded = false;
     let mut elided_lines: u64 = 0;
+    // Buffered mode: defer all stdout writes until end-of-pipeline so we can
+    // try to compact the whole output as JSON. Triggered by --compact-json
+    // (wired via TKR_COMPACT_JSON env from main.rs).
+    let buffered = std::env::var_os("TKR_COMPACT_JSON").is_some();
 
     for (index, line_result) in lines.enumerate() {
         let raw = match line_result {
@@ -437,7 +441,9 @@ where
         }
 
         record_emit(command, &current);
-        println!("{current}");
+        if !buffered {
+            println!("{current}");
+        }
         emitted.push(current);
     }
 
@@ -447,22 +453,63 @@ where
             elided_lines,
             max_tokens.unwrap_or(0)
         );
-        println!("{}", msg);
+        if !buffered {
+            println!("{}", msg);
+        }
         emitted.push(msg);
     }
+
+    // Capture the body length before plugin flush summaries are appended so
+    // JSON compaction sees only the original output.
+    let body_end = emitted.len();
 
     // Flush legacy semantic plugin summaries.
     for plugin in semantic_chain.iter_mut() {
         let summary = plugin.flush();
         if !summary.is_empty() {
             for summary_line in summary.lines() {
-                println!("{summary_line}");
+                if !buffered {
+                    println!("{summary_line}");
+                }
                 emitted.push(summary_line.to_string());
             }
         }
     }
 
+    if buffered {
+        let body = emitted[..body_end].join("\n");
+        let summaries = if emitted.len() > body_end {
+            emitted[body_end..].join("\n")
+        } else {
+            String::new()
+        };
+        let final_body = compact_json_if_possible(&body).unwrap_or(body.clone());
+        if final_body.len() < body.len() {
+            chars_suppressed += (body.len() - final_body.len()) as u64;
+        }
+        println!("{final_body}");
+        if !summaries.is_empty() {
+            println!("{summaries}");
+        }
+    }
+
     PipelineResult { emitted, chars_in, chars_suppressed }
+}
+
+/// If `body` parses as a JSON document, re-serialize it without indentation
+/// and return the compact form. Otherwise return None so the caller can emit
+/// the buffered text unchanged.
+fn compact_json_if_possible(body: &str) -> Option<String> {
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let first = trimmed.as_bytes()[0];
+    if first != b'{' && first != b'[' {
+        return None;
+    }
+    let value: serde_json::Value = serde_json::from_str(trimmed).ok()?;
+    serde_json::to_string(&value).ok()
 }
 
 pub fn chars_to_tokens(chars: u64) -> u64 { chars / 4 }

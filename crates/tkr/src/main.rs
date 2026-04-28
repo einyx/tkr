@@ -171,9 +171,12 @@ fn main() -> anyhow::Result<()> {
                 eprintln!("Usage: tkr <command> [args...] or tkr --help");
                 std::process::exit(1);
             }
-            // Wire --max-tokens through env so stream.rs picks it up.
+            // Wire --max-tokens / --compact-json through env so stream.rs sees them.
             if let Some(n) = cli.max_tokens {
                 std::env::set_var("TKR_MAX_TOKENS", n.to_string());
+            }
+            if cli.compact_json {
+                std::env::set_var("TKR_COMPACT_JSON", "1");
             }
             let cfg = config::load()?;
             proxy::run(cfg, &cli.passthrough)

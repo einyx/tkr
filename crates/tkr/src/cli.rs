@@ -11,6 +11,14 @@ pub struct Cli {
     #[arg(long)]
     pub max_tokens: Option<u64>,
 
+    /// If the entire output is a JSON document, re-emit it compact (no
+    /// whitespace). Buffers stdout, parses, reserializes. Falls back to the
+    /// unchanged buffered text when the output isn't JSON. Big win on
+    /// `kubectl get -o json`, `aws describe-*`, etc.
+    /// Equivalent to `TKR_COMPACT_JSON=1`.
+    #[arg(long)]
+    pub compact_json: bool,
+
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     pub passthrough: Vec<String>,
 }
