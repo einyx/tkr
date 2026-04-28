@@ -17,8 +17,18 @@ pub fn run_sandboxed(
     if let Err(e) = policy.validate() {
         return Err(SandboxError::PolicyViolation(e));
     }
-    // Tasks 5/6 will replace this with platform-specific dispatch.
-    run_unsandboxed(command, args)
+    if policy.disabled {
+        return run_unsandboxed(command, args);
+    }
+    #[cfg(target_os = "linux")]
+    { return crate::linux::run(command, args, policy); }
+    #[cfg(target_os = "macos")]
+    { return crate::macos::run(command, args, policy); }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        let _ = (command, args);
+        Err(SandboxError::Unsupported)
+    }
 }
 
 fn run_unsandboxed(command: &str, args: &[&str]) -> Result<SandboxOutput, SandboxError> {
