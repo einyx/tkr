@@ -54,14 +54,8 @@ pub enum Commands {
         #[arg(long)]
         yes: bool,
     },
-    /// Install the tkr Claude Code Bash hook into ~/.claude/settings.json,
-    /// or with --shell, install an interactive shell integration.
-    Install {
-        /// If set, install shell integration for the named shell (currently `zsh`).
-        /// If omitted, install the Claude Code Bash hook (default).
-        #[arg(long)]
-        shell: Option<String>,
-    },
+    /// Install the tkr Claude Code Bash hook into ~/.claude/settings.json.
+    Install,
     /// Benchmark how much tkr would save on a given command.
     /// Runs raw vs filtered, compares chars/tokens, prints ratio.
     Bench {
