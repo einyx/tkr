@@ -1,0 +1,14 @@
+command = "npm"
+subcommands = ["install", "ci", "run"]
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^npm warn "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^added \\d+ packages"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*\\d+ packages are looking"

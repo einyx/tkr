@@ -1,0 +1,18 @@
+[package]
+name = "tkr-analytics"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[lib]
+name = "tkr_analytics"
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+tkr-api = { path = "../tkr-api" }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rusqlite = { version = "0.31", features = ["bundled"] }
+dirs = { workspace = true }
+chrono = { workspace = true }

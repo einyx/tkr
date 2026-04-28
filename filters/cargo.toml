@@ -1,0 +1,30 @@
+command = "cargo"
+subcommands = ["build", "check", "clippy", "test"]
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Compiling "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Downloading "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Downloaded "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Updating "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Locking "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Blocking "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Fresh "

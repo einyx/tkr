@@ -1,0 +1,18 @@
+command = "git"
+subcommands = ["status", "diff", "log", "show", "add", "commit", "push", "pull"]
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*$"
+
+[[rules]]
+type = "suppress_prefix"
+prefix = "hint:"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\(use \"git"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^no changes added to commit"

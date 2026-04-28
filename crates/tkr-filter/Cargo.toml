@@ -1,0 +1,16 @@
+[package]
+name = "tkr-filter"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[lib]
+name = "tkr_filter"
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+tkr-api = { path = "../tkr-api" }
+anyhow = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
+regex = { workspace = true }

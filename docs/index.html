@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>tkr — token-optimized CLI proxy</title>
+<meta name="description" content="Token-optimized CLI proxy for LLM development workflows. Plugin architecture, semantic deduplication, live dashboard.">
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    margin: 0; padding: 4rem 1.5rem;
+    background: #0d1117; color: #e6edf3;
+    max-width: 760px; margin-inline: auto;
+  }
+  h1 { font-size: 3rem; margin: 0 0 0.5rem; letter-spacing: -0.03em; }
+  .tag { color: #8b949e; font-size: 1.1rem; margin: 0 0 3rem; }
+  h2 { margin-top: 3rem; font-size: 1.4rem; letter-spacing: -0.01em; }
+  pre {
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    padding: 1rem 1.2rem; overflow-x: auto; font-size: 0.92rem;
+  }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #c9d1d9; }
+  a { color: #58a6ff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .feature { padding: 0.5rem 0; border-bottom: 1px solid #21262d; }
+  .feature:last-child { border-bottom: 0; }
+  .feature strong { color: #f0f6fc; }
+  footer { margin-top: 4rem; padding-top: 2rem; border-top: 1px solid #21262d; color: #6e7681; font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<h1>tkr</h1>
+<p class="tag">Token-optimized CLI proxy for LLM development workflows.</p>
+
+<p>tkr filters and compresses command output before it reaches an LLM context window. It cuts <strong>60–90%</strong> of tokens off common dev operations so your AI assistant spends its context on signal, not noise.</p>
+
+<h2>What's different</h2>
+<div class="feature"><strong>Plugin architecture.</strong> Core is thin; filters, semantic dedup, and analytics are independent plugins.</div>
+<div class="feature"><strong>Semantic deduplication.</strong> Collapses near-duplicate output lines using local embeddings (Ollama or exact-match fallback).</div>
+<div class="feature"><strong>Relevance scoring.</strong> Drops low-signal lines unrelated to the command intent.</div>
+<div class="feature"><strong>Live dashboard.</strong> <code>tkr watch</code> opens a TUI with real-time token savings.</div>
+<div class="feature"><strong>Apache-2.0.</strong> No telemetry, no upstream.</div>
+
+<h2>Install</h2>
+<pre><code>curl -fsSL https://raw.githubusercontent.com/einyx/tkr/main/install.sh | bash</code></pre>
+
+<h2>Use</h2>
+<pre><code>tkr git status
+tkr cargo test
+tkr watch
+tkr gain --breakdown</code></pre>
+
+<h2>Source</h2>
+<p><a href="https://github.com/einyx/tkr">github.com/einyx/tkr</a></p>
+
+<footer>Apache-2.0 © 2026 tkr contributors</footer>
+</body>
+</html>

@@ -1,0 +1,29 @@
+[package]
+name = "tkr"
+version = "0.1.0"
+edition = "2021"
+description = "Token-optimized CLI proxy for LLM development workflows"
+license = "Apache-2.0"
+keywords = ["cli", "llm", "token", "filter", "productivity"]
+categories = ["command-line-utilities", "development-tools"]
+build = "build.rs"
+
+[[bin]]
+name = "tkr"
+path = "src/main.rs"
+
+[dependencies]
+tkr-api = { path = "../tkr-api" }
+tkr-filter = { path = "../tkr-filter" }
+tkr-semantic = { path = "../tkr-semantic" }
+tkr-analytics = { path = "../tkr-analytics" }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+dirs = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true }
+ratatui = "0.28"
+crossterm = "0.27"
+libloading = { workspace = true }
