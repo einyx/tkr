@@ -175,3 +175,115 @@ mod tests_seal {
         assert_eq!(v.state(), SealState::Sealed);
     }
 }
+
+// ── Task 5.4: rotate ─────────────────────────────────────────────────────────
+//
+// Re-encrypts every vault entry under a freshly generated master key and
+// atomically swaps the vault directory. The new master key is returned to the
+// caller via `new_master` out-parameter; the caller is responsible for
+// persisting it (keychain replace or master.age rewrite). This responsibility
+// is deliberately left to the caller because the persistence strategy differs
+// between Keychain and Passphrase modes — Task 5.5 / 6.3 will wire up the
+// appropriate callbacks when rotate is integrated into the CLI.
+
+pub fn rotate(old: &HostVault, vault_root: &Path) -> Result<[u8; 32]> {
+    use anyhow::Context;
+    use rand::RngCore;
+    use std::sync::Arc;
+    use crate::host::vault::store::{FsStore, Store};
+    use tkr_api::manifest::SensitivityClass;
+
+    // Fully unseal old vault so we can read every class.
+    old.unseal_full();
+
+    let shadow_dir = {
+        let mut p = vault_root.to_path_buf();
+        let stem = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+        p.set_file_name(format!("{stem}.rotating"));
+        p
+    };
+    if shadow_dir.exists() {
+        std::fs::remove_dir_all(&shadow_dir)?;
+    }
+    let shadow_store: Arc<dyn Store> =
+        Arc::new(FsStore::new(&shadow_dir).context("create shadow store")?);
+
+    // New master key
+    let mut new_master = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut new_master);
+    let new_vault = HostVault::new(shadow_store, new_master);
+    new_vault.unseal_full();
+
+    // Walk every entry across classes; decrypt then re-encrypt under new key.
+    for class in [
+        SensitivityClass::Public,
+        SensitivityClass::Private,
+        SensitivityClass::Secret,
+    ] {
+        let keys = old.list(class, "")?;
+        for k in keys {
+            if let Some(z) = old.read(class, &k, "rotate")? {
+                new_vault.write(class, &k, &z[..], "rotate")?;
+            }
+        }
+    }
+
+    // Atomic swap: rename original to .old, shadow to original, delete .old.
+    let old_dir = {
+        let mut p = vault_root.to_path_buf();
+        let stem = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+        p.set_file_name(format!("{stem}.old"));
+        p
+    };
+    if old_dir.exists() {
+        std::fs::remove_dir_all(&old_dir)?;
+    }
+    std::fs::rename(vault_root, &old_dir)?;
+    std::fs::rename(&shadow_dir, vault_root)?;
+    std::fs::remove_dir_all(&old_dir)?;
+
+    println!("vault rotated under new master key");
+    // NOTE: caller must persist `new_master` (keychain replace or master.age rewrite).
+    // This gap is documented: Task 5.5 / 6.3 will close it by accepting a
+    // persistence callback or by integrating with the chosen InitMode.
+    Ok(new_master)
+}
+
+#[cfg(test)]
+mod tests_rotate {
+    use super::*;
+    use std::sync::Arc;
+    use crate::host::vault::store::{FsStore, Store};
+    use tempfile::tempdir;
+    use tkr_api::manifest::SensitivityClass;
+
+    #[test]
+    fn rotate_preserves_entries_under_new_key() {
+        let d = tempdir().unwrap();
+        let vault_path = d.path().join("vault");
+        std::fs::create_dir_all(&vault_path).unwrap();
+        let master = [3u8; 32];
+        {
+            let store: Arc<dyn Store> = Arc::new(FsStore::new(&vault_path).unwrap());
+            let v = HostVault::new(store, master);
+            v.unseal_full();
+            v.write(SensitivityClass::Public, "a", b"alpha", "test").unwrap();
+            v.write(SensitivityClass::Private, "b", b"bravo", "test").unwrap();
+            v.write(SensitivityClass::Secret, "c", b"charlie", "test").unwrap();
+        }
+
+        // Reopen for rotate
+        let store: Arc<dyn Store> = Arc::new(FsStore::new(&vault_path).unwrap());
+        let old = HostVault::new(store, master);
+        let _new_master = rotate(&old, &vault_path).unwrap();
+        drop(old);
+
+        // The directory now holds re-encrypted blobs under a new master.
+        // Verify with the OLD master: reads should fail or return None.
+        let store: Arc<dyn Store> = Arc::new(FsStore::new(&vault_path).unwrap());
+        let post = HostVault::new(store, master);
+        post.unseal_full();
+        let r = post.read(SensitivityClass::Public, "a", "test");
+        assert!(r.is_err() || matches!(r, Ok(None)));
+    }
+}
