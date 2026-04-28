@@ -227,8 +227,16 @@ fn print_aggregate_bar(s: &Style, total_in: u64, total_saved: u64) {
 }
 
 fn print_table(s: &Style, rows: &[SavingsRow], breakdown: bool) {
-    let limit = if breakdown { rows.len() } else { 10.min(rows.len()) };
-    let max_saved = rows.iter().map(|r| r.tokens_saved).max().unwrap_or(1).max(1);
+    // Default view: hide rows with 0% savings (filter has nothing to do for
+    // them anyway). --breakdown shows everything including the no-ops.
+    let visible: Vec<&SavingsRow> = if breakdown {
+        rows.iter().collect()
+    } else {
+        rows.iter().filter(|r| r.tokens_saved > 0).collect()
+    };
+    let hidden = rows.len() - visible.len();
+    let limit = if breakdown { visible.len() } else { 10.min(visible.len()) };
+    let max_saved = visible.iter().map(|r| r.tokens_saved).max().unwrap_or(1).max(1);
 
     println!();
     println!(
@@ -250,7 +258,15 @@ fn print_table(s: &Style, rows: &[SavingsRow], breakdown: bool) {
         s.p(RESET),
     );
 
-    for row in rows.iter().take(limit) {
+    if visible.is_empty() {
+        println!(
+            "  {}(no commands have measurable savings yet){}",
+            s.p(DIM),
+            s.p(RESET)
+        );
+    }
+
+    for row in visible.iter().take(limit) {
         let row_pct = ratio_pct(row.tokens_saved, row.tokens_in);
         let bar_len = ((row.tokens_saved as f64 / max_saved as f64) * 14.0).round() as usize;
         let bar_str: String = "█".repeat(bar_len);
@@ -272,12 +288,20 @@ fn print_table(s: &Style, rows: &[SavingsRow], breakdown: bool) {
         );
     }
 
-    if !breakdown && rows.len() > limit {
+    if !breakdown && (visible.len() > limit || hidden > 0) {
         println!();
+        let extra = visible.len().saturating_sub(limit);
+        let mut bits = Vec::new();
+        if extra > 0 {
+            bits.push(format!("{} more", extra));
+        }
+        if hidden > 0 {
+            bits.push(format!("{} with 0% savings", hidden));
+        }
         println!(
-            "  {}… {} more commands (use {}--breakdown{} to see all){}",
+            "  {}… {} (use {}--breakdown{} to see all){}",
             s.p(DIM),
-            rows.len() - limit,
+            bits.join(", "),
             s.p(YELLOW),
             s.p(DIM),
             s.p(RESET),

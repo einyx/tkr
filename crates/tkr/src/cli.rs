@@ -41,6 +41,12 @@ pub enum Commands {
     },
     /// Print the version.
     Version,
+    /// Erase the analytics database (savings history reset).
+    CleanStats {
+        /// Don't prompt — just delete.
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]

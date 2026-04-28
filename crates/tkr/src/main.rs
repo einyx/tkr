@@ -9,6 +9,30 @@ mod stream;
 
 use clap::Parser;
 use cli::{Cli, Commands, HookTarget};
+use std::io::IsTerminal;
+
+fn clean_stats(yes: bool) -> anyhow::Result<()> {
+    let home = dirs::home_dir().unwrap_or_default();
+    let db = home.join(".tkr/analytics.db");
+    if !db.exists() {
+        println!("No analytics database to clean.");
+        return Ok(());
+    }
+    if !yes && std::io::stdin().is_terminal() {
+        eprint!("Delete {}? [y/N] ", db.display());
+        use std::io::Write;
+        let _ = std::io::stderr().flush();
+        let mut answer = String::new();
+        std::io::stdin().read_line(&mut answer)?;
+        if !matches!(answer.trim().to_lowercase().as_str(), "y" | "yes") {
+            println!("Aborted.");
+            return Ok(());
+        }
+    }
+    std::fs::remove_file(&db)?;
+    println!("Removed {}.", db.display());
+    Ok(())
+}
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
@@ -26,6 +50,7 @@ fn main() -> anyhow::Result<()> {
             println!("tkr {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
+        Some(Commands::CleanStats { yes }) => clean_stats(yes),
         None => {
             if cli.passthrough.is_empty() {
                 eprintln!("Usage: tkr <command> [args...] or tkr --help");
