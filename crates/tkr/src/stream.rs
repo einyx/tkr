@@ -7,6 +7,60 @@ pub struct PipelineResult {
     pub chars_suppressed: u64,
 }
 
+/// Strip ANSI escape sequences (CSI / OSC) and standalone bell/backspace/CR.
+/// Iterates over chars to preserve multi-byte UTF-8 (├ ─ ✓ etc).
+pub fn strip_ansi(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            match chars.peek() {
+                Some('[') => {
+                    chars.next();
+                    // CSI: parameters then a final byte 0x40..=0x7E
+                    while let Some(&n) = chars.peek() {
+                        chars.next();
+                        if (0x40u32..=0x7e).contains(&(n as u32)) {
+                            break;
+                        }
+                    }
+                }
+                Some(']') => {
+                    chars.next();
+                    // OSC: terminated by BEL or ESC \
+                    while let Some(&n) = chars.peek() {
+                        if n == '\x07' {
+                            chars.next();
+                            break;
+                        }
+                        if n == '\x1b' {
+                            chars.next();
+                            if let Some(&'\\') = chars.peek() {
+                                chars.next();
+                            }
+                            break;
+                        }
+                        chars.next();
+                    }
+                }
+                Some(&n) if matches!(n, '(' | ')' | '*' | '+') => {
+                    chars.next();
+                    chars.next(); // consume designator char
+                }
+                _ => {
+                    // unknown escape — drop ESC, keep next as-is
+                }
+            }
+            continue;
+        }
+        if c == '\x07' || c == '\x08' || c == '\r' {
+            continue;
+        }
+        out.push(c);
+    }
+    out
+}
+
 pub fn run_pipeline<I>(lines: I, chain: &mut [Box<dyn Plugin>], command: &str, args: &str) -> PipelineResult
 where I: Iterator<Item = Result<String>>,
 {
@@ -15,12 +69,15 @@ where I: Iterator<Item = Result<String>>,
     let mut chars_suppressed: u64 = 0;
 
     for (index, line_result) in lines.enumerate() {
-        let line = match line_result {
+        let raw = match line_result {
             Ok(l) => l,
             Err(e) => { eprintln!("tkr: read error: {e}"); continue; }
         };
-        chars_in += line.len() as u64;
+        chars_in += raw.len() as u64;
 
+        // Strip ANSI escapes before any plugin sees the line — saves tokens
+        // and lets regex rules match on clean text.
+        let line = strip_ansi(&raw);
         let mut current = line.clone();
         let mut suppressed = false;
 
@@ -111,4 +168,26 @@ mod tests {
 
     #[test]
     fn tokens_approx() { assert_eq!(chars_to_tokens(400), 100); }
+
+    #[test]
+    fn strip_ansi_removes_color_codes() {
+        let input = "\x1b[1;31mERROR\x1b[0m: oops";
+        assert_eq!(strip_ansi(input), "ERROR: oops");
+    }
+
+    #[test]
+    fn strip_ansi_passes_plain_text() {
+        assert_eq!(strip_ansi("plain text"), "plain text");
+    }
+
+    #[test]
+    fn strip_ansi_drops_carriage_returns() {
+        assert_eq!(strip_ansi("progress\rdone"), "progressdone");
+    }
+
+    #[test]
+    fn strip_ansi_handles_osc_titles() {
+        let input = "\x1b]0;tab title\x07actual content";
+        assert_eq!(strip_ansi(input), "actual content");
+    }
 }

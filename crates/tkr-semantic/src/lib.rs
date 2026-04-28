@@ -34,7 +34,7 @@ impl Default for SemanticConfig {
         Self {
             dedup_threshold: 0.92,
             relevance_threshold: 0.15,
-            window_size: 50,
+            window_size: 200,
             emit_summaries: true,
             ollama_url: "http://localhost:11434".into(),
             ollama_model: "nomic-embed-text".into(),
