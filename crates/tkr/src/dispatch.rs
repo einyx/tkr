@@ -1,6 +1,6 @@
 use crate::config::Config;
 use anyhow::Result;
-use tkr_api::Plugin;
+use tkr_api::LegacyPlugin as Plugin;
 use tkr_analytics::AnalyticsPlugin;
 use tkr_filter::FilterPlugin;
 use tkr_semantic::{SemanticConfig, SemanticPlugin};

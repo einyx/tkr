@@ -1,5 +1,5 @@
 use anyhow::Result;
-use tkr_api::{FilterResult, Plugin};
+use tkr_api::{FilterResult, LegacyPlugin as Plugin};
 
 pub struct PipelineResult {
     pub emitted: Vec<String>,

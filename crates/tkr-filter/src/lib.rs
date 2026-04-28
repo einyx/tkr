@@ -3,7 +3,7 @@ mod rules;
 use anyhow::Result;
 use rules::{CompiledRule, Rule};
 use serde::Deserialize;
-use tkr_api::{FilterResult, Plugin};
+use tkr_api::{FilterResult, LegacyPlugin as Plugin};
 
 #[derive(Debug, Deserialize)]
 struct FilterDef {
