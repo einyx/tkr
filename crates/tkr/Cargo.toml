@@ -8,6 +8,10 @@ keywords = ["cli", "llm", "token", "filter", "productivity"]
 categories = ["command-line-utilities", "development-tools"]
 build = "build.rs"
 
+[lib]
+name = "tkr"
+path = "src/lib.rs"
+
 [[bin]]
 name = "tkr"
 path = "src/main.rs"
@@ -40,6 +44,8 @@ fastembed = { version = "4", optional = true }
 keyring = { workspace = true }
 rand = { workspace = true }
 age = { workspace = true }
+uuid = { version = "1", features = ["v4"] }
+hostname = "0.4"
 sha2 = { workspace = true }
 hkdf = { workspace = true }
 hex = { workspace = true }

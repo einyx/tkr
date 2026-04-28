@@ -1465,6 +1465,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "hostname"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "617aaa3557aef3810a6369d0a99fac8a080891b68bd9f9812a1eeda0c0730cbd"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "windows-link",
+]
+
+[[package]]
 name = "http"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3847,6 +3858,7 @@ dependencies = [
  "flate2",
  "hex",
  "hkdf",
+ "hostname",
  "jsonschema",
  "keyring",
  "libloading",
@@ -3867,6 +3879,7 @@ dependencies = [
  "tkr-providers",
  "tkr-semantic",
  "toml 0.8.23",
+ "uuid",
  "zeroize",
 ]
 
@@ -4312,6 +4325,7 @@ version = "1.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ddd74a9687298c6858e9b88ec8935ec45d22e8fd5e6394fa1bd4e99a87789c76"
 dependencies = [
+ "getrandom 0.4.2",
  "js-sys",
  "wasm-bindgen",
 ]
