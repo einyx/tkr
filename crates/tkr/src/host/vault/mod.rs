@@ -1,4 +1,5 @@
 pub mod age_codec;
+pub mod audit;
 pub mod keychain;
 pub mod seal;
 pub mod store;
@@ -7,12 +8,21 @@ use std::sync::{Arc, Mutex};
 use anyhow::{anyhow, Result};
 use tkr_api::manifest::SensitivityClass;
 use tkr_api::vault::{SealState, Vault as VaultTrait};
+use crate::host::vault::audit::{AuditEvent, AuditLog};
 use crate::host::vault::seal::SealStateMachine;
 use crate::host::vault::store::{MemStore, Store};
+
+fn now_ts() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
 
 pub struct HostVault {
     sm: Mutex<SealStateMachine>,
     store: Arc<dyn Store>,
+    audit: Option<AuditLog>,
 }
 
 impl HostVault {
@@ -22,15 +32,23 @@ impl HostVault {
         Self {
             sm: Mutex::new(SealStateMachine::sealed(zero)),
             store: Arc::new(MemStore::default()),
+            audit: None,
         }
     }
 
-    /// In-memory backing with auto-unseal (public class available immediately).
+    /// Store-backed vault with auto-unseal (public class available immediately).
     pub fn new(store: Arc<dyn Store>, master: [u8; 32]) -> Self {
         Self {
             sm: Mutex::new(SealStateMachine::auto_unseal(master)),
             store,
+            audit: None,
         }
+    }
+
+    /// Builder: attach an audit log to this vault.
+    pub fn with_audit(mut self, log: AuditLog) -> Self {
+        self.audit = Some(log);
+        self
     }
 
     pub fn unseal_full(&self) {
@@ -54,7 +72,6 @@ impl HostVault {
     }
 
     pub fn write(&self, class: SensitivityClass, user_key: &str, val: &[u8], actor: &str) -> Result<()> {
-        let _ = actor; // reserved for audit (Task 2.7)
         let sm = self.sm.lock().unwrap();
         let sub = sm
             .subkey(class)
@@ -62,21 +79,42 @@ impl HostVault {
         let sub = *sub;
         drop(sm);
         let ct = age_codec::encrypt(&sub, val)?;
-        self.store.put(&Self::key_for(class, user_key), &ct)
+        self.store.put(&Self::key_for(class, user_key), &ct)?;
+        if class == SensitivityClass::Secret {
+            if let Some(log) = &self.audit {
+                let _ = log.append(AuditEvent {
+                    actor: actor.to_string(),
+                    op: "write".to_string(),
+                    key: user_key.to_string(),
+                    ts: now_ts(),
+                });
+            }
+        }
+        Ok(())
     }
 
     pub fn read(&self, class: SensitivityClass, user_key: &str, actor: &str) -> Result<Option<Vec<u8>>> {
-        let _ = actor; // reserved for audit (Task 2.7)
         let sm = self.sm.lock().unwrap();
         let sub = sm
             .subkey(class)
             .ok_or_else(|| anyhow!("vault sealed for {:?}", class))?;
         let sub = *sub;
         drop(sm);
-        match self.store.get(&Self::key_for(class, user_key))? {
+        let result = match self.store.get(&Self::key_for(class, user_key))? {
             None => Ok(None),
             Some(ct) => Ok(Some(age_codec::decrypt(&sub, &ct)?)),
+        };
+        if class == SensitivityClass::Secret {
+            if let Some(log) = &self.audit {
+                let _ = log.append(AuditEvent {
+                    actor: actor.to_string(),
+                    op: "read".to_string(),
+                    key: user_key.to_string(),
+                    ts: now_ts(),
+                });
+            }
         }
+        result
     }
 
     pub fn delete(&self, class: SensitivityClass, user_key: &str) -> Result<()> {
