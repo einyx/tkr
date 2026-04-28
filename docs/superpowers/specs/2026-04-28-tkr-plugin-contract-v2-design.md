@@ -107,10 +107,15 @@ Plugin data can be sensitive (mesh signing keys, agent memory, session-log deriv
 
 ### Seal state
 
-- Cold start → **sealed**. Filter-only plugins still load and run via auto-unseal from the keychain for `public`-class storage.
-- Plugins that request `private` or `secret` storage block in `on_start` until the vault is unsealed.
-- `tkr vault status / seal / unseal / rotate` are host-owned subcommands.
-- Sealing zeroes derived keys in memory; on-disk bytes stay encrypted.
+The vault has two seal levels:
+
+- **Auto-unseal (default).** On process start, the host fetches the master key from the OS keychain and derives a subkey for `public`-class data only. Filter-only plugins and any `public`-class storage work without user action. `private` and `secret` data remain sealed.
+- **Full unseal.** `tkr unseal` derives the `private` and `secret` subkeys. Required for `private`/`secret` reads and writes. Plugins that requested those classes block in `on_start` until the user runs `tkr unseal` (or until a configured auto-unseal hook fires for trusted environments).
+- **Sealed.** `tkr seal` zeroes the `private`/`secret` subkeys in memory; auto-unseal subkey persists until process exit. On-disk bytes stay encrypted in all states.
+
+If the user opted into passphrase mode (`tkr vault init --passphrase`), there is no auto-unseal: even `public` data requires `tkr unseal` after process start.
+
+`tkr vault status / seal / unseal / rotate` are host-owned subcommands.
 
 ### Sensitivity classes
 
