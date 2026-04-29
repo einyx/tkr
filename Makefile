@@ -3,8 +3,9 @@
 CARGO   := $(HOME)/.cargo/bin/cargo
 RUSTUP  := $(HOME)/.rustup/toolchains/1.88.0-aarch64-apple-darwin/bin
 VERSION := $(shell grep -m1 '^version' crates/tkr/Cargo.toml | sed 's/.*= "\(.*\)"/\1/')
+TAP     := /opt/homebrew/Library/Taps/einyx/homebrew-tap/Formula/tkr.rb
 
-.PHONY: install build publish
+.PHONY: install build publish _bump-tap
 
 install:
 	@test -x "$(CARGO)" || (echo "error: rustup cargo not found at $(CARGO) — https://rustup.rs" >&2 && exit 1)
@@ -55,25 +56,16 @@ publish:
 	  --repo einyx/tkr --title "v$(VERSION)" --generate-notes
 
 	@echo "--> Bumping Homebrew tap"
-	@$(MAKE) _bump-tap VERSION=$(VERSION)
+	$(MAKE) _bump-tap VERSION=$(VERSION)
 
 	@echo "==> Done. Run: brew upgrade tkr"
 
-TAP := /opt/homebrew/Library/Taps/einyx/homebrew-tap/Formula/tkr.rb
 _bump-tap:
-	$(eval SHA_ARM_MAC  := $(shell cat /tmp/tkr-release-$(VERSION)/tkr-aarch64-apple-darwin.tar.gz.sha256))
-	$(eval SHA_X86_MAC  := $(shell cat /tmp/tkr-release-$(VERSION)/tkr-x86_64-apple-darwin.tar.gz.sha256))
-	$(eval SHA_ARM_LNX  := $(shell cat /tmp/tkr-release-$(VERSION)/tkr-aarch64-unknown-linux-gnu.tar.gz.sha256))
-	$(eval SHA_X86_LNX  := $(shell cat /tmp/tkr-release-$(VERSION)/tkr-x86_64-unknown-linux-gnu.tar.gz.sha256))
-	python3 - "$(TAP)" "$(VERSION)" "$(SHA_ARM_MAC)" "$(SHA_X86_MAC)" "$(SHA_ARM_LNX)" "$(SHA_X86_LNX)" <<'PYEOF'
-import re, sys
-path, ver, sha_arm_mac, sha_x86_mac, sha_arm_lnx, sha_x86_lnx = sys.argv[1:]
-src = open(path).read()
-src = re.sub(r'version "[^"]+"', f'version "{ver}"', src, count=1)
-shas = [sha_arm_mac, sha_x86_mac, sha_arm_lnx, sha_x86_lnx]
-src = re.sub(r'sha256 "[a-f0-9]+"', lambda m, it=iter(shas): f'sha256 "{next(it)}"', src)
-open(path, 'w').write(src)
-PYEOF
+	$(eval SHA_ARM_MAC := $(shell cat /tmp/tkr-release-$(VERSION)/tkr-aarch64-apple-darwin.tar.gz.sha256))
+	$(eval SHA_X86_MAC := $(shell cat /tmp/tkr-release-$(VERSION)/tkr-x86_64-apple-darwin.tar.gz.sha256))
+	$(eval SHA_ARM_LNX := $(shell cat /tmp/tkr-release-$(VERSION)/tkr-aarch64-unknown-linux-gnu.tar.gz.sha256))
+	$(eval SHA_X86_LNX := $(shell cat /tmp/tkr-release-$(VERSION)/tkr-x86_64-unknown-linux-gnu.tar.gz.sha256))
+	python3 scripts/bump-tap.py "$(TAP)" "$(VERSION)" "$(SHA_ARM_MAC)" "$(SHA_X86_MAC)" "$(SHA_ARM_LNX)" "$(SHA_X86_LNX)"
 	cd /opt/homebrew/Library/Taps/einyx/homebrew-tap && \
 	  git add Formula/tkr.rb && \
 	  git commit -m "release: tkr v$(VERSION)" && \

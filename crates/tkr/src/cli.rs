@@ -50,6 +50,12 @@ pub enum Commands {
     },
     /// Suggest concrete filter improvements based on your analytics
     Suggest,
+    /// Explain what tkr filtered in the latest persisted agent run
+    Explain {
+        /// Optional run record JSON path (defaults to most recent in ~/.tkr/runs)
+        #[arg(long)]
+        file: Option<std::path::PathBuf>,
+    },
     /// Rewrite a shell command to use tkr (used by hooks).
     /// Exit 0 + stdout: rewrite found. Exit 1: no rewrite available.
     Rewrite {
@@ -69,8 +75,16 @@ pub enum Commands {
         #[arg(long)]
         yes: bool,
     },
-    /// Install the tkr Claude Code Bash hook into ~/.claude/settings.json.
-    Install,
+    /// Install the tkr hook into AI coding tools.
+    /// Auto-detects installed tools when no flag is given.
+    Install {
+        /// Install only into Claude Code (~/.claude/settings.json)
+        #[arg(long)]
+        claude: bool,
+        /// Install only into Codex CLI (~/.codex/config.toml)
+        #[arg(long)]
+        codex: bool,
+    },
     /// Benchmark how much tkr would save on a given command.
     /// Runs raw vs filtered, compares chars/tokens, prints ratio.
     Bench {
@@ -92,6 +106,60 @@ pub enum Commands {
         #[arg(long)]
         force: bool,
     },
+    /// Encrypted vault (plugin storage under ~/.tkr/vault/)
+    Vault {
+        #[command(subcommand)]
+        cmd: Option<VaultCmd>,
+    },
+    /// Administrative maintenance (dangerous operations)
+    Admin {
+        #[command(subcommand)]
+        cmd: AdminCmd,
+    },
+}
+
+/// Subcommands for `tkr vault`. When omitted, defaults to `status`.
+#[derive(Subcommand, Debug, Clone)]
+pub enum VaultCmd {
+    /// Print vault seal state and paths
+    Status,
+    /// Promote to fully-unsealed (Private + Secret storage classes)
+    Unseal,
+    /// Seal the vault (Secret-class data inaccessible until unseal)
+    Seal,
+    /// Initialize vault dir and persist master key
+    Init,
+    /// Rotate master key and re-encrypt vault entries
+    Rotate,
+    /// Export vault to a .tar.gz bundle (optional output path)
+    Export {
+        /// Output path (default: sibling of vault dir with .tar.gz extension)
+        path: Option<std::path::PathBuf>,
+    },
+    /// Import a vault bundle from `vault export`
+    Import {
+        /// Path to bundle.tar.gz
+        bundle: std::path::PathBuf,
+    },
+    /// Print or verify the vault audit log
+    Audit {
+        /// Verify HMAC chain integrity
+        #[arg(long)]
+        verify: bool,
+        /// Show only the last N entries
+        #[arg(long, value_name = "N")]
+        last: Option<usize>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum AdminCmd {
+    /// Delete all vault entries owned by a plugin
+    Reset {
+        /// Plugin name (manifest `name`)
+        #[arg(long)]
+        plugin: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -99,6 +167,9 @@ pub enum HookTarget {
     /// Claude Code PreToolUse Bash hook. Reads `{"tool_input":{"command":...}}`,
     /// emits the rewritten command with `permissionDecision: allow`.
     Claude,
+    /// Same JSON response as `claude`; also accepts a top-level `"command"` field
+    /// for shells / IDE wrappers that do not nest under `tool_input`.
+    Universal,
 }
 
 #[derive(Subcommand, Debug)]

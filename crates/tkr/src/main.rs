@@ -1,21 +1,99 @@
+#![allow(dead_code)]
+
 mod agent_cmd;
 mod cli;
 mod cmds;
-mod host;
 mod config;
 mod dispatch;
+mod embedding_ranker;
+mod host;
+mod noise_ranker;
 mod proxy;
 mod runner;
 mod session;
-mod embedding_ranker;
-mod noise_ranker;
 mod signature;
 mod stream;
 mod util;
 
 use clap::Parser;
-use cli::{AgentCmd, Cli, Commands, HookTarget};
+use cli::{AdminCmd, AgentCmd, Cli, Commands, HookTarget, VaultCmd};
 use std::io::IsTerminal;
+
+fn vault_main(cmd: Option<VaultCmd>) -> ! {
+    if let Err(e) = host::boot::ensure_full() {
+        eprintln!("tkr: host boot failed: {e}");
+        std::process::exit(1);
+    }
+    match vault_run(cmd.unwrap_or(VaultCmd::Status)) {
+        Ok(code) => std::process::exit(code),
+        Err(e) => {
+            eprintln!("tkr vault: {e:#}");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn vault_run(cmd: VaultCmd) -> anyhow::Result<i32> {
+    use anyhow::Context;
+    use host::cli_cmds::vault as vcmd;
+
+    let home = dirs::home_dir().unwrap_or_default();
+    let vault_root = home.join(".tkr").join("vault");
+    let vault_arc = host::boot::vault();
+    let vault = &vault_arc;
+
+    match cmd {
+        VaultCmd::Status => vcmd::status(vault),
+        VaultCmd::Unseal => vcmd::unseal(vault),
+        VaultCmd::Seal => vcmd::seal(vault),
+        VaultCmd::Init => {
+            std::fs::create_dir_all(&vault_root).context("create vault dir")?;
+            vcmd::init(&vault_root, vcmd::InitMode::MasterKeyFile)
+        }
+        VaultCmd::Rotate => {
+            let new_master = vcmd::rotate(vault, &vault_root)?;
+            let vault_root_str = vault_root.to_string_lossy().into_owned();
+            if let Err(e) =
+                host::vault::keychain::set_master_key("tkr-vault", &vault_root_str, &new_master)
+            {
+                eprintln!("tkr: warning: could not persist master key after rotate: {e}");
+                eprintln!("tkr: new master key (hex) — store manually:");
+                eprintln!("  {}", hex::encode(new_master));
+            }
+            Ok(0)
+        }
+        VaultCmd::Export { path } => {
+            let p = path.unwrap_or_else(|| vault_root.with_extension("tar.gz"));
+            vcmd::export(&vault_root, &p)
+        }
+        VaultCmd::Import { bundle } => vcmd::import(bundle.as_path(), &vault_root),
+        VaultCmd::Audit { verify, last } => vcmd::audit(
+            &vault_root,
+            vcmd::AuditOpts {
+                verify,
+                last_n: last,
+            },
+        ),
+    }
+}
+
+fn admin_main(cmd: AdminCmd) -> ! {
+    if let Err(e) = host::boot::ensure_full() {
+        eprintln!("tkr: host boot failed: {e}");
+        std::process::exit(1);
+    }
+    use host::cli_cmds::admin;
+    let vault_arc = host::boot::vault();
+    let vault = &vault_arc;
+    let AdminCmd::Reset { plugin } = cmd;
+    match admin::reset(vault, &plugin) {
+        Ok(code) => std::process::exit(code),
+        Err(e) => {
+            eprintln!("tkr admin: {e:#}");
+            std::process::exit(1);
+        }
+    }
+}
 
 fn clean_stats(yes: bool) -> anyhow::Result<()> {
     let home = dirs::home_dir().unwrap_or_default();
@@ -65,120 +143,7 @@ fn clean_stats(yes: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_vault_subcommand(sub: &str, extra: &[String]) -> anyhow::Result<()> {
-    use host::cli_cmds::vault as vcmd;
-    use anyhow::Context;
-
-    let home = dirs::home_dir().unwrap_or_default();
-    let vault_root = home.join(".tkr").join("vault");
-    let vault_arc = host::boot::vault();
-    let vault = &vault_arc;
-
-    let exit = match sub {
-        "status" => vcmd::status(vault)?,
-        "unseal" => vcmd::unseal(vault)?,
-        "seal"   => vcmd::seal(vault)?,
-        "init"   => {
-            std::fs::create_dir_all(&vault_root).context("create vault dir")?;
-            vcmd::init(&vault_root, vcmd::InitMode::Keychain)?
-        }
-        "rotate" => {
-            let new_master = vcmd::rotate(vault, &vault_root)?;
-            // Persist the new master key to keychain.
-            let vault_root_str = vault_root.to_string_lossy().into_owned();
-            if let Err(e) = host::vault::keychain::set_master_key("tkr-vault", &vault_root_str, &new_master) {
-                eprintln!("tkr: warning: could not update keychain after rotate: {e}");
-                eprintln!("tkr: new master key (hex) — store manually:");
-                eprintln!("  {}", hex::encode(new_master));
-            }
-            0
-        }
-        "export" => {
-            let path = extra.first().map(|s| std::path::PathBuf::from(s))
-                .unwrap_or_else(|| vault_root.with_extension("tar.gz"));
-            vcmd::export(&vault_root, &path)?
-        }
-        "import" => {
-            let bundle = extra.first()
-                .ok_or_else(|| anyhow::anyhow!("usage: tkr vault import <bundle.tar.gz>"))?;
-            vcmd::import(std::path::Path::new(bundle), &vault_root)?
-        }
-        "audit" => {
-            let verify = extra.iter().any(|a| a == "--verify");
-            let last_n = extra.iter().position(|a| a == "--last")
-                .and_then(|i| extra.get(i + 1))
-                .and_then(|n| n.parse::<usize>().ok());
-            vcmd::audit(&vault_root, vcmd::AuditOpts { verify, last_n })?
-        }
-        other => {
-            eprintln!("tkr vault: unknown subcommand '{other}'");
-            eprintln!("usage: tkr vault {{status|init|unseal|seal|rotate|export|import|audit}}");
-            1
-        }
-    };
-    std::process::exit(exit);
-}
-
-fn run_admin_subcommand(sub: &str, extra: &[String]) -> anyhow::Result<()> {
-    use host::cli_cmds::admin;
-
-    let vault_arc = host::boot::vault();
-    let vault = &vault_arc;
-
-    let exit = match sub {
-        "reset" => {
-            // Parse: tkr admin reset --plugin <name>
-            let plugin = extra.windows(2)
-                .find(|w| w[0] == "--plugin")
-                .map(|w| w[1].as_str())
-                .ok_or_else(|| anyhow::anyhow!("usage: tkr admin reset --plugin <name>"))?;
-            admin::reset(vault, plugin)?
-        }
-        other => {
-            eprintln!("tkr admin: unknown subcommand '{other}'");
-            eprintln!("usage: tkr admin {{reset --plugin <name>}}");
-            1
-        }
-    };
-    std::process::exit(exit);
-}
-
 fn main() -> anyhow::Result<()> {
-    // Peek at raw args before clap parsing so we can handle `tkr vault ...`
-    // and `tkr admin ...` (not registered as clap subcommands in cli.rs).
-    //
-    // Host boot is lazy: only command paths that touch the vault/plugins
-    // (proxy, gain, suggest, watch, vault, admin) call host::boot::ensure().
-    // Pure paths like `tkr version`, `tkr rewrite`, `tkr update`, `tkr install`,
-    // `tkr --help` skip the ~1s boot cost. The hook calls `tkr rewrite` on
-    // every Bash command, so this matters a lot.
-    let raw_args: Vec<String> = std::env::args().collect();
-
-    // Route `tkr vault <sub>` and `tkr admin <sub>` directly. These need the full host.
-    if raw_args.len() >= 2 {
-        match raw_args[1].as_str() {
-            "vault" => {
-                if let Err(e) = host::boot::ensure_full() {
-                    eprintln!("tkr: host boot failed: {e}");
-                    std::process::exit(1);
-                }
-                let sub = raw_args.get(2).map(|s| s.as_str()).unwrap_or("status");
-                let extra = if raw_args.len() > 3 { raw_args[3..].to_vec() } else { Vec::new() };
-                return run_vault_subcommand(sub, &extra);
-            }
-            "admin" => {
-                if let Err(e) = host::boot::ensure_full() {
-                    eprintln!("tkr: host boot failed: {e}");
-                    std::process::exit(1);
-                }
-                let sub = raw_args.get(2).map(|s| s.as_str()).unwrap_or("help");
-                let extra = if raw_args.len() > 3 { raw_args[3..].to_vec() } else { Vec::new() };
-                return run_admin_subcommand(sub, &extra);
-            }
-            _ => {}
-        }
-    }
-
     let cli = Cli::parse();
 
     // Commands that touch the vault/plugins boot the host first.
@@ -192,6 +157,7 @@ fn main() -> anyhow::Result<()> {
             | Some(Commands::Gain { .. })
             | Some(Commands::Discover { .. })
             | Some(Commands::Suggest)
+            | Some(Commands::Explain { .. })
     );
     if needs_full_boot {
         if let Err(e) = host::boot::ensure_full() {
@@ -201,22 +167,28 @@ fn main() -> anyhow::Result<()> {
     }
 
     match cli.command {
+        Some(Commands::Vault { cmd }) => vault_main(cmd),
+        Some(Commands::Admin { cmd }) => admin_main(cmd),
         Some(Commands::Watch) => cmds::watch::run(),
-        Some(Commands::Gain { breakdown, sort, plain }) => {
-            cmds::gain::run(breakdown, &sort, plain)
-        }
+        Some(Commands::Gain {
+            breakdown,
+            sort,
+            plain,
+        }) => cmds::gain::run(breakdown, &sort, plain),
         Some(Commands::Discover { history, limit }) => cmds::discover::run(history, limit),
         Some(Commands::Suggest) => cmds::suggest::run(),
+        Some(Commands::Explain { file }) => cmds::explain::run(file),
         Some(Commands::Rewrite { command }) => cmds::rewrite::run(&command),
         Some(Commands::Hook { target }) => match target {
             HookTarget::Claude => cmds::hook::run_claude(),
+            HookTarget::Universal => cmds::hook::run_universal(),
         },
         Some(Commands::Version) => {
             println!("tkr {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
         Some(Commands::CleanStats { yes }) => clean_stats(yes),
-        Some(Commands::Install) => cmds::install::run(),
+        Some(Commands::Install { claude, codex }) => cmds::install::run(claude, codex),
         Some(Commands::Bench { command }) => cmds::bench::run(&command),
         Some(Commands::Agent { cmd }) => match cmd {
             AgentCmd::Run { manifest } => agent_cmd::run_agent(&manifest),
