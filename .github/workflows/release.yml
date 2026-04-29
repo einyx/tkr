@@ -68,11 +68,20 @@ jobs:
           CERT_FILE="$(mktemp -t tkr-cert.XXXXXX.p12)"
           trap 'rm -f "$CERT_FILE"' EXIT
           echo "$APPLE_CERT_P12_BASE64" | base64 --decode > "$CERT_FILE"
+          # Diagnostics: confirm the decoded blob is a real PKCS#12.
+          ls -l "$CERT_FILE"
+          file "$CERT_FILE" || true
+          xxd "$CERT_FILE" | head -2 || true
+          if ! openssl pkcs12 -in "$CERT_FILE" -passin "pass:${APPLE_CERT_PASSWORD}" -info -noout >/dev/null 2>&1; then
+            echo "::error::Decoded blob is not a valid PKCS#12 (or password is wrong). Re-export the cert + private key from Keychain Access and update APPLE_CERT_P12_BASE64."
+            exit 1
+          fi
+          echo "PKCS#12 validated."
           security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security set-keychain-settings -lut 7200 build.keychain
-          security import "$CERT_FILE" -k build.keychain \
+          security import "$CERT_FILE" -k build.keychain -f pkcs12 \
             -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: \
             -s -k "$KEYCHAIN_PASSWORD" build.keychain
