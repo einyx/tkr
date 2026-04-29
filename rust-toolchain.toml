@@ -1,0 +1,8 @@
+[toolchain]
+# Several deps require rustc >= 1.88 (darling, time, instability).
+# Pinning here so `cargo build` auto-fetches a compatible toolchain via
+# rustup, instead of falling through to whatever rustc is on $PATH (which
+# may be Homebrew's older one).
+channel = "1.90"
+profile = "minimal"
+components = ["rustc", "cargo"]
