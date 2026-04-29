@@ -310,16 +310,15 @@ where I: Iterator<Item = Result<String>>,
     PipelineResult { emitted, chars_in, chars_suppressed }
 }
 
-/// V2 pipeline: filters via the plugin registry (v2 `on_line`), then passes
-/// remaining lines through the legacy semantic chain. Analytics is NOT done
-/// here — the v2 `AnalyticsPluginV2` accumulates chars via its own `on_line`.
+/// V2 pipeline: filters via the plugin registry (v2 `on_line`). Analytics is
+/// NOT done here — the v2 `AnalyticsPluginV2` accumulates chars via its own
+/// `on_line`.
 ///
 /// The caller must call `registry.filters_command_begin` before this function
 /// and `registry.filters_command_end` after it.
 pub fn run_pipeline_v2<I>(
     lines: I,
     registry: &PluginRegistry,
-    semantic_chain: &mut [Box<dyn Plugin>],
     command: &str,
     args: &str,
 ) -> PipelineResult
@@ -382,32 +381,6 @@ where
             Some(s) => s,
         };
 
-        // --- Legacy semantic chain ---
-        let mut current = current;
-        let mut suppressed = false;
-        for plugin in semantic_chain.iter_mut() {
-            let result = plugin.filter(&current, command, args, index as u64);
-            match result {
-                FilterResult::Pass => {}
-                FilterResult::Replace(s) => {
-                    current = s;
-                }
-                FilterResult::Suppress | FilterResult::SuppressWithNote(_) => {
-                    suppressed = true;
-                    break;
-                }
-                FilterResult::Annotate(s) => {
-                    current.push(' ');
-                    current.push_str(&s);
-                }
-            }
-        }
-
-        if suppressed {
-            chars_suppressed += line.len() as u64;
-            continue;
-        }
-
         if current.len() < line.len() {
             chars_suppressed += (line.len() - current.len()) as u64;
         }
@@ -447,22 +420,9 @@ where
         emitted.push(msg);
     }
 
-    // Capture the body length before plugin flush summaries are appended so
+    // Capture the body length before any future summaries are appended so
     // JSON compaction sees only the original output.
     let body_end = emitted.len();
-
-    // Flush legacy semantic plugin summaries.
-    for plugin in semantic_chain.iter_mut() {
-        let summary = plugin.flush();
-        if !summary.is_empty() {
-            for summary_line in summary.lines() {
-                if !buffered {
-                    println!("{summary_line}");
-                }
-                emitted.push(summary_line.to_string());
-            }
-        }
-    }
 
     if buffered {
         let body = emitted[..body_end].join("\n");

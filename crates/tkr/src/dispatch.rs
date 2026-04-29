@@ -7,7 +7,6 @@ use crate::config::Config;
 use anyhow::Result;
 use tkr_api::LegacyPlugin as Plugin;
 use tkr_filter::FilterPlugin;
-use tkr_semantic::{SemanticConfig, SemanticPlugin};
 
 #[allow(dead_code)]
 pub fn build_chain(cfg: &Config, _command: &str) -> Result<Vec<Box<dyn Plugin>>> {
@@ -25,15 +24,7 @@ pub fn build_chain(cfg: &Config, _command: &str) -> Result<Vec<Box<dyn Plugin>>>
                 chain.push(Box::new(plugin));
             }
             "tkr-semantic" => {
-                let sc = SemanticConfig {
-                    dedup_threshold: cfg.plugins.semantic.dedup_threshold,
-                    relevance_threshold: cfg.plugins.semantic.relevance_threshold,
-                    window_size: cfg.plugins.semantic.window_size,
-                    emit_summaries: cfg.plugins.semantic.emit_summaries,
-                    ollama_url: cfg.plugins.semantic.ollama_url.clone(),
-                    ollama_model: cfg.plugins.semantic.ollama_model.clone(),
-                };
-                chain.push(Box::new(SemanticPlugin::new(&sc)));
+                // tkr-semantic removed — skip silently to avoid breaking old configs.
             }
             "tkr-analytics" => {
                 // AnalyticsPlugin (legacy) removed — analytics now handled by

@@ -1,6 +1,6 @@
 [package]
 name = "tkr"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 description = "Token-optimized CLI proxy for LLM development workflows"
 license = "Apache-2.0"
@@ -27,7 +27,6 @@ tkr-agent = { path = "../tkr-agent" }
 tkr-providers = { path = "../tkr-providers" }
 tkr-api = { path = "../tkr-api" }
 tkr-filter = { path = "../tkr-filter" }
-tkr-semantic = { path = "../tkr-semantic" }
 tkr-analytics = { path = "../tkr-analytics" }
 anyhow = { workspace = true }
 serde = { workspace = true }

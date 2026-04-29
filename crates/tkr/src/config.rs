@@ -21,19 +21,7 @@ pub struct CoreConfig {
 #[serde(default)]
 pub struct PluginsConfig {
     pub chain: Vec<String>,
-    pub semantic: SemanticConfig,
     pub analytics: AnalyticsConfig,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct SemanticConfig {
-    pub dedup_threshold: f32,
-    pub relevance_threshold: f32,
-    pub window_size: usize,
-    pub emit_summaries: bool,
-    pub ollama_url: String,
-    pub ollama_model: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,22 +50,8 @@ impl Default for PluginsConfig {
         Self {
             // Analytics is recorded by proxy::run from the canonical PipelineResult,
             // not via the plugin chain (suppressed lines short-circuit before reaching plugins).
-            chain: vec!["tkr-filter".into(), "tkr-semantic".into()],
-            semantic: SemanticConfig::default(),
+            chain: vec!["tkr-filter".into()],
             analytics: AnalyticsConfig::default(),
-        }
-    }
-}
-
-impl Default for SemanticConfig {
-    fn default() -> Self {
-        Self {
-            dedup_threshold: 0.92,
-            relevance_threshold: 0.15,
-            window_size: 200,
-            emit_summaries: true,
-            ollama_url: "http://localhost:11434".into(),
-            ollama_model: "nomic-embed-text".into(),
         }
     }
 }
@@ -109,9 +83,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_config_has_filter_and_semantic_plugins() {
+    fn default_config_has_filter_plugin() {
         let cfg = Config::default();
-        assert_eq!(cfg.plugins.chain, vec!["tkr-filter", "tkr-semantic"]);
+        assert_eq!(cfg.plugins.chain, vec!["tkr-filter"]);
     }
 
     #[test]

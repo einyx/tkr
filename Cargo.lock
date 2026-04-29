@@ -4324,7 +4324,7 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tkr"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "age",
  "anyhow",
@@ -4356,7 +4356,6 @@ dependencies = [
  "tkr-api",
  "tkr-filter",
  "tkr-providers",
- "tkr-semantic",
  "toml 0.8.23",
  "uuid",
  "zeroize",
@@ -4434,17 +4433,6 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "toml 0.8.23",
-]
-
-[[package]]
-name = "tkr-semantic"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "serde",
- "serde_json",
- "tkr-api",
- "ureq 2.12.1",
 ]
 
 [[package]]

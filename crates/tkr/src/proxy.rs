@@ -67,9 +67,6 @@ pub fn run(cfg: Config, args: &[String]) -> Result<()> {
     let host = crate::host::boot::get_host();
     let registry = &host.registry;
 
-    // Build the legacy semantic plugin chain (semantic dedup remains a legacy plugin).
-    let mut semantic_chain = build_semantic_chain(&cfg)?;
-
     let ctx = CommandCtx {
         command: cmd.clone(),
         args: cmd_args_str.clone(),
@@ -82,7 +79,7 @@ pub fn run(cfg: Config, args: &[String]) -> Result<()> {
     let str_args: Vec<&str> = cmd_args.iter().map(String::as_str).collect();
     let lines = crate::runner::stream_command(cmd, &str_args)?;
 
-    let result = crate::stream::run_pipeline_v2(lines, registry, &mut semantic_chain, cmd, &cmd_args_str);
+    let result = crate::stream::run_pipeline_v2(lines, registry, cmd, &cmd_args_str);
 
     // Signal command end — collects summaries from v2 filter plugins.
     let summary = registry.filters_command_end(&ctx);
@@ -129,26 +126,6 @@ pub fn run(cfg: Config, args: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// Build the semantic-only legacy plugin chain (no filter, no analytics — those
-/// are handled by the v2 registry now).
-fn build_semantic_chain(cfg: &Config) -> Result<Vec<Box<dyn tkr_api::LegacyPlugin>>> {
-    use tkr_api::LegacyPlugin as Plugin;
-    let mut chain: Vec<Box<dyn Plugin>> = Vec::new();
-
-    if cfg.plugins.chain.iter().any(|p| p == "tkr-semantic") {
-        let sc = tkr_semantic::SemanticConfig {
-            dedup_threshold: cfg.plugins.semantic.dedup_threshold,
-            relevance_threshold: cfg.plugins.semantic.relevance_threshold,
-            window_size: cfg.plugins.semantic.window_size,
-            emit_summaries: cfg.plugins.semantic.emit_summaries,
-            ollama_url: cfg.plugins.semantic.ollama_url.clone(),
-            ollama_model: cfg.plugins.semantic.ollama_model.clone(),
-        };
-        chain.push(Box::new(tkr_semantic::SemanticPlugin::new(&sc)));
-    }
-
-    Ok(chain)
-}
 
 #[cfg(test)]
 mod tests {
