@@ -4,7 +4,23 @@ const REPO_OWNER: &str = "einyx";
 const REPO_NAME: &str = "tkr";
 const BIN_NAME: &str = "tkr";
 
+fn is_brew_managed() -> bool {
+    let exe = std::env::current_exe().ok().and_then(|p| std::fs::canonicalize(&p).ok());
+    if let Some(p) = exe {
+        let s = p.to_string_lossy();
+        return s.contains("/Cellar/") || s.contains("/homebrew/")
+            || s.contains("/linuxbrew/");
+    }
+    false
+}
+
 pub fn run(check_only: bool, force: bool) -> Result<()> {
+    // Allow --check through even on Homebrew installs (it's read-only).
+    if !check_only && is_brew_managed() {
+        eprintln!("tkr was installed via Homebrew. Use:\n\n  brew upgrade tkr\n\ninstead of `tkr update` for managed installs.");
+        std::process::exit(1);
+    }
+
     let current = env!("CARGO_PKG_VERSION");
     println!("Current version: {}", current);
     println!(
