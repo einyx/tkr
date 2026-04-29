@@ -102,25 +102,28 @@ pub fn run(cfg: Config, args: &[String]) -> Result<()> {
     let key = format!("{cmd_name} {subcmd}").trim().to_string();
     let buf = crate::stream::take_signature_buffer();
 
-    // Vault-backed write (preferred): each new noise signature lands in the
-    // encrypted analytics-v2 sqlite namespace.
-    {
+    // Vault-backed analytics writes are age-encrypted per row — doing them
+    // synchronously here adds ~1s per signature in the user-facing path.
+    // Hand the buffer to a detached thread so the command exits immediately.
+    // Analytics are best-effort, not critical to correctness.
+    if !buf.is_empty() {
         let host_handle = crate::host::boot::get_host();
-        let analytics_host = crate::host::RealHost::new(
-            "tkr-analytics",
-            host_handle.vault.clone(),
-            host_handle.bus.clone(),
-        );
-        for (_buf_cmd, sig, entry) in &buf {
-            let _ = tkr_analytics::record_noise_signature_via_host(
-                &analytics_host,
-                &key,
-                sig,
-                &entry.sample,
-                entry.occurrences,
-                entry.total_chars,
-            );
-        }
+        let vault = host_handle.vault.clone();
+        let bus = host_handle.bus.clone();
+        let key_owned = key.clone();
+        std::thread::spawn(move || {
+            let analytics_host = crate::host::RealHost::new("tkr-analytics", vault, bus);
+            for (_buf_cmd, sig, entry) in &buf {
+                let _ = tkr_analytics::record_noise_signature_via_host(
+                    &analytics_host,
+                    &key_owned,
+                    sig,
+                    &entry.sample,
+                    entry.occurrences,
+                    entry.total_chars,
+                );
+            }
+        });
     }
 
     Ok(())
