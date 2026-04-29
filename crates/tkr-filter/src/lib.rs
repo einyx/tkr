@@ -96,6 +96,34 @@ impl FilterPlugin {
         }
         Ok(())
     }
+
+    /// Append filter groups from a single TOML file.
+    /// Returns Ok(()) and does nothing if the file doesn't exist.
+    pub fn load_file(&mut self, path: &std::path::Path) -> Result<()> {
+        if !path.exists() {
+            return Ok(());
+        }
+        let text = std::fs::read_to_string(path)?;
+        let def: FilterDef = toml::from_str(&text)?;
+        let rules = def
+            .rules
+            .into_iter()
+            .map(|r| r.compile())
+            .collect::<Result<Vec<_>>>()?;
+        self.groups.push(FilterGroup {
+            command: def.command,
+            subcommands: def.subcommands,
+            rules,
+        });
+        Ok(())
+    }
+
+    /// Load only the filter file that matches `cmd_name` from `dir`.
+    /// Equivalent to `load_file(dir/<cmd_name>.toml)`.
+    pub fn load_for_command(&mut self, dir: &std::path::Path, cmd_name: &str) -> Result<()> {
+        let path = dir.join(format!("{cmd_name}.toml"));
+        self.load_file(&path)
+    }
 }
 
 impl Plugin for FilterPlugin {

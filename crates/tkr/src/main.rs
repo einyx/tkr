@@ -71,7 +71,8 @@ fn run_vault_subcommand(sub: &str, extra: &[String]) -> anyhow::Result<()> {
 
     let home = dirs::home_dir().unwrap_or_default();
     let vault_root = home.join(".tkr").join("vault");
-    let vault = &host::boot::get_host().vault;
+    let vault_arc = host::boot::vault();
+    let vault = &vault_arc;
 
     let exit = match sub {
         "status" => vcmd::status(vault)?,
@@ -121,7 +122,8 @@ fn run_vault_subcommand(sub: &str, extra: &[String]) -> anyhow::Result<()> {
 fn run_admin_subcommand(sub: &str, extra: &[String]) -> anyhow::Result<()> {
     use host::cli_cmds::admin;
 
-    let vault = &host::boot::get_host().vault;
+    let vault_arc = host::boot::vault();
+    let vault = &vault_arc;
 
     let exit = match sub {
         "reset" => {
@@ -152,11 +154,11 @@ fn main() -> anyhow::Result<()> {
     // every Bash command, so this matters a lot.
     let raw_args: Vec<String> = std::env::args().collect();
 
-    // Route `tkr vault <sub>` and `tkr admin <sub>` directly. These need the host.
+    // Route `tkr vault <sub>` and `tkr admin <sub>` directly. These need the full host.
     if raw_args.len() >= 2 {
         match raw_args[1].as_str() {
             "vault" => {
-                if let Err(e) = host::boot::ensure() {
+                if let Err(e) = host::boot::ensure_full() {
                     eprintln!("tkr: host boot failed: {e}");
                     std::process::exit(1);
                 }
@@ -165,7 +167,7 @@ fn main() -> anyhow::Result<()> {
                 return run_vault_subcommand(sub, &extra);
             }
             "admin" => {
-                if let Err(e) = host::boot::ensure() {
+                if let Err(e) = host::boot::ensure_full() {
                     eprintln!("tkr: host boot failed: {e}");
                     std::process::exit(1);
                 }
@@ -180,18 +182,19 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     // Commands that touch the vault/plugins boot the host first.
+    // gain/suggest/watch/discover need the full vault boot.
+    // The proxy path (None) uses the fast filter-only boot (called inside proxy::run).
     // Pure paths (Version, Rewrite, Update, Install, Hook, CleanStats, Bench, Agent)
-    // skip it and stay sub-50ms.
-    let needs_host = matches!(
+    // skip boot entirely and stay sub-50ms.
+    let needs_full_boot = matches!(
         cli.command,
         Some(Commands::Watch)
             | Some(Commands::Gain { .. })
             | Some(Commands::Discover)
             | Some(Commands::Suggest)
-            | None
     );
-    if needs_host {
-        if let Err(e) = host::boot::ensure() {
+    if needs_full_boot {
+        if let Err(e) = host::boot::ensure_full() {
             eprintln!("tkr: host boot failed: {e}");
             std::process::exit(1);
         }

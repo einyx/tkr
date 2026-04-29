@@ -40,10 +40,11 @@ impl Style {
 }
 
 pub fn run(breakdown: bool, sort: &str, plain: bool) -> Result<()> {
+    let vault = crate::host::boot::vault();
     let host_handle = crate::host::boot::get_host();
     let analytics_host = crate::host::RealHost::new(
         "tkr-analytics",
-        host_handle.vault.clone(),
+        vault,
         host_handle.bus.clone(),
     );
     let mut rows = tkr_analytics::total_savings_via_host(&analytics_host)

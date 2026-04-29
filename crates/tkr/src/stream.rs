@@ -5,6 +5,7 @@ use tkr_api::{FilterResult, LegacyPlugin as Plugin};
 
 use crate::signature::signature_of;
 use crate::host::loader::PluginRegistry;
+use tkr_filter::FilterPlugin;
 
 /// Cap on unique (command, signature) pairs held per process. Past this we stop
 /// inserting new signatures (sample-and-drop) but keep updating existing ones,
@@ -458,6 +459,123 @@ fn compact_json_if_possible(body: &str) -> Option<String> {
     }
     let value: serde_json::Value = serde_json::from_str(trimmed).ok()?;
     serde_json::to_string(&value).ok()
+}
+
+/// Fast pipeline for the proxy hot path.
+///
+/// Uses a single `FilterPlugin` (pre-loaded for the current command) directly,
+/// avoiding the registry overhead. This is the path taken by `tkr <cmd>`.
+pub fn run_pipeline_direct<I>(
+    lines: I,
+    filter: &mut FilterPlugin,
+    command: &str,
+    args: &str,
+) -> PipelineResult
+where
+    I: Iterator<Item = Result<String>>,
+{
+    let mut emitted = Vec::new();
+    let mut chars_in: u64 = 0;
+    let mut chars_suppressed: u64 = 0;
+    let mut blank_run: u32 = 0;
+    let max_tokens = std::env::var("TKR_MAX_TOKENS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok());
+    let mut emitted_chars: u64 = 0;
+    let mut budget_exceeded = false;
+    let mut elided_lines: u64 = 0;
+    let buffered = std::env::var_os("TKR_COMPACT_JSON").is_some();
+
+    for (index, line_result) in lines.enumerate() {
+        let raw = match line_result {
+            Ok(l) => l,
+            Err(e) => { eprintln!("tkr: read error: {e}"); continue; }
+        };
+        chars_in += raw.len() as u64;
+
+        let line = normalize_line(&raw);
+
+        if raw.len() > line.len() {
+            chars_suppressed += (raw.len() - line.len()) as u64;
+        }
+
+        if line.trim().is_empty() {
+            blank_run += 1;
+            if blank_run > 1 {
+                chars_suppressed += line.len() as u64;
+                continue;
+            }
+        } else {
+            blank_run = 0;
+        }
+
+        use tkr_api::LegacyPlugin as LegacyTrait;
+        let result = LegacyTrait::filter(filter, &line, command, args, index as u64);
+        let (suppressed, current) = match result {
+            FilterResult::Suppress | FilterResult::SuppressWithNote(_) => (true, line.clone()),
+            FilterResult::Pass => (false, line.clone()),
+            FilterResult::Replace(s) => (false, s),
+            FilterResult::Annotate(s) => {
+                let mut l = line.clone();
+                l.push(' ');
+                l.push_str(&s);
+                (false, l)
+            }
+        };
+
+        if suppressed {
+            chars_suppressed += line.len() as u64;
+            continue;
+        }
+
+        if current.len() < line.len() {
+            chars_suppressed += (line.len() - current.len()) as u64;
+        }
+
+        if let Some(max) = max_tokens {
+            if budget_exceeded {
+                elided_lines += 1;
+                chars_suppressed += line.len() as u64;
+                continue;
+            }
+            if chars_to_tokens(emitted_chars + current.len() as u64) > max {
+                budget_exceeded = true;
+                elided_lines += 1;
+                chars_suppressed += line.len() as u64;
+                continue;
+            }
+            emitted_chars += current.len() as u64;
+        }
+
+        record_emit(command, &current);
+        if !buffered {
+            println!("{current}");
+        }
+        emitted.push(current);
+    }
+
+    if budget_exceeded {
+        let msg = format!(
+            "(... {} more lines elided — TKR_MAX_TOKENS={} reached)",
+            elided_lines,
+            max_tokens.unwrap_or(0)
+        );
+        if !buffered {
+            println!("{}", msg);
+        }
+        emitted.push(msg);
+    }
+
+    if buffered && !emitted.is_empty() {
+        let body = emitted.join("\n");
+        let final_body = compact_json_if_possible(&body).unwrap_or(body.clone());
+        if final_body.len() < body.len() {
+            chars_suppressed += (body.len() - final_body.len()) as u64;
+        }
+        println!("{final_body}");
+    }
+
+    PipelineResult { emitted, chars_in, chars_suppressed }
 }
 
 pub fn chars_to_tokens(chars: u64) -> u64 { chars / 4 }

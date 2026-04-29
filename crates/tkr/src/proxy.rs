@@ -1,7 +1,6 @@
 use crate::config::Config;
 use crate::stream::chars_to_tokens;
 use anyhow::Result;
-use tkr_api::plugin::CommandCtx;
 
 /// Flags whose argument is the next token (so we skip both).
 /// Conservative — for unknown flags we treat the next token as the value
@@ -63,31 +62,27 @@ pub fn run(cfg: Config, args: &[String]) -> Result<()> {
     let sess = crate::session::Session::connect(&cfg.core.socket_path);
     sess.command_start(cmd, &cmd_args_str);
 
-    // Use the v2 registry for filter+analytics.
-    let host = crate::host::boot::get_host();
-    let registry = &host.registry;
+    // Derive the bare command name (e.g. "git" from "/usr/bin/git").
+    let cmd_name = std::path::Path::new(cmd.as_str())
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(cmd.as_str());
 
-    let ctx = CommandCtx {
-        command: cmd.clone(),
-        args: cmd_args_str.clone(),
-        line_index: 0,
-    };
+    // Fast boot: filter-only, no keychain/vault/analytics.
+    let host = crate::host::boot::ensure()?;
 
-    // Signal command begin to all v2 filter plugins.
-    registry.filters_command_begin(&ctx);
+    // Load only the per-command filter TOML (lazy, cached).
+    // This is the key optimization: instead of parsing all ~90 bundled TOML files
+    // at boot, we load only the one relevant to the current command.
+    let filter_arc = crate::host::boot::filter_for_command(cmd_name);
+    let mut filter_guard = filter_arc.lock().unwrap();
 
     let str_args: Vec<&str> = cmd_args.iter().map(String::as_str).collect();
     let lines = crate::runner::stream_command(cmd, &str_args)?;
 
-    let result = crate::stream::run_pipeline_v2(lines, registry, cmd, &cmd_args_str);
-
-    // Signal command end — collects summaries from v2 filter plugins.
-    let summary = registry.filters_command_end(&ctx);
-    if !summary.is_empty() {
-        for line in summary.lines() {
-            println!("{line}");
-        }
-    }
+    // Run the fast pipeline: uses the per-command FilterPlugin directly,
+    // bypassing the registry's (empty) filter plugin.
+    let result = crate::stream::run_pipeline_direct(lines, &mut *filter_guard, cmd, &cmd_args_str);
 
     let tokens_in = chars_to_tokens(result.chars_in);
     let tokens_saved = chars_to_tokens(result.chars_suppressed);
@@ -95,10 +90,6 @@ pub fn run(cfg: Config, args: &[String]) -> Result<()> {
 
     // Flush the per-run signature buffer into the vault-backed analytics store.
     let subcmd = first_positional(cmd_args);
-    let cmd_name = std::path::Path::new(cmd.as_str())
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or(cmd.as_str());
     let key = format!("{cmd_name} {subcmd}").trim().to_string();
     let buf = crate::stream::take_signature_buffer();
 
@@ -106,12 +97,13 @@ pub fn run(cfg: Config, args: &[String]) -> Result<()> {
     // synchronously here adds ~1s per signature in the user-facing path.
     // Hand the buffer to a detached thread so the command exits immediately.
     // Analytics are best-effort, not critical to correctness.
+    // The detached thread calls ensure_full() (lazy) to obtain a real vault.
     if !buf.is_empty() {
-        let host_handle = crate::host::boot::get_host();
-        let vault = host_handle.vault.clone();
-        let bus = host_handle.bus.clone();
+        let bus = host.bus.clone();
         let key_owned = key.clone();
         std::thread::spawn(move || {
+            // vault() triggers ensure_full() lazily; safe from any thread.
+            let vault = crate::host::boot::vault();
             let analytics_host = crate::host::RealHost::new("tkr-analytics", vault, bus);
             for (_buf_cmd, sig, entry) in &buf {
                 let _ = tkr_analytics::record_noise_signature_via_host(

@@ -17,10 +17,11 @@ const YELLOW: &str = "\x1b[33m";
 const RED: &str = "\x1b[31m";
 
 pub fn run() -> Result<()> {
+    let vault = crate::host::boot::vault();
     let host_handle = crate::host::boot::get_host();
     let analytics_host = crate::host::RealHost::new(
         "tkr-analytics",
-        host_handle.vault.clone(),
+        vault,
         host_handle.bus.clone(),
     );
     // Lazy: persist embeddings for any noise signatures missing them, so the
@@ -165,11 +166,12 @@ fn print_noise_section(host: &dyn tkr_api::host::Host, on: bool) -> Result<()> {
         p(RESET)
     );
     println!();
-    let host_handle = crate::host::boot::get_host();
+    let vault2 = crate::host::boot::vault();
+    let host_handle2 = crate::host::boot::get_host();
     let analytics_host = crate::host::RealHost::new(
         "tkr-analytics",
-        host_handle.vault.clone(),
-        host_handle.bus.clone(),
+        vault2,
+        host_handle2.bus.clone(),
     );
 
     for row in rows.iter().take(8) {

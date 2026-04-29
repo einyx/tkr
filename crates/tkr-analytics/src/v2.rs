@@ -161,9 +161,14 @@ impl Plugin for AnalyticsPluginV2 {
         // Non-fatal: if the host can't provide sqlite storage, analytics is a no-op.
         let _ = host.sqlite(SCHEMA_SQL, SensitivityClass::Public);
 
-        // One-shot migration: import rows from the legacy ~/.tkr/analytics.db if it exists.
+        // One-shot legacy migration: only run if the legacy DB file still exists.
+        // We skip reading/writing ~/.tkr/schema.json because the mere presence
+        // of ~/.tkr/analytics.db is already the guard — once it's renamed to
+        // .migrated the check is O(1) (stat call, ~1μs).
         // Non-fatal: migration failure is logged and ignored.
-        let _ = migrate_legacy_db(host.as_ref());
+        if legacy_db_exists() {
+            let _ = migrate_legacy_db(host.as_ref());
+        }
 
         // Stash host for later use in on_command_end / on_request.
         *self.host.lock().unwrap() = Some(host);
@@ -480,6 +485,14 @@ pub fn top_noise_signatures_via_host(
 }
 
 // ── Legacy migration ──────────────────────────────────────────────────────────
+
+/// Fast check: does the legacy analytics.db still exist?
+/// If not, we can skip the entire migration path in O(1).
+fn legacy_db_exists() -> bool {
+    dirs::home_dir()
+        .map(|h| h.join(".tkr").join("analytics.db").exists())
+        .unwrap_or(false)
+}
 
 /// Import rows from `~/.tkr/analytics.db` into the vault sqlite, then rename
 /// the file to `~/.tkr/analytics.db.migrated` to prevent double-migration.
