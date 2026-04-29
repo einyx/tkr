@@ -144,23 +144,31 @@ fn run_admin_subcommand(sub: &str, extra: &[String]) -> anyhow::Result<()> {
 fn main() -> anyhow::Result<()> {
     // Peek at raw args before clap parsing so we can handle `tkr vault ...`
     // and `tkr admin ...` (not registered as clap subcommands in cli.rs).
+    //
+    // Host boot is lazy: only command paths that touch the vault/plugins
+    // (proxy, gain, suggest, watch, vault, admin) call host::boot::ensure().
+    // Pure paths like `tkr version`, `tkr rewrite`, `tkr update`, `tkr install`,
+    // `tkr --help` skip the ~1s boot cost. The hook calls `tkr rewrite` on
+    // every Bash command, so this matters a lot.
     let raw_args: Vec<String> = std::env::args().collect();
 
-    // Boot the plugin host eagerly (needed for vault/proxy paths).
-    if let Err(e) = host::boot::init() {
-        eprintln!("tkr: host boot failed: {e}");
-        std::process::exit(1);
-    }
-
-    // Route `tkr vault <sub>` and `tkr admin <sub>` directly.
+    // Route `tkr vault <sub>` and `tkr admin <sub>` directly. These need the host.
     if raw_args.len() >= 2 {
         match raw_args[1].as_str() {
             "vault" => {
+                if let Err(e) = host::boot::ensure() {
+                    eprintln!("tkr: host boot failed: {e}");
+                    std::process::exit(1);
+                }
                 let sub = raw_args.get(2).map(|s| s.as_str()).unwrap_or("status");
                 let extra = if raw_args.len() > 3 { raw_args[3..].to_vec() } else { Vec::new() };
                 return run_vault_subcommand(sub, &extra);
             }
             "admin" => {
+                if let Err(e) = host::boot::ensure() {
+                    eprintln!("tkr: host boot failed: {e}");
+                    std::process::exit(1);
+                }
                 let sub = raw_args.get(2).map(|s| s.as_str()).unwrap_or("help");
                 let extra = if raw_args.len() > 3 { raw_args[3..].to_vec() } else { Vec::new() };
                 return run_admin_subcommand(sub, &extra);
@@ -170,6 +178,25 @@ fn main() -> anyhow::Result<()> {
     }
 
     let cli = Cli::parse();
+
+    // Commands that touch the vault/plugins boot the host first.
+    // Pure paths (Version, Rewrite, Update, Install, Hook, CleanStats, Bench, Agent)
+    // skip it and stay sub-50ms.
+    let needs_host = matches!(
+        cli.command,
+        Some(Commands::Watch)
+            | Some(Commands::Gain { .. })
+            | Some(Commands::Discover)
+            | Some(Commands::Suggest)
+            | None
+    );
+    if needs_host {
+        if let Err(e) = host::boot::ensure() {
+            eprintln!("tkr: host boot failed: {e}");
+            std::process::exit(1);
+        }
+    }
+
     match cli.command {
         Some(Commands::Watch) => cmds::watch::run(),
         Some(Commands::Gain { breakdown, sort, plain }) => {

@@ -17,6 +17,17 @@ pub fn init() -> Result<&'static HostHandle> {
     Ok(get_host())
 }
 
+/// Lazy boot: returns the host, initializing it on first call. Safe to call
+/// from anywhere. Use from command paths that need vault/plugins so commands
+/// that don't (version, rewrite, update, install, --help) don't pay the
+/// ~1s boot cost.
+pub fn ensure() -> Result<&'static HostHandle> {
+    if let Some(h) = HOST.get() {
+        return Ok(h);
+    }
+    init()
+}
+
 use crate::host::{
     bus::InProcBus,
     loader::PluginRegistry,
