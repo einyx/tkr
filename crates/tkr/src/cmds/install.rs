@@ -6,7 +6,7 @@
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
 
-pub fn run(only_claude: bool, only_codex: bool) -> Result<()> {
+pub fn run(only_claude: bool, only_codex: bool, only_cursor: bool) -> Result<()> {
     let home = dirs::home_dir().context("could not determine $HOME")?;
 
     let bin = std::env::current_exe()
@@ -16,14 +16,15 @@ pub fn run(only_claude: bool, only_codex: bool) -> Result<()> {
         .unwrap_or_else(|| "tkr".into());
 
     // When no flag is given, auto-detect installed tools.
-    let auto = !only_claude && !only_codex;
+    let auto = !only_claude && !only_codex && !only_cursor;
 
     let do_claude = only_claude || (auto && home.join(".claude").exists());
-    let do_codex = only_codex || (auto && home.join(".codex").exists());
+    let do_codex  = only_codex  || (auto && home.join(".codex").exists());
+    let do_cursor = only_cursor || (auto && home.join(".cursor").exists());
 
-    if !do_claude && !do_codex {
-        println!("No supported AI tools detected. Supported: Claude Code, Codex CLI.");
-        println!("Run with --claude or --codex to install anyway.");
+    if !do_claude && !do_codex && !do_cursor {
+        println!("No supported AI tools detected. Supported: Claude Code, Codex CLI, Cursor.");
+        println!("Run with --claude, --codex, or --cursor to install anyway.");
         return Ok(());
     }
 
@@ -32,6 +33,9 @@ pub fn run(only_claude: bool, only_codex: bool) -> Result<()> {
     }
     if do_codex {
         install_codex(&home, &bin)?;
+    }
+    if do_cursor {
+        install_cursor(&home)?;
     }
 
     Ok(())
@@ -108,6 +112,80 @@ fn install_claude(home: &std::path::Path, bin: &str) -> Result<()> {
     println!(
         "✓ Claude Code: installed into {}\n  Restart Claude Code to activate.",
         settings_path.display()
+    );
+    Ok(())
+}
+
+// ── Cursor ────────────────────────────────────────────────────────────────────
+//
+// Cursor doesn't have a PreToolUse bash hook. Instead we write a Cursor rule
+// (~/.cursor/rules/tkr.mdc with alwaysApply: true) that instructs the AI to
+// always prefix shell commands with `tkr`. This is prompt-level, not OS-level.
+
+const CURSOR_RULE_PATH: &str = ".cursor/rules/tkr.mdc";
+
+fn install_cursor(home: &std::path::Path) -> Result<()> {
+    let rule_path = home.join(CURSOR_RULE_PATH);
+
+    if rule_path.exists() {
+        println!("✓ Cursor: already installed at {}", rule_path.display());
+        return Ok(());
+    }
+
+    if let Some(parent) = rule_path.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
+
+    let rule = "\
+---
+description: tkr token-optimization proxy — prefix all shell commands with tkr
+alwaysApply: true
+---
+
+## tkr — Token-Optimized Commands
+
+Always prefix shell commands with `tkr` to reduce token usage by 60-90%.
+`tkr` is transparent: if no filter exists for a command it passes through unchanged.
+
+### Examples
+
+```bash
+# Git
+tkr git status
+tkr git diff
+tkr git log
+
+# Cargo / Rust
+tkr cargo build
+tkr cargo test
+tkr cargo check
+tkr cargo clippy
+
+# Node / JS
+tkr npm run dev
+tkr pnpm install
+
+# Files & Search
+tkr ls src/
+tkr grep \"fn main\" .
+
+# Docker / K8s
+tkr docker ps
+tkr kubectl get pods
+```
+
+### Rule
+
+When generating shell commands to run in the terminal, **always prepend `tkr`**.
+This applies to: git, cargo, npm, pnpm, yarn, docker, kubectl, make, grep, find, ls, curl.
+";
+
+    std::fs::write(&rule_path, rule)
+        .with_context(|| format!("writing {}", rule_path.display()))?;
+
+    println!(
+        "✓ Cursor: installed rule at {}\n  Cursor Agent will now prefix commands with tkr.",
+        rule_path.display()
     );
     Ok(())
 }

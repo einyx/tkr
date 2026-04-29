@@ -84,6 +84,9 @@ pub enum Commands {
         /// Install only into Codex CLI (~/.codex/config.toml)
         #[arg(long)]
         codex: bool,
+        /// Install only into Cursor (~/.cursor/rules/tkr.mdc)
+        #[arg(long)]
+        cursor: bool,
     },
     /// Benchmark how much tkr would save on a given command.
     /// Runs raw vs filtered, compares chars/tokens, prints ratio.

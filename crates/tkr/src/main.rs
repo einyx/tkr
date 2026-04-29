@@ -188,7 +188,7 @@ fn main() -> anyhow::Result<()> {
             Ok(())
         }
         Some(Commands::CleanStats { yes }) => clean_stats(yes),
-        Some(Commands::Install { claude, codex }) => cmds::install::run(claude, codex),
+        Some(Commands::Install { claude, codex, cursor }) => cmds::install::run(claude, codex, cursor),
         Some(Commands::Bench { command }) => cmds::bench::run(&command),
         Some(Commands::Agent { cmd }) => match cmd {
             AgentCmd::Run { manifest } => agent_cmd::run_agent(&manifest),
