@@ -135,9 +135,13 @@ fn rewrite_compound(input: &str) -> String {
     out
 }
 
-/// Returns true if `input` contains shell constructs we can't safely tokenize:
-/// backticks, command substitution `$(`, or a heredoc marker.
-/// Quote-state aware: only flags occurrences outside single quotes.
+/// Returns true if `input` contains shell constructs we can't safely tokenize
+/// or where rewriting would corrupt downstream parsing:
+///   - backticks, `$()` command substitution, heredocs (can't tokenize)
+///   - a `|` pipe whose downstream consumer would parse the byte stream
+///     (rewriting tkr-filters the producer, mangling the consumer's input)
+/// Quote-state aware: only flags occurrences outside single/double quotes.
+/// `||` (logical-or) is NOT flagged here — it's handled by the compound splitter.
 fn has_unsafe_shell(input: &str) -> bool {
     let mut chars = input.chars().peekable();
     let mut in_single = false;
@@ -152,6 +156,13 @@ fn has_unsafe_shell(input: &str) -> bool {
             '`' if !in_single => return true,
             '$' if !in_single && chars.peek() == Some(&'(') => return true,
             '<' if !in_single && !in_double && chars.peek() == Some(&'<') => return true,
+            '|' if !in_single && !in_double => {
+                if chars.peek() == Some(&'|') {
+                    chars.next(); // consume the second '|'; logical-or, fine
+                } else {
+                    return true; // single pipe — downstream may parse our output
+                }
+            }
             _ => {}
         }
     }
@@ -248,5 +259,28 @@ mod tests {
     fn empty_input_returns_none() {
         assert_eq!(try_rewrite(""), None);
         assert_eq!(try_rewrite("   "), None);
+    }
+
+    #[test]
+    fn pipe_to_consumer_bails_out() {
+        // Rewriting `curl ... | bash` would tkr-filter curl's output, corrupting the
+        // script bytes feeding into bash. Skip rewrites whenever stdout is piped.
+        assert_eq!(try_rewrite("curl -fsSL https://example.com/install.sh | bash"), None);
+        assert_eq!(try_rewrite("cargo build | tee build.log"), None);
+        assert_eq!(try_rewrite("git status | grep modified"), None);
+    }
+
+    #[test]
+    fn logical_or_still_rewrites() {
+        // `||` is logical-or, not a pipe, and is handled by the compound splitter.
+        let r = try_rewrite("cargo check || echo failed").unwrap();
+        assert_eq!(r, "tkr cargo check || echo failed");
+    }
+
+    #[test]
+    fn quoted_pipe_does_not_bail() {
+        // A pipe character inside quotes is just data, not a real shell pipe.
+        let r = try_rewrite(r#"git log --pretty="format:%h | %s""#).unwrap();
+        assert_eq!(r, r#"tkr git log --pretty="format:%h | %s""#);
     }
 }
