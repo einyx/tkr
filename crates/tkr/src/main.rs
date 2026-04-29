@@ -190,7 +190,7 @@ fn main() -> anyhow::Result<()> {
         cli.command,
         Some(Commands::Watch)
             | Some(Commands::Gain { .. })
-            | Some(Commands::Discover)
+            | Some(Commands::Discover { .. })
             | Some(Commands::Suggest)
     );
     if needs_full_boot {
@@ -205,7 +205,7 @@ fn main() -> anyhow::Result<()> {
         Some(Commands::Gain { breakdown, sort, plain }) => {
             cmds::gain::run(breakdown, &sort, plain)
         }
-        Some(Commands::Discover) => cmds::discover::run(),
+        Some(Commands::Discover { history, limit }) => cmds::discover::run(history, limit),
         Some(Commands::Suggest) => cmds::suggest::run(),
         Some(Commands::Rewrite { command }) => cmds::rewrite::run(&command),
         Some(Commands::Hook { target }) => match target {

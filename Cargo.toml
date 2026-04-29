@@ -26,7 +26,7 @@ ureq = { version = "2", features = ["json"] }
 thiserror = "1"
 mockito = "1"
 age = "0.10"
-keyring = "3"
+keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native-sync-persistent"] }
 schemars = "0.8"
 jsonschema = "0.18"
 hex = "0.4"

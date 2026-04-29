@@ -192,17 +192,27 @@ impl SqliteImpl {
         let mut conn = Connection::open_in_memory()
             .map_err(|e| Error::Vault(e.to_string()))?;
 
-        if let Some(z) = vault
-            .read(class, &key, &plugin)
-            .map_err(|e| Error::Vault(e.to_string()))?
-        {
-            // SQLite's deserialize requires a buffer allocated with
-            // sqlite3_malloc (so it can later free / realloc it). Copy our
-            // decrypted bytes into one.
-            let owned = sqlite3_malloc_copy(&z[..])?;
-            unsafe {
-                conn.deserialize(rusqlite::DatabaseName::Main, owned, false)
-                    .map_err(|e| Error::Vault(e.to_string()))?;
+        // If the vault blob is unreadable (corrupt, wrong key, or written by
+        // an older codec we no longer accept), don't fail open() — that path
+        // has no caching, so callers retry forever and burn CPU on the slow
+        // legacy decrypt. Treat it as empty; the next persist() rewrites the
+        // blob in the current format.
+        match vault.read(class, &key, &plugin) {
+            Ok(Some(z)) => {
+                // SQLite's deserialize requires a buffer allocated with
+                // sqlite3_malloc (so it can later free / realloc it). Copy our
+                // decrypted bytes into one.
+                let owned = sqlite3_malloc_copy(&z[..])?;
+                unsafe {
+                    conn.deserialize(rusqlite::DatabaseName::Main, owned, false)
+                        .map_err(|e| Error::Vault(e.to_string()))?;
+                }
+            }
+            Ok(None) => {}
+            Err(e) => {
+                eprintln!(
+                    "tkr: warning: vault blob for {plugin}/{key} unreadable ({e}); starting fresh"
+                );
             }
         }
 

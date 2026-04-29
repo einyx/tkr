@@ -39,8 +39,15 @@ pub enum Commands {
         #[arg(long)]
         plain: bool,
     },
-    /// Analyze session history for missed savings
-    Discover,
+    /// Analyze shell history for missed savings
+    Discover {
+        /// Optional path to a shell history file
+        #[arg(long)]
+        history: Option<std::path::PathBuf>,
+        /// Max number of recent history lines to scan
+        #[arg(long, default_value_t = 50000)]
+        limit: usize,
+    },
     /// Suggest concrete filter improvements based on your analytics
     Suggest,
     /// Rewrite a shell command to use tkr (used by hooks).

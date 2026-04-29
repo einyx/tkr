@@ -107,14 +107,15 @@ pub fn run(cfg: Config, args: &[String]) -> Result<()> {
         // Detached, the writer races with process exit — short-lived commands
         // (`tkr true`, `tkr cargo --version`) may lose one analytics row.
         // Long-running commands (the ones that move tokens-saved) land
-        // cleanly. We don't loop over noise_signatures: each is its own
-        // re-encrypt cycle. They'll be batched in a follow-up.
         let _ = buf; // unused until noise-batching lands
         let bus = host.bus.clone();
         let key_owned = key.clone();
         let chars_in = result.chars_in;
         let chars_saved = result.chars_suppressed;
-        std::thread::spawn(move || {
+        // Join instead of detach: XChaCha20-Poly1305 vault writes are ~1ms,
+        // so this is safe. Detached threads are killed on process exit before
+        // the write completes, causing 'tkr gain' to always show no data.
+        let handle = std::thread::spawn(move || {
             let vault = crate::host::boot::vault();
             let analytics_host = crate::host::RealHost::new("tkr-analytics", vault, bus);
             let _ = tkr_analytics::record_command_stat_via_host(
@@ -124,6 +125,7 @@ pub fn run(cfg: Config, args: &[String]) -> Result<()> {
                 chars_saved as u64,
             );
         });
+        let _ = handle.join();
     }
 
     Ok(())

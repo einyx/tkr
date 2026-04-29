@@ -43,6 +43,7 @@ fastembed = { version = "4", optional = true }
 keyring = { workspace = true }
 rand = { workspace = true }
 age = { workspace = true }
+chacha20poly1305 = "0.10"
 uuid = { version = "1", features = ["v4"] }
 hostname = "0.4"
 sha2 = { workspace = true }
