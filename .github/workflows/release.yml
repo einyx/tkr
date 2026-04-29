@@ -21,17 +21,22 @@ jobs:
             archive: tkr-aarch64-apple-darwin.tar.gz
             use_cross: false
           - target: x86_64-apple-darwin
-            os: macos-latest
+            os: macos-13
             archive: tkr-x86_64-apple-darwin.tar.gz
             use_cross: false
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             archive: tkr-x86_64-unknown-linux-gnu.tar.gz
             use_cross: false
+            install_dbus: true
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             archive: tkr-aarch64-unknown-linux-gnu.tar.gz
             use_cross: true
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: tkr-x86_64-pc-windows-msvc.tar.gz
+            use_cross: false
 
     steps:
       - uses: actions/checkout@v4
@@ -40,6 +45,10 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - name: Install dbus headers (Linux native builds)
+        if: matrix.install_dbus
+        run: sudo apt-get update -qq && sudo apt-get install -y libdbus-1-dev pkg-config
 
       - name: Install cross
         if: matrix.use_cross
@@ -53,9 +62,16 @@ jobs:
 
       - name: Build (cargo)
         if: ${{ !matrix.use_cross }}
+        shell: bash
         env:
           TARGET: ${{ matrix.target }}
-        run: cargo build --release -p tkr --target "$TARGET"
+        run: |
+          set -euo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            cargo build --release -p tkr
+          else
+            cargo build --release -p tkr --target "$TARGET"
+          fi
 
       - name: Import Apple Developer ID
         if: contains(matrix.target, 'apple-darwin') && env.APPLE_CERT_P12_BASE64 != ''
@@ -109,13 +125,19 @@ jobs:
           fi
 
       - name: Package
+        shell: bash
         env:
           TARGET: ${{ matrix.target }}
           ARCHIVE: ${{ matrix.archive }}
         run: |
-          BIN="target/${TARGET}/release/tkr"
+          set -euo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            BIN="target/release/tkr.exe"
+          else
+            BIN="target/${TARGET}/release/tkr"
+          fi
           tar czf "$ARCHIVE" -C "$(dirname "$BIN")" "$(basename "$BIN")"
-          shasum -a 256 "$ARCHIVE" > "${ARCHIVE}.sha256"
+          python3 -c "import hashlib, pathlib, os; p=pathlib.Path(os.environ['ARCHIVE']); print(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name)" > "${ARCHIVE}.sha256"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
