@@ -1,6 +1,6 @@
 [package]
 name = "tkr"
-version = "0.2.6"
+version = "0.2.7"
 edition = "2021"
 description = "Token-optimized CLI proxy for LLM development workflows"
 license = "Apache-2.0"

@@ -98,23 +98,31 @@ pub fn run(cfg: Config, args: &[String]) -> Result<()> {
     // Hand the buffer to a detached thread so the command exits immediately.
     // Analytics are best-effort, not critical to correctness.
     // The detached thread calls ensure_full() (lazy) to obtain a real vault.
-    if !buf.is_empty() {
+    // Always upsert command_stats so `tkr gain` shows real numbers without
+    // requiring `tkr watch` to be running. Spawn a detached thread so the
+    // user-facing command exits immediately; analytics are best-effort.
+    {
+        // Detached analytics write. One vault decrypt+re-encrypt costs ~5s,
+        // so doing it inline would regress every command from 15ms to 7s.
+        // Detached, the writer races with process exit — short-lived commands
+        // (`tkr true`, `tkr cargo --version`) may lose one analytics row.
+        // Long-running commands (the ones that move tokens-saved) land
+        // cleanly. We don't loop over noise_signatures: each is its own
+        // re-encrypt cycle. They'll be batched in a follow-up.
+        let _ = buf; // unused until noise-batching lands
         let bus = host.bus.clone();
         let key_owned = key.clone();
+        let chars_in = result.chars_in;
+        let chars_saved = result.chars_suppressed;
         std::thread::spawn(move || {
-            // vault() triggers ensure_full() lazily; safe from any thread.
             let vault = crate::host::boot::vault();
             let analytics_host = crate::host::RealHost::new("tkr-analytics", vault, bus);
-            for (_buf_cmd, sig, entry) in &buf {
-                let _ = tkr_analytics::record_noise_signature_via_host(
-                    &analytics_host,
-                    &key_owned,
-                    sig,
-                    &entry.sample,
-                    entry.occurrences,
-                    entry.total_chars,
-                );
-            }
+            let _ = tkr_analytics::record_command_stat_via_host(
+                &analytics_host,
+                &key_owned,
+                chars_in as u64,
+                chars_saved as u64,
+            );
         });
     }
 

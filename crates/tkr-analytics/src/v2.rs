@@ -390,6 +390,27 @@ pub fn noise_signatures_without_embeddings_via_host(
         .collect())
 }
 
+/// Upsert a command-stats row into the vault sqlite using any `Host` impl.
+/// Lets non-plugin code (proxy::run) record per-run savings directly without
+/// going through the legacy session-socket / `tkr watch` daemon path.
+pub fn record_command_stat_via_host(
+    host: &dyn Host,
+    command: &str,
+    chars_in: u64,
+    chars_saved: u64,
+) -> ApiResult<()> {
+    let db = host.sqlite(SCHEMA_SQL, SensitivityClass::Public)?;
+    db.execute(
+        UPSERT_SQL,
+        &[
+            json!(command),
+            json!(chars_in as i64),
+            json!(chars_saved as i64),
+        ],
+    )?;
+    Ok(())
+}
+
 /// Persist a noise signature into the vault sqlite using any `Host` impl.
 /// Lets non-plugin code (proxy::run) write learning data directly.
 pub fn record_noise_signature_via_host(

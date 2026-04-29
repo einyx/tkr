@@ -5,6 +5,7 @@ pub use v2::{
     nearest_to_signature_via_host,
     noise_signature_id_via_host,
     noise_signatures_without_embeddings_via_host,
+    record_command_stat_via_host,
     record_noise_signature_via_host,
     top_noise_signatures_via_host,
     total_savings_via_host,
