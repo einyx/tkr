@@ -28,6 +28,13 @@ class Tkr < Formula
 
   def install
     bin.install "tkr"
+    # Pin the codesign identifier on macOS so Keychain ACL stays valid across
+    # upgrades. Without this, a hash-derived identifier would change each
+    # release and orphan the existing vault master key.
+    if OS.mac?
+      system "/usr/bin/codesign", "--force", "--sign", "-",
+             "--identifier", "com.einyx.tkr", bin/"tkr"
+    end
   end
 
   test do

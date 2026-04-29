@@ -68,7 +68,6 @@ jobs:
           CERT_FILE="$(mktemp -t tkr-cert.XXXXXX.p12)"
           trap 'rm -f "$CERT_FILE"' EXIT
           echo "$APPLE_CERT_P12_BASE64" | base64 --decode > "$CERT_FILE"
-          # Diagnostics: confirm the decoded blob is a real PKCS#12.
           ls -l "$CERT_FILE"
           file "$CERT_FILE" || true
           xxd "$CERT_FILE" | head -2 || true
@@ -94,18 +93,19 @@ jobs:
         run: |
           set -euo pipefail
           BIN="target/${TARGET}/release/tkr"
+          IDENTIFIER=com.einyx.tkr
           IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
             | grep "Developer ID Application" \
             | head -1 \
             | sed -E 's/^[[:space:]]*[0-9]+\)[[:space:]]+([A-F0-9]{40}).*/\1/' || true)
           if [ -n "$IDENTITY" ]; then
-            codesign --force --sign "$IDENTITY" \
+            codesign --force --sign "$IDENTITY" --identifier "$IDENTIFIER" \
               --options runtime --timestamp "$BIN"
             codesign --verify --verbose=2 "$BIN"
             codesign -dvv "$BIN" 2>&1 | head -10
           else
             echo "::warning::No Developer ID Application identity found; binary remains ad-hoc signed"
-            codesign --force --sign - "$BIN"
+            codesign --force --sign - --identifier "$IDENTIFIER" "$BIN"
           fi
 
       - name: Package

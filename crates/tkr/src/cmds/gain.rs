@@ -47,8 +47,13 @@ pub fn run(breakdown: bool, sort: &str, plain: bool) -> Result<()> {
         vault,
         host_handle.bus.clone(),
     );
-    let mut rows = tkr_analytics::total_savings_via_host(&analytics_host)
-        .unwrap_or_default();
+    let mut rows = match tkr_analytics::total_savings_via_host(&analytics_host) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("tkr gain: could not read analytics from vault: {e}");
+            Vec::new()
+        }
+    };
     if rows.is_empty() {
         println!("No analytics data yet. Run some commands with tkr first.");
         return Ok(());

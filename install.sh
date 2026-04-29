@@ -37,9 +37,14 @@ chmod +x "${INSTALL_DIR}/${BIN_NAME}"
 # macOS: strip provenance/quarantine xattrs and re-apply an ad-hoc signature.
 # Without this, AppleSystemPolicy can refuse to launch the binary with
 # "load code signature error 2" / SIGKILL on first run after install.
+# The --identifier flag pins the codesign identity to com.einyx.tkr so the
+# Keychain ACL on tkr's vault master key stays valid across upgrades —
+# without it, each install gets a hash-derived identifier and the prior
+# install loses access to its own keychain entry.
 if [ "${OS}" = "darwin" ]; then
   xattr -c "${INSTALL_DIR}/${BIN_NAME}" 2>/dev/null || true
-  codesign --force --sign - "${INSTALL_DIR}/${BIN_NAME}" 2>/dev/null || true
+  codesign --force --sign - --identifier com.einyx.tkr \
+    "${INSTALL_DIR}/${BIN_NAME}" 2>/dev/null || true
 fi
 
 echo "Installed to ${INSTALL_DIR}/tkr"
