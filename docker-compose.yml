@@ -1,0 +1,40 @@
+services:
+  tkr-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tkr-server
+    restart: unless-stopped
+    # Bind only to host loopback. nginx on the host upstreams to 127.0.0.1:4000
+    # for tkr.prysm.sh — no need to expose this port to the public interface.
+    ports:
+      - "127.0.0.1:4000:4000"
+    env_file:
+      - ./tkr-server.env
+    environment:
+      # Container always binds 0.0.0.0 internally; the host port mapping is
+      # what enforces the loopback-only exposure.
+      HOST: "0.0.0.0"
+      PORT: "4000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    # Resource ceilings — adjust if you push real load.
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "256M"
+    # Read-only rootfs + tmpfs for /tmp; tkr-server doesn't write to disk yet
+    # (sessions live in-memory). When the SQLite/persistence layer lands,
+    # add a named volume here.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

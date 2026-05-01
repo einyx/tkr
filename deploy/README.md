@@ -1,9 +1,58 @@
 # tkr-server deploy
 
-systemd unit + env template for running `tkr-server` behind nginx at
-`tkr.prysm.sh`.
+Two supported shapes for running `tkr-server` behind nginx at
+`tkr.prysm.sh`. **Pick one — they manage the same port.** Compose is the
+default.
 
-## One-time install
+- **Docker Compose** (recommended) — `docker-compose.yml` in the repo
+  root, see *Compose install* below.
+- **systemd** — `deploy/tkr-server.service`, see *systemd install*.
+
+---
+
+## Compose install (recommended)
+
+```sh
+# 1. One-time: prepare the env file with a strong password
+install -m 0600 deploy/tkr-server.env.example tkr-server.env
+sed -i "s|^TKR_ADMIN_PASSWORD=.*|TKR_ADMIN_PASSWORD=$(openssl rand -hex 32)|" tkr-server.env
+
+# 2. Build + start
+docker compose up -d --build
+
+# 3. Verify
+docker compose ps
+curl -fsS http://127.0.0.1:4000/health
+docker compose logs -f tkr-server
+```
+
+The container binds to `127.0.0.1:4000` on the host (loopback-only). nginx
+upstreams to it exactly as before.
+
+### After updating the code
+
+```sh
+docker compose up -d --build
+```
+
+### Rotate the password
+
+```sh
+sed -i "s|^TKR_ADMIN_PASSWORD=.*|TKR_ADMIN_PASSWORD=$(openssl rand -hex 32)|" tkr-server.env
+docker compose up -d
+```
+
+### Container hardening applied
+
+- Read-only rootfs + tmpfs `/tmp`.
+- `cap_drop: ALL`, `no-new-privileges: true`.
+- Non-root user (uid 1000).
+- Resource caps: 1 CPU, 256 MB.
+- Healthcheck hitting `/health` every 30s.
+
+---
+
+## systemd install (alternative)
 
 ```sh
 # 1. Build the release binary
