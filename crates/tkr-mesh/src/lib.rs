@@ -7,6 +7,7 @@
 
 pub mod address;
 pub mod envelope;
+pub mod frames;
 pub mod identity;
 pub mod invite;
 

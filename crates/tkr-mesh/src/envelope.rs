@@ -26,7 +26,7 @@ const ZERO_NONCE: [u8; 12] = [0u8; 12];
 
 /// Sealed direct-message envelope. Wire-friendly: all binary fields are
 /// hex strings so it embeds in JSON frames cleanly.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Envelope {
     /// 33-byte compressed secp256k1 public key, hex.
     pub eph_pub: String,
@@ -129,13 +129,11 @@ mod tests {
 
     #[test]
     fn wrong_recipient_fails() {
-        let alice = Identity::generate();
         let bob = Identity::generate();
         let eve = Identity::generate();
         let env = Envelope::seal(b"for bob only", &pubkey_of(&bob), bob.address()).unwrap();
         let err = env.open(&eve).unwrap_err();
         assert!(matches!(err, Error::BadSignature));
-        let _ = alice;
     }
 
     #[test]
