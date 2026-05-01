@@ -1,0 +1,13 @@
+command = "ls"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*$"
+
+# Long `ls` listings often emit large runs of structurally similar entries
+# (cache dirs, numbered build artifacts, dependency trees). Keep the first few
+# rows of a repeated shape and suppress the rest.
+[[rules]]
+type = "collapse_common_prefix"
+prefix_len = 16
+keep_first = 4

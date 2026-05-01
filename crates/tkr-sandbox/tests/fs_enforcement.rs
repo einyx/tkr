@@ -16,16 +16,21 @@ fn run_test() {
         "/usr/bin/touch",
         &[allowed_target.to_str().unwrap()],
         &policy,
-    ).unwrap();
+    )
+    .unwrap();
     assert_eq!(r1.exit, 0, "stderr={}", String::from_utf8_lossy(&r1.stderr));
-    assert!(allowed_target.exists(), "allowed file should exist after touch");
+    assert!(
+        allowed_target.exists(),
+        "allowed file should exist after touch"
+    );
 
     // Denied write must fail or produce no file.
     let r2 = run_sandboxed(
         "/usr/bin/touch",
         &[denied_target.to_str().unwrap()],
         &policy,
-    ).unwrap();
+    )
+    .unwrap();
     assert!(
         r2.exit != 0 || !denied_target.exists(),
         "denied write should have failed (exit={}, file_exists={})",
@@ -36,8 +41,12 @@ fn run_test() {
 
 #[cfg(target_os = "linux")]
 #[test]
-fn linux_blocks_write_outside_allowlist() { run_test(); }
+fn linux_blocks_write_outside_allowlist() {
+    run_test();
+}
 
 #[cfg(target_os = "macos")]
 #[test]
-fn macos_blocks_write_outside_allowlist() { run_test(); }
+fn macos_blocks_write_outside_allowlist() {
+    run_test();
+}

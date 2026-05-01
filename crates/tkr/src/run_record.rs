@@ -2,26 +2,38 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::path::PathBuf;
-use tkr_agent::{ContentBlock, Message, RunOutcome};
 use tkr_agent::manifest::Manifest;
+use tkr_agent::{ContentBlock, Message, RunOutcome};
 
 // ─── price table ────────────────────────────────────────────────────────────
 
 struct Price {
-    input_per_1m: f64,   // USD
-    output_per_1m: f64,  // USD
+    input_per_1m: f64,  // USD
+    output_per_1m: f64, // USD
 }
 
 fn price_for_model(model: &str) -> Price {
     if model.starts_with("claude-sonnet-4-6") || model.starts_with("claude-sonnet-4-5") {
-        Price { input_per_1m: 3.0, output_per_1m: 15.0 }
+        Price {
+            input_per_1m: 3.0,
+            output_per_1m: 15.0,
+        }
     } else if model.starts_with("claude-opus-4-7") || model.starts_with("claude-opus-4-6") {
-        Price { input_per_1m: 15.0, output_per_1m: 75.0 }
+        Price {
+            input_per_1m: 15.0,
+            output_per_1m: 75.0,
+        }
     } else if model.starts_with("claude-haiku-4-5") || model.starts_with("claude-haiku") {
-        Price { input_per_1m: 1.0, output_per_1m: 5.0 }
+        Price {
+            input_per_1m: 1.0,
+            output_per_1m: 5.0,
+        }
     } else {
         // default
-        Price { input_per_1m: 3.0, output_per_1m: 15.0 }
+        Price {
+            input_per_1m: 3.0,
+            output_per_1m: 15.0,
+        }
     }
 }
 
@@ -110,7 +122,11 @@ fn convert_content_block(b: &ContentBlock) -> ContentBlockRecord {
             name: name.clone(),
             input: input.clone(),
         },
-        ContentBlock::ToolResult { tool_use_id, content, is_error } => {
+        ContentBlock::ToolResult {
+            tool_use_id,
+            content,
+            is_error,
+        } => {
             // Known limitation: the agent runtime currently filters in-place and does not
             // preserve raw output. We set raw_content = content and raw_bytes == filtered_bytes
             // until the runtime exposes pre-filter tool output.
@@ -156,8 +172,13 @@ pub fn record_from_run(
         .unwrap_or_else(|| "unknown".to_string());
 
     let model = &manifest.model.name;
-    let cost_cents = estimate_cost_cents(model, outcome.input_tokens_total, outcome.output_tokens_total);
-    let cost_saved_cents = estimate_savings_cents(model, outcome.raw_bytes_total, outcome.filtered_bytes_total);
+    let cost_cents = estimate_cost_cents(
+        model,
+        outcome.input_tokens_total,
+        outcome.output_tokens_total,
+    );
+    let cost_saved_cents =
+        estimate_savings_cents(model, outcome.raw_bytes_total, outcome.filtered_bytes_total);
 
     let receipt = ReceiptRecord {
         agent: manifest.name.clone(),
@@ -197,16 +218,12 @@ pub fn persist(record: &RunRecord) -> Result<PathBuf> {
         .with_context(|| format!("creating {}", runs_dir.display()))?;
 
     // Sanitize started_at for filename: replace colons and pluses
-    let ts_safe = record.started_at
-        .replace(':', "-")
-        .replace('+', "p");
+    let ts_safe = record.started_at.replace(':', "-").replace('+', "p");
     let filename = format!("{}-{}.json", ts_safe, record.id);
     let path = runs_dir.join(&filename);
 
-    let json = serde_json::to_string_pretty(record)
-        .context("serializing RunRecord to JSON")?;
-    std::fs::write(&path, json)
-        .with_context(|| format!("writing {}", path.display()))?;
+    let json = serde_json::to_string_pretty(record).context("serializing RunRecord to JSON")?;
+    std::fs::write(&path, json).with_context(|| format!("writing {}", path.display()))?;
 
     Ok(path)
 }
@@ -276,10 +293,16 @@ mod tests {
         };
 
         let path = persist(&record).unwrap();
-        assert!(path.exists(), "file should exist at {:?}", path);
+        assert!(path.exists(), "file should exist at {path:?}");
         let name = path.file_name().unwrap().to_string_lossy();
-        assert!(name.contains("test-id-123"), "filename should contain id: {}", name);
-        assert!(name.ends_with(".json"), "filename should end in .json: {}", name);
+        assert!(
+            name.contains("test-id-123"),
+            "filename should contain id: {name}"
+        );
+        assert!(
+            name.ends_with(".json"),
+            "filename should end in .json: {name}"
+        );
 
         // Verify JSON is valid and contains key fields
         let contents = std::fs::read_to_string(&path).unwrap();

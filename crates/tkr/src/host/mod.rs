@@ -1,13 +1,16 @@
 use std::sync::Arc;
-use tkr_api::{Result as ApiResult, Error};
 use tkr_api::bus::Bus;
 use tkr_api::handles::{Fs, Kv, Sqlite};
 use tkr_api::host::Host;
 use tkr_api::manifest::SensitivityClass;
 use tkr_api::vault::Vault;
+use tkr_api::{Error, Result as ApiResult};
 
 use crate::host::bus::InProcBus;
-use crate::host::vault::{HostVault, storage::{FsImpl, KvImpl, SqliteImpl}};
+use crate::host::vault::{
+    storage::{FsImpl, KvImpl, SqliteImpl},
+    HostVault,
+};
 
 pub mod boot;
 pub mod bus;

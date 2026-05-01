@@ -3,8 +3,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use tkr_api::{FilterResult, LegacyPlugin as Plugin};
 
-use crate::signature::signature_of;
 use crate::host::loader::PluginRegistry;
+use crate::signature::signature_of;
 use tkr_filter::FilterPlugin;
 
 /// Cap on unique (command, signature) pairs held per process. Past this we stop
@@ -69,6 +69,7 @@ pub struct PipelineResult {
 
 /// Strip ANSI escape sequences (CSI / OSC) and standalone bell/backspace/CR.
 /// Iterates over chars to preserve multi-byte UTF-8 (├ ─ ✓ etc).
+#[allow(clippy::redundant_guards)] // false positives on `peek()` + `matches!(char, ...)`
 pub fn strip_ansi(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     let mut chars = input.chars().peekable();
@@ -175,7 +176,7 @@ fn truncate_long_line(s: &str) -> String {
         head.push(c);
         taken += w;
     }
-    head.push_str(&format!(" … (+{} chars truncated)", elided));
+    head.push_str(&format!(" … (+{elided} chars truncated)"));
     head
 }
 
@@ -192,8 +193,14 @@ fn shorten_home(line: &str) -> String {
     line.replace(&home, "~")
 }
 
-pub fn run_pipeline<I>(lines: I, chain: &mut [Box<dyn Plugin>], command: &str, args: &str) -> PipelineResult
-where I: Iterator<Item = Result<String>>,
+pub fn run_pipeline<I>(
+    lines: I,
+    chain: &mut [Box<dyn Plugin>],
+    command: &str,
+    args: &str,
+) -> PipelineResult
+where
+    I: Iterator<Item = Result<String>>,
 {
     let mut emitted = Vec::new();
     let mut chars_in: u64 = 0;
@@ -210,7 +217,10 @@ where I: Iterator<Item = Result<String>>,
     for (index, line_result) in lines.enumerate() {
         let raw = match line_result {
             Ok(l) => l,
-            Err(e) => { eprintln!("tkr: read error: {e}"); continue; }
+            Err(e) => {
+                eprintln!("tkr: read error: {e}");
+                continue;
+            }
         };
         chars_in += raw.len() as u64;
 
@@ -294,7 +304,7 @@ where I: Iterator<Item = Result<String>>,
             elided_lines,
             max_tokens.unwrap_or(0)
         );
-        println!("{}", msg);
+        println!("{msg}");
         emitted.push(msg);
     }
 
@@ -308,7 +318,11 @@ where I: Iterator<Item = Result<String>>,
         }
     }
 
-    PipelineResult { emitted, chars_in, chars_suppressed }
+    PipelineResult {
+        emitted,
+        chars_in,
+        chars_suppressed,
+    }
 }
 
 /// V2 pipeline: filters via the plugin registry (v2 `on_line`). Analytics is
@@ -346,7 +360,10 @@ where
     for (index, line_result) in lines.enumerate() {
         let raw = match line_result {
             Ok(l) => l,
-            Err(e) => { eprintln!("tkr: read error: {e}"); continue; }
+            Err(e) => {
+                eprintln!("tkr: read error: {e}");
+                continue;
+            }
         };
         chars_in += raw.len() as u64;
 
@@ -416,7 +433,7 @@ where
             max_tokens.unwrap_or(0)
         );
         if !buffered {
-            println!("{}", msg);
+            println!("{msg}");
         }
         emitted.push(msg);
     }
@@ -442,7 +459,11 @@ where
         }
     }
 
-    PipelineResult { emitted, chars_in, chars_suppressed }
+    PipelineResult {
+        emitted,
+        chars_in,
+        chars_suppressed,
+    }
 }
 
 /// If `body` parses as a JSON document, re-serialize it without indentation
@@ -485,11 +506,20 @@ where
     let mut budget_exceeded = false;
     let mut elided_lines: u64 = 0;
     let buffered = std::env::var_os("TKR_COMPACT_JSON").is_some();
+    // Keep machine-readable output stable in compact-json mode.
+    let prefix = if buffered {
+        String::new()
+    } else {
+        std::env::var("TKR_OUTPUT_PREFIX").ok().unwrap_or_default()
+    };
 
     for (index, line_result) in lines.enumerate() {
         let raw = match line_result {
             Ok(l) => l,
-            Err(e) => { eprintln!("tkr: read error: {e}"); continue; }
+            Err(e) => {
+                eprintln!("tkr: read error: {e}");
+                continue;
+            }
         };
         chars_in += raw.len() as u64;
 
@@ -549,7 +579,7 @@ where
 
         record_emit(command, &current);
         if !buffered {
-            println!("{current}");
+            print_prefixed(&current, &prefix);
         }
         emitted.push(current);
     }
@@ -561,7 +591,7 @@ where
             max_tokens.unwrap_or(0)
         );
         if !buffered {
-            println!("{}", msg);
+            print_prefixed(&msg, &prefix);
         }
         emitted.push(msg);
     }
@@ -572,13 +602,29 @@ where
         if final_body.len() < body.len() {
             chars_suppressed += (body.len() - final_body.len()) as u64;
         }
-        println!("{final_body}");
+        print_prefixed(&final_body, &prefix);
     }
 
-    PipelineResult { emitted, chars_in, chars_suppressed }
+    PipelineResult {
+        emitted,
+        chars_in,
+        chars_suppressed,
+    }
 }
 
-pub fn chars_to_tokens(chars: u64) -> u64 { chars / 4 }
+pub fn chars_to_tokens(chars: u64) -> u64 {
+    chars / 4
+}
+
+fn print_prefixed(s: &str, prefix: &str) {
+    if prefix.is_empty() {
+        println!("{s}");
+        return;
+    }
+    for line in s.lines() {
+        println!("{prefix} {line}");
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -586,16 +632,34 @@ mod tests {
 
     struct PassPlugin;
     impl Plugin for PassPlugin {
-        fn init(_: &str) -> Box<dyn Plugin> where Self: Sized { Box::new(PassPlugin) }
-        fn filter(&mut self, _l: &str, _c: &str, _a: &str, _i: u64) -> FilterResult { FilterResult::Pass }
-        fn flush(&mut self) -> String { String::new() }
+        fn init(_: &str) -> Box<dyn Plugin>
+        where
+            Self: Sized,
+        {
+            Box::new(PassPlugin)
+        }
+        fn filter(&mut self, _l: &str, _c: &str, _a: &str, _i: u64) -> FilterResult {
+            FilterResult::Pass
+        }
+        fn flush(&mut self) -> String {
+            String::new()
+        }
     }
 
     struct SuppressAll;
     impl Plugin for SuppressAll {
-        fn init(_: &str) -> Box<dyn Plugin> where Self: Sized { Box::new(SuppressAll) }
-        fn filter(&mut self, _l: &str, _c: &str, _a: &str, _i: u64) -> FilterResult { FilterResult::Suppress }
-        fn flush(&mut self) -> String { String::new() }
+        fn init(_: &str) -> Box<dyn Plugin>
+        where
+            Self: Sized,
+        {
+            Box::new(SuppressAll)
+        }
+        fn filter(&mut self, _l: &str, _c: &str, _a: &str, _i: u64) -> FilterResult {
+            FilterResult::Suppress
+        }
+        fn flush(&mut self) -> String {
+            String::new()
+        }
     }
 
     fn lines<'a>(v: &'a [&'a str]) -> impl Iterator<Item = Result<String>> + 'a {
@@ -619,7 +683,9 @@ mod tests {
     }
 
     #[test]
-    fn tokens_approx() { assert_eq!(chars_to_tokens(400), 100); }
+    fn tokens_approx() {
+        assert_eq!(chars_to_tokens(400), 100);
+    }
 
     #[test]
     fn strip_ansi_removes_color_codes() {

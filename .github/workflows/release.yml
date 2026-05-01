@@ -33,12 +33,16 @@ jobs:
             os: ubuntu-latest
             archive: tkr-aarch64-unknown-linux-gnu.tar.gz
             use_cross: true
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: tkr-x86_64-pc-windows-msvc.tar.gz
+            use_cross: false
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@v1
         with:
           targets: ${{ matrix.target }}
 
@@ -63,11 +67,7 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            cargo build --release -p tkr
-          else
-            cargo build --release -p tkr --target "$TARGET"
-          fi
+          cargo build --release -p tkr --target "$TARGET"
 
       - name: Import Apple Developer ID
         if: contains(matrix.target, 'apple-darwin') && env.APPLE_CERT_P12_BASE64 != ''
@@ -127,11 +127,9 @@ jobs:
           ARCHIVE: ${{ matrix.archive }}
         run: |
           set -euo pipefail
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            BIN="target/release/tkr.exe"
-          else
-            BIN="target/${TARGET}/release/tkr"
-          fi
+          exe=""
+          case "$TARGET" in *windows*) exe=".exe" ;; esac
+          BIN="target/${TARGET}/release/tkr${exe}"
           tar czf "$ARCHIVE" -C "$(dirname "$BIN")" "$(basename "$BIN")"
           python3 -c "import hashlib, pathlib, os; p=pathlib.Path(os.environ['ARCHIVE']); print(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name)" > "${ARCHIVE}.sha256"
 

@@ -16,14 +16,17 @@ fn end_to_end_echo_run() {
         .expect(1)
         .create();
 
-    let m2 = server.mock("POST", "/v1/messages")
+    let m2 = server
+        .mock("POST", "/v1/messages")
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(r#"{
+        .with_body(
+            r#"{
             "content":[{"type":"text","text":"echoed"}],
             "stop_reason":"end_turn",
             "usage":{"input_tokens":3,"output_tokens":2}
-        }"#)
+        }"#,
+        )
         .expect(1)
         .create();
 
@@ -41,8 +44,7 @@ name = "claude-sonnet-4-6"
 name = "echo"
 "#;
     let manifest = Manifest::parse(manifest_src).unwrap();
-    let provider = AnthropicProvider::new("k", "claude-sonnet-4-6")
-        .with_base_url(server.url());
+    let provider = AnthropicProvider::new("k", "claude-sonnet-4-6").with_base_url(server.url());
 
     let mut tools = ToolRegistry::new();
     tools.register(Box::new(EchoTool));

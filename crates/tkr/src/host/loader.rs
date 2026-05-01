@@ -1,9 +1,9 @@
-use std::sync::{Arc, Mutex};
-use tkr_api::plugin::Plugin;
-use tkr_api::capability::CapSet;
-use tkr_api::Error;
+use crate::host::{bus::InProcBus, vault::HostVault, RealHost};
 use anyhow::Result;
-use crate::host::{RealHost, bus::InProcBus, vault::HostVault};
+use std::sync::{Arc, Mutex};
+use tkr_api::capability::CapSet;
+use tkr_api::plugin::Plugin;
+use tkr_api::Error;
 
 pub struct PluginRegistry {
     vault: Arc<HostVault>,
@@ -16,7 +16,7 @@ pub struct PluginRegistry {
 
 struct Entry {
     name: String,
-    plugin: Mutex<Box<dyn Plugin>>,
+    plugin: Arc<Mutex<Box<dyn Plugin>>>,
     host: Arc<RealHost>,
     degraded: std::sync::atomic::AtomicBool,
 }
@@ -38,9 +38,8 @@ impl PluginRegistry {
 
     /// Register a plugin instance. Does not call `on_load` yet; that happens in `load_all`.
     ///
-    /// TODO(6.3): auto-register a bus handler for `<plugin_name>::cli.invoke` that forwards
-    /// to the plugin's `on_request`. This will allow the CLI dispatcher in `host::cli` to
-    /// route through the bus without manual handler wiring in tests or production startup.
+    /// When the manifest declares non-empty `cli_subcommands`, registers a bus handler for
+    /// `(plugin_name, "cli.invoke")` that forwards to `Plugin::on_request`.
     pub fn register(&mut self, plugin: Box<dyn Plugin>) -> Result<()> {
         let m = plugin.manifest();
         let name = m.name.clone();
@@ -56,9 +55,19 @@ impl PluginRegistry {
         }
         self.bus.set_caps(&name, granted);
         let host = Arc::new(RealHost::new(&name, self.vault.clone(), self.bus.clone()));
+        let plugin = Arc::new(Mutex::new(plugin));
+        if !m.cli_subcommands.is_empty() {
+            let invoke = plugin.clone();
+            let target = name.clone();
+            self.bus
+                .register_handler(target, "cli.invoke", vec![], move |req| {
+                    let mut p = invoke.lock().unwrap();
+                    p.on_request(req)
+                });
+        }
         self.entries.push(Entry {
             name,
-            plugin: Mutex::new(plugin),
+            plugin,
             host,
             degraded: false.into(),
         });
@@ -85,8 +94,7 @@ impl PluginRegistry {
                     "plugin {}: on_start failed: {}, marking degraded",
                     e.name, err
                 );
-                e.degraded
-                    .store(true, std::sync::atomic::Ordering::Relaxed);
+                e.degraded.store(true, std::sync::atomic::Ordering::Relaxed);
             }
         }
     }
@@ -95,10 +103,7 @@ impl PluginRegistry {
         for e in &self.entries {
             let mut p = e.plugin.lock().unwrap();
             if let Err(err) = p.on_shutdown() {
-                eprintln!(
-                    "plugin {}: on_shutdown error (ignored): {}",
-                    e.name, err
-                );
+                eprintln!("plugin {}: on_shutdown error (ignored): {}", e.name, err);
             }
         }
     }
@@ -133,16 +138,26 @@ impl PluginRegistry {
     /// can transform / suppress the line; the resulting String (or None for suppress) is
     /// passed to the next plugin. Returns the final transformed line, or None if any
     /// plugin suppressed it.
-    pub fn run_filters_line(&self, mut line: String, ctx: &tkr_api::plugin::CommandCtx) -> Option<String> {
+    pub fn run_filters_line(
+        &self,
+        mut line: String,
+        ctx: &tkr_api::plugin::CommandCtx,
+    ) -> Option<String> {
         for e in self.filter_entries() {
-            if e.degraded.load(std::sync::atomic::Ordering::Relaxed) { continue; }
+            if e.degraded.load(std::sync::atomic::Ordering::Relaxed) {
+                continue;
+            }
             let mut p = e.plugin.lock().unwrap();
             match p.on_line(&line, ctx) {
                 Ok(tkr_api::plugin::FilterDecision::Pass) => { /* keep line as-is */ }
                 Ok(tkr_api::plugin::FilterDecision::Suppress)
                 | Ok(tkr_api::plugin::FilterDecision::SuppressWithNote(_)) => return None,
-                Ok(tkr_api::plugin::FilterDecision::Replace(s)) => { line = s; }
-                Ok(tkr_api::plugin::FilterDecision::Annotate(s)) => { line.push_str(&s); }
+                Ok(tkr_api::plugin::FilterDecision::Replace(s)) => {
+                    line = s;
+                }
+                Ok(tkr_api::plugin::FilterDecision::Annotate(s)) => {
+                    line.push_str(&s);
+                }
                 Err(err) => {
                     eprintln!("plugin {}: on_line: {}; marking degraded", e.name, err);
                     e.degraded.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -161,7 +176,9 @@ impl PluginRegistry {
             match p.on_command_end(ctx) {
                 Ok(s) if !s.is_empty() => {
                     summary.push_str(&s);
-                    if !s.ends_with('\n') { summary.push('\n'); }
+                    if !s.ends_with('\n') {
+                        summary.push('\n');
+                    }
                 }
                 Ok(_) => {}
                 Err(err) => {
@@ -176,7 +193,10 @@ impl PluginRegistry {
     fn filter_entries(&self) -> impl Iterator<Item = &Entry> {
         self.entries.iter().filter(|e| {
             let p = e.plugin.lock().unwrap();
-            p.manifest().capabilities_required.iter().any(|c| c == tkr_api::capability::STDOUT_FILTER)
+            p.manifest()
+                .capabilities_required
+                .iter()
+                .any(|c| c == tkr_api::capability::STDOUT_FILTER)
         })
     }
 }
@@ -202,7 +222,10 @@ mod tests {
                 ..Default::default()
             }
         }
-        fn on_load(&mut self, _host: std::sync::Arc<dyn tkr_api::host::Host>) -> tkr_api::Result<()> {
+        fn on_load(
+            &mut self,
+            _host: std::sync::Arc<dyn tkr_api::host::Host>,
+        ) -> tkr_api::Result<()> {
             self.order
                 .lock()
                 .unwrap()
@@ -308,8 +331,8 @@ mod tests {
 #[cfg(test)]
 mod tests_filters {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use crate::host::vault::store::{MemStore, Store};
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use tkr_api::plugin::{CommandCtx, FilterDecision, Plugin};
 
@@ -324,7 +347,9 @@ mod tests_filters {
                 ..Default::default()
             }
         }
-        fn on_load(&mut self, _h: std::sync::Arc<dyn tkr_api::host::Host>) -> tkr_api::Result<()> { Ok(()) }
+        fn on_load(&mut self, _h: std::sync::Arc<dyn tkr_api::host::Host>) -> tkr_api::Result<()> {
+            Ok(())
+        }
         fn on_line(&mut self, _line: &str, _ctx: &CommandCtx) -> tkr_api::Result<FilterDecision> {
             self.0.fetch_add(1, Ordering::Relaxed);
             Ok(FilterDecision::Suppress)
@@ -352,7 +377,11 @@ mod tests_filters {
         reg.grant("drop", caps);
         reg.register(Box::new(DropAll(count.clone()))).unwrap();
         reg.load_all().unwrap();
-        let ctx = CommandCtx { command: "git".into(), args: "status".into(), line_index: 0 };
+        let ctx = CommandCtx {
+            command: "git".into(),
+            args: "status".into(),
+            line_index: 0,
+        };
         assert!(reg.run_filters_line("noisy".into(), &ctx).is_none());
         let summary = reg.filters_command_end(&ctx);
         assert!(summary.contains("dropped 1"));

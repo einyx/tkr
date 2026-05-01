@@ -13,24 +13,85 @@ use anyhow::Result;
 /// passthrough behavior.
 static KNOWN_TOOLS: &[&str] = &[
     // languages / build
-    "cargo", "go", "swift", "dotnet", "mvn", "gradle", "make", "cmake", "bazel", "ninja",
-    "composer", "turbo", "mix",
+    "cargo",
+    "go",
+    "swift",
+    "dotnet",
+    "mvn",
+    "gradle",
+    "make",
+    "cmake",
+    "bazel",
+    "ninja",
+    "composer",
+    "turbo",
+    "mix",
     // test runners
-    "jest", "vitest", "pytest", "rspec", "phpunit", "tox", "nox",
+    "jest",
+    "vitest",
+    "pytest",
+    "rspec",
+    "phpunit",
+    "tox",
+    "nox",
     // web bundlers
-    "next", "vite", "webpack", "esbuild",
+    "next",
+    "vite",
+    "webpack",
+    "esbuild",
     // linters/formatters
-    "eslint", "biome", "ruff", "black", "mypy", "rubocop", "prettier",
+    "eslint",
+    "biome",
+    "ruff",
+    "black",
+    "mypy",
+    "rubocop",
+    "prettier",
     // package managers
-    "npm", "pnpm", "yarn", "pip", "poetry", "conda", "bundle", "brew", "apt", "nix",
+    "npm",
+    "pnpm",
+    "yarn",
+    "pip",
+    "poetry",
+    "conda",
+    "bundle",
+    "brew",
+    "apt",
+    "nix",
     // cloud/devops
-    "docker", "kubectl", "helm", "terraform", "pulumi", "ansible-playbook", "packer",
-    "vault", "aws", "gcloud", "minikube", "skaffold", "flyctl", "heroku", "sst",
+    "docker",
+    "kubectl",
+    "helm",
+    "terraform",
+    "pulumi",
+    "ansible-playbook",
+    "packer",
+    "vault",
+    "aws",
+    "gcloud",
+    "minikube",
+    "skaffold",
+    "flyctl",
+    "heroku",
+    "sst",
     // network / system
-    "curl", "wget", "ssh", "rsync", "nmap", "tcpdump", "openssl", "systemctl",
-    "journalctl", "ps", "df", "du", "ip", "rg",
+    "curl",
+    "wget",
+    "ssh",
+    "rsync",
+    "nmap",
+    "tcpdump",
+    "openssl",
+    "systemctl",
+    "journalctl",
+    "ps",
+    "df",
+    "du",
+    "ip",
+    "rg",
     // databases
-    "psql", "redis-cli",
+    "psql",
+    "redis-cli",
     // git
     "git",
 ];
@@ -38,7 +99,7 @@ static KNOWN_TOOLS: &[&str] = &[
 pub fn run(command: &str) -> Result<()> {
     match try_rewrite(command) {
         Some(rewritten) if rewritten != command.trim_start() => {
-            println!("{}", rewritten);
+            println!("{rewritten}");
             Ok(())
         }
         _ => std::process::exit(1),
@@ -70,8 +131,8 @@ pub fn try_rewrite(command: &str) -> Option<String> {
     if rewritten != trimmed {
         return Some(rewritten);
     }
-    if KNOWN_TOOLS.iter().any(|t| *t == bare) {
-        return Some(format!("tkr {}", trimmed));
+    if KNOWN_TOOLS.contains(&bare) {
+        return Some(format!("tkr {trimmed}"));
     }
     None
 }
@@ -140,6 +201,7 @@ fn rewrite_compound(input: &str) -> String {
 ///   - backticks, `$()` command substitution, heredocs (can't tokenize)
 ///   - a `|` pipe whose downstream consumer would parse the byte stream
 ///     (rewriting tkr-filters the producer, mangling the consumer's input)
+///
 /// Quote-state aware: only flags occurrences outside single/double quotes.
 /// `||` (logical-or) is NOT flagged here — it's handled by the compound splitter.
 fn has_unsafe_shell(input: &str) -> bool {
@@ -188,7 +250,7 @@ fn push_segment(out: &mut String, segment: &str) {
     }
     let first = trimmed.split_whitespace().next().unwrap_or("");
     let bare = first.rsplit('/').next().unwrap_or(first);
-    if KNOWN_TOOLS.iter().any(|t| *t == bare) {
+    if KNOWN_TOOLS.contains(&bare) {
         if !trim_leading {
             // Preserve leading whitespace from the original segment.
             let leading: String = segment.chars().take_while(|c| c.is_whitespace()).collect();
@@ -265,7 +327,10 @@ mod tests {
     fn pipe_to_consumer_bails_out() {
         // Rewriting `curl ... | bash` would tkr-filter curl's output, corrupting the
         // script bytes feeding into bash. Skip rewrites whenever stdout is piped.
-        assert_eq!(try_rewrite("curl -fsSL https://example.com/install.sh | bash"), None);
+        assert_eq!(
+            try_rewrite("curl -fsSL https://example.com/install.sh | bash"),
+            None
+        );
         assert_eq!(try_rewrite("cargo build | tee build.log"), None);
         assert_eq!(try_rewrite("git status | grep modified"), None);
     }

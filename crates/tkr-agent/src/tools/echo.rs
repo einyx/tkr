@@ -12,7 +12,9 @@ struct EchoInput {
 pub struct EchoTool;
 
 impl Tool for EchoTool {
-    fn name(&self) -> &str { "echo" }
+    fn name(&self) -> &str {
+        "echo"
+    }
 
     fn input_schema(&self) -> serde_json::Value {
         serde_json::json!({
@@ -34,7 +36,12 @@ impl Tool for EchoTool {
             out.push('\n');
         }
         let bytes = out.len();
-        Ok(ToolResult { content: out, raw_bytes: bytes, filtered_bytes: bytes, exit: 0 })
+        Ok(ToolResult {
+            content: out,
+            raw_bytes: bytes,
+            filtered_bytes: bytes,
+            exit: 0,
+        })
     }
 }
 

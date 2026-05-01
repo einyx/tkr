@@ -61,27 +61,23 @@ pub fn run() -> Result<()> {
     let state = Arc::new(Mutex::new(SessionState::default()));
     let state_bg = state.clone();
 
-    std::thread::spawn(move || {
-        loop {
-            match listener.accept() {
-                Ok((stream, _)) => {
-                    let state = state_bg.clone();
-                    std::thread::spawn(move || {
-                        let reader = BufReader::new(stream);
-                        for line in reader.lines() {
-                            if let Ok(line) = line {
-                                if let Ok(val) = serde_json::from_str::<Value>(&line) {
-                                    handle_event(&state, &val);
-                                }
-                            }
+    std::thread::spawn(move || loop {
+        match listener.accept() {
+            Ok((stream, _)) => {
+                let state = state_bg.clone();
+                std::thread::spawn(move || {
+                    let reader = BufReader::new(stream);
+                    for line in reader.lines().map_while(Result::ok) {
+                        if let Ok(val) = serde_json::from_str::<Value>(&line) {
+                            handle_event(&state, &val);
                         }
-                    });
-                }
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    std::thread::sleep(Duration::from_millis(50));
-                }
-                Err(_) => break,
+                    }
+                });
             }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(_) => break,
         }
     });
 
@@ -99,7 +95,11 @@ pub fn run() -> Result<()> {
 
             let outer = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints([Constraint::Length(3), Constraint::Min(0), Constraint::Length(3)])
+                .constraints([
+                    Constraint::Length(3),
+                    Constraint::Min(0),
+                    Constraint::Length(3),
+                ])
                 .split(size);
 
             let ratio_pct: f64 = if s.total_in > 0 {
@@ -112,7 +112,11 @@ pub fn run() -> Result<()> {
                 s.command_count, s.total_saved, s.total_in, ratio_pct
             );
             let header = Paragraph::new(header_text)
-                .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+                .style(
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                )
                 .block(Block::default().borders(Borders::ALL));
             f.render_widget(header, outer[0]);
 
@@ -121,35 +125,51 @@ pub fn run() -> Result<()> {
                 .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
                 .split(outer[1]);
 
-            let cmd_items: Vec<ListItem> = s.commands.iter().rev()
+            let cmd_items: Vec<ListItem> = s
+                .commands
+                .iter()
+                .rev()
                 .take(middle[0].height as usize)
                 .map(|c| {
                     let saved_str = format!("-{}", c.tokens_saved);
                     ListItem::new(Line::from(vec![
                         Span::raw(format!("{:<22}", c.name)),
-                        Span::styled(format!("{:>6}", saved_str), Style::default().fg(Color::Green)),
+                        Span::styled(format!("{saved_str:>6}"), Style::default().fg(Color::Green)),
                     ]))
-                }).collect();
-            let cmd_list = List::new(cmd_items)
-                .block(Block::default().borders(Borders::ALL).title(" Recent Commands "));
+                })
+                .collect();
+            let cmd_list = List::new(cmd_items).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" Recent Commands "),
+            );
             f.render_widget(cmd_list, middle[0]);
 
-            let live_items: Vec<ListItem> = s.live_lines.iter().rev()
+            let live_items: Vec<ListItem> = s
+                .live_lines
+                .iter()
+                .rev()
                 .take(middle[1].height as usize)
                 .map(|l| ListItem::new(l.as_str()))
                 .collect();
-            let live_list = List::new(live_items)
-                .block(Block::default().borders(Borders::ALL).title(" Live Output Stream "));
+            let live_list = List::new(live_items).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" Live Output Stream "),
+            );
             f.render_widget(live_list, middle[1]);
 
-            let status = Paragraph::new(format!(" Plugins: {}  |  Press q to quit", s.plugin_status))
-                .block(Block::default().borders(Borders::ALL));
+            let status =
+                Paragraph::new(format!(" Plugins: {}  |  Press q to quit", s.plugin_status))
+                    .block(Block::default().borders(Borders::ALL));
             f.render_widget(status, outer[2]);
         })?;
 
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
-                if key.code == KeyCode::Char('q') || key.code == KeyCode::Esc { break; }
+                if key.code == KeyCode::Char('q') || key.code == KeyCode::Esc {
+                    break;
+                }
             }
         }
     }
@@ -174,26 +194,38 @@ fn handle_event(state: &Arc<Mutex<SessionState>>, val: &Value) {
                 format!("{cmd} {}", args.split_whitespace().next().unwrap_or(""))
             };
             s.live_lines.push_back(format!("> {label}"));
-            if s.live_lines.len() > 200 { s.live_lines.pop_front(); }
+            if s.live_lines.len() > 200 {
+                s.live_lines.pop_front();
+            }
             s.command_count += 1;
         }
         Some("line_suppressed") => {
             let reason = val["reason"].as_str().unwrap_or("?");
             let line = format!("  ({reason} suppressed)");
             s.live_lines.push_back(line);
-            if s.live_lines.len() > 200 { s.live_lines.pop_front(); }
+            if s.live_lines.len() > 200 {
+                s.live_lines.pop_front();
+            }
         }
         Some("command_end") => {
             let saved = val["tokens_saved"].as_u64().unwrap_or(0);
             let total_in = val["tokens_in"].as_u64().unwrap_or(0);
             s.total_saved += saved;
             s.total_in += total_in;
-            let name = s.live_lines.iter().rev()
+            let name = s
+                .live_lines
+                .iter()
+                .rev()
                 .find(|l| l.starts_with("> "))
                 .map(|l| l.trim_start_matches("> ").to_string())
                 .unwrap_or_default();
-            s.commands.push_back(CommandEntry { name, tokens_saved: saved as i64 });
-            if s.commands.len() > 50 { s.commands.pop_front(); }
+            s.commands.push_back(CommandEntry {
+                name,
+                tokens_saved: saved as i64,
+            });
+            if s.commands.len() > 50 {
+                s.commands.pop_front();
+            }
             s.plugin_status = "filter ✓  semantic ✓  analytics ✓".into();
         }
         _ => {}

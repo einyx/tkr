@@ -50,7 +50,7 @@ pub fn run(parts: &[String]) -> Result<()> {
         fmt_num((filt_chars / 4) as u64)
     );
     println!("  saved          {:>10} chars", fmt_num(saved as u64));
-    println!("  reduction      {:>9.1}%", ratio);
+    println!("  reduction      {ratio:>9.1}%");
     println!();
     Ok(())
 }
@@ -74,4 +74,3 @@ fn capture_combined(cmd: &str, args: &[&str]) -> Result<String> {
     child.wait().ok();
     Ok(out)
 }
-

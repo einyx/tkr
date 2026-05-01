@@ -6,6 +6,7 @@ use anyhow::Result;
 use chrono::{Duration, Utc};
 use tkr::run_record::{persist, ReceiptRecord, RunRecord};
 
+#[allow(clippy::too_many_arguments)]
 fn make_fixture(
     id: &str,
     agent: &str,
@@ -21,7 +22,8 @@ fn make_fixture(
 ) -> RunRecord {
     let started_at = Utc::now() - Duration::minutes(minutes_ago);
     let cost_cents = tkr::run_record::estimate_cost_cents(model, input_tokens, output_tokens);
-    let cost_saved_cents = tkr::run_record::estimate_savings_cents(model, raw_bytes, filtered_bytes);
+    let cost_saved_cents =
+        tkr::run_record::estimate_savings_cents(model, raw_bytes, filtered_bytes);
 
     RunRecord {
         id: id.to_string(),

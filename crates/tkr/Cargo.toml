@@ -1,7 +1,8 @@
 [package]
 name = "tkr"
-version = "0.2.7"
+version = "0.2.11"
 edition = "2021"
+rust-version.workspace = true
 description = "Token-optimized CLI proxy for LLM development workflows"
 license = "Apache-2.0"
 keywords = ["cli", "llm", "token", "filter", "productivity"]

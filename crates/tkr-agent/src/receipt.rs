@@ -24,7 +24,9 @@ impl RunReceipt {
     }
 
     pub fn savings_ratio(&self) -> f64 {
-        if self.raw_bytes == 0 { 0.0 } else {
+        if self.raw_bytes == 0 {
+            0.0
+        } else {
             1.0 - (self.filtered_bytes as f64 / self.raw_bytes as f64)
         }
     }
@@ -35,7 +37,11 @@ impl fmt::Display for RunReceipt {
         writeln!(f, "── tkr run receipt ──")?;
         writeln!(f, "  agent:           {}", self.agent)?;
         writeln!(f, "  steps:           {}", self.steps)?;
-        writeln!(f, "  tokens (in/out): {} / {}", self.input_tokens, self.output_tokens)?;
+        writeln!(
+            f,
+            "  tokens (in/out): {} / {}",
+            self.input_tokens, self.output_tokens
+        )?;
         writeln!(
             f,
             "  tool output:     {} B raw → {} B filtered ({:.1}% saved)",
@@ -78,7 +84,7 @@ mod tests {
     #[test]
     fn display_includes_agent_and_savings() {
         let r = RunReceipt::from_outcome("hello", &outcome(1000, 200));
-        let s = format!("{}", r);
+        let s = format!("{r}");
         assert!(s.contains("hello"));
         assert!(s.contains("80.0% saved"));
     }

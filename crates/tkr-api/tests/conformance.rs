@@ -10,7 +10,11 @@ fn assert_host_conformance<H: Host>(h: &H) {
     assert!(!h.plugin_name().is_empty());
 
     // Kv round-trip across all classes
-    for class in [SensitivityClass::Public, SensitivityClass::Private, SensitivityClass::Secret] {
+    for class in [
+        SensitivityClass::Public,
+        SensitivityClass::Private,
+        SensitivityClass::Secret,
+    ] {
         let kv = h.kv(class).unwrap();
         kv.put("k", serde_json::json!({"x":1})).unwrap();
         let got = kv.get("k").unwrap().unwrap();
@@ -22,8 +26,12 @@ fn assert_host_conformance<H: Host>(h: &H) {
     }
 
     // Sqlite execute and query (test impl just records calls and returns empty rows)
-    let s = h.sqlite("CREATE TABLE t(x INT)", SensitivityClass::Public).unwrap();
-    let _ = s.execute("INSERT INTO t VALUES (?)", &[serde_json::json!(1)]).unwrap();
+    let s = h
+        .sqlite("CREATE TABLE t(x INT)", SensitivityClass::Public)
+        .unwrap();
+    let _ = s
+        .execute("INSERT INTO t VALUES (?)", &[serde_json::json!(1)])
+        .unwrap();
     let rows = s.query("SELECT * FROM t", &[]).unwrap();
     assert!(rows.is_empty());
 
@@ -36,12 +44,14 @@ fn assert_host_conformance<H: Host>(h: &H) {
 
     // Bus: verify unknown methods fail predictably
     let bus = h.bus();
-    let err = bus.request(Request {
-        target: "ghost".into(),
-        method: "boo".into(),
-        payload: serde_json::json!({}),
-        caller: "t".into(),
-    }).unwrap_err();
+    let err = bus
+        .request(Request {
+            target: "ghost".into(),
+            method: "boo".into(),
+            payload: serde_json::json!({}),
+            caller: "t".into(),
+        })
+        .unwrap_err();
     assert!(matches!(err, tkr_api::Error::UnknownMethod(_)));
 
     // Vault state observable
@@ -57,11 +67,13 @@ fn test_host_satisfies_conformance() {
 #[test]
 fn bus_emit_and_read_back() {
     let h = TestHost::new("conf");
-    h.bus().emit(Event {
-        topic: "test.event".into(),
-        payload: serde_json::json!({"val": 42}),
-        emitter: "conf".into(),
-    }).unwrap();
+    h.bus()
+        .emit(Event {
+            topic: "test.event".into(),
+            payload: serde_json::json!({"val": 42}),
+            emitter: "conf".into(),
+        })
+        .unwrap();
     // Access the concrete TestBus via test_host module to verify recording
     // (we downcast via the known TestHost structure by re-constructing a TestHost)
     // Since Host::bus() returns &dyn Bus we verify emit doesn't error; the

@@ -60,14 +60,12 @@ fn decrypt_legacy_age(key: &[u8; 32], ciphertext: &[u8]) -> Result<Zeroizing<Vec
     use age::secrecy::SecretString;
     let dec = match age::Decryptor::new(ciphertext).context("parse age header")? {
         age::Decryptor::Passphrase(d) => d,
-        age::Decryptor::Recipients(_) => {
-            return Err(anyhow!("unexpected recipients ciphertext"))
-        }
+        age::Decryptor::Recipients(_) => return Err(anyhow!("unexpected recipients ciphertext")),
     };
     let passphrase = SecretString::new(hex::encode(key));
     let mut reader = dec.decrypt(&passphrase, None).context("decrypt")?;
     let mut out = Zeroizing::new(Vec::new());
-    reader.read_to_end(&mut *out)?;
+    reader.read_to_end(&mut out)?;
     Ok(out)
 }
 

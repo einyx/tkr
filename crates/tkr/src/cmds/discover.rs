@@ -3,8 +3,17 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 static FALLBACK_COMMANDS: &[&str] = &[
-    "git", "cargo", "npm", "pnpm", "yarn", "jest", "vitest",
-    "docker", "kubectl", "terraform", "make",
+    "git",
+    "cargo",
+    "npm",
+    "pnpm",
+    "yarn",
+    "jest",
+    "vitest",
+    "docker",
+    "kubectl",
+    "terraform",
+    "make",
 ];
 
 pub fn run(history_override: Option<PathBuf>, limit: usize) -> Result<()> {
@@ -21,7 +30,8 @@ pub fn run(history_override: Option<PathBuf>, limit: usize) -> Result<()> {
 
     let mut missed: HashMap<String, u64> = HashMap::new();
     for line in history.lines().skip(start_at) {
-        let line = line.trim_start_matches(|c: char| c == ':' || c.is_ascii_digit() || c == ';' || c == ' ');
+        let line = line
+            .trim_start_matches(|c: char| c == ':' || c.is_ascii_digit() || c == ';' || c == ' ');
         for cmd in &commands {
             if line.starts_with(cmd) && !line.starts_with("tkr ") {
                 *missed.entry(cmd.clone()).or_default() += 1;
@@ -75,7 +85,7 @@ fn discoverable_commands() -> Vec<String> {
         if let Ok(entries) = std::fs::read_dir(&p) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.extension().map_or(false, |e| e == "toml") {
+                if path.extension().is_some_and(|e| e == "toml") {
                     if let Some(cmd) = parse_filter_command(&path) {
                         out.insert(cmd);
                     }

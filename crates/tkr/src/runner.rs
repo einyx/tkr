@@ -99,10 +99,11 @@ mod tests {
     #[test]
     fn merges_stdout_and_stderr() {
         // sh -c "echo to-stdout; echo to-stderr 1>&2" — both should appear
-        let lines: Vec<String> = stream_command("sh", &["-c", "echo to-stdout; echo to-stderr 1>&2"])
-            .unwrap()
-            .filter_map(|r| r.ok())
-            .collect();
+        let lines: Vec<String> =
+            stream_command("sh", &["-c", "echo to-stdout; echo to-stderr 1>&2"])
+                .unwrap()
+                .filter_map(|r| r.ok())
+                .collect();
         assert!(lines.iter().any(|l| l == "to-stdout"));
         assert!(lines.iter().any(|l| l == "to-stderr"));
     }

@@ -12,7 +12,9 @@ pub struct Session {
 impl Session {
     pub fn connect(path: &str) -> Self {
         let stream = UnixStream::connect(path).ok();
-        Self { inner: Arc::new(Mutex::new(stream)) }
+        Self {
+            inner: Arc::new(Mutex::new(stream)),
+        }
     }
 
     pub fn emit(&self, event: serde_json::Value) {
@@ -20,7 +22,9 @@ impl Session {
             if let Some(ref mut stream) = *guard {
                 let mut line = event.to_string();
                 line.push('\n');
-                if stream.write_all(line.as_bytes()).is_err() { *guard = None; }
+                if stream.write_all(line.as_bytes()).is_err() {
+                    *guard = None;
+                }
             }
         }
     }
@@ -39,7 +43,10 @@ impl Session {
 }
 
 fn now_secs() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 #[cfg(test)]

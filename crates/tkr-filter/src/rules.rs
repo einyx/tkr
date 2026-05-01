@@ -271,7 +271,7 @@ mod tests {
         let result = compiled.apply("commit 81cda431a68d54a55707179f546a4b6c449e92e2");
         match result {
             Some(FilterResult::Replace(s)) => assert_eq!(s, "commit 81cda43"),
-            other => panic!("expected Replace, got {:?}", other),
+            other => panic!("expected Replace, got {other:?}"),
         }
     }
 

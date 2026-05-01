@@ -1,24 +1,27 @@
+use crate::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use crate::Result;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Request {
     pub target: String,
     pub method: String,
-    #[serde(default)] pub payload: Value,
+    #[serde(default)]
+    pub payload: Value,
     pub caller: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Reply {
-    #[serde(default)] pub payload: Value,
+    #[serde(default)]
+    pub payload: Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Event {
     pub topic: String,
-    #[serde(default)] pub payload: Value,
+    #[serde(default)]
+    pub payload: Value,
     pub emitter: String,
 }
 

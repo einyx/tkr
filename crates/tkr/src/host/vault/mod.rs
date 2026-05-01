@@ -5,14 +5,14 @@ pub mod seal;
 pub mod storage;
 pub mod store;
 
-use std::sync::{Arc, Mutex};
-use anyhow::{anyhow, Result};
-use tkr_api::manifest::SensitivityClass;
-use tkr_api::vault::{SealState, Vault as VaultTrait};
-use zeroize::Zeroizing;
 use crate::host::vault::audit::{AuditEvent, AuditLog};
 use crate::host::vault::seal::SealStateMachine;
 use crate::host::vault::store::{MemStore, Store};
+use anyhow::{anyhow, Result};
+use std::sync::{Arc, Mutex};
+use tkr_api::manifest::SensitivityClass;
+use tkr_api::vault::{SealState, Vault as VaultTrait};
+use zeroize::Zeroizing;
 
 fn now_ts() -> u64 {
     std::time::SystemTime::now()
@@ -73,15 +73,21 @@ impl HostVault {
         format!("{}/{user_key}", Self::class_prefix(class))
     }
 
-    pub fn write(&self, class: SensitivityClass, user_key: &str, val: &[u8], actor: &str) -> Result<()> {
+    pub fn write(
+        &self,
+        class: SensitivityClass,
+        user_key: &str,
+        val: &[u8],
+        actor: &str,
+    ) -> Result<()> {
         let sub: Zeroizing<[u8; 32]> = {
             let sm = self.sm.lock().unwrap();
             let sub = sm
                 .subkey(class)
-                .ok_or_else(|| anyhow!("vault sealed for {:?}", class))?;
+                .ok_or_else(|| anyhow!("vault sealed for {class:?}"))?;
             Zeroizing::new(*sub)
         };
-        let ct = age_codec::encrypt(&*sub, val)?;
+        let ct = age_codec::encrypt(&sub, val)?;
         self.store.put(&Self::key_for(class, user_key), &ct)?;
         if class == SensitivityClass::Secret {
             if let Some(log) = &self.audit {
@@ -100,17 +106,22 @@ impl HostVault {
     /// plaintext buffer is wiped when the caller drops it.  Callers receiving
     /// the bytes are responsible for zeroizing on their side; all intermediate
     /// copies inside the vault are wiped.
-    pub fn read(&self, class: SensitivityClass, user_key: &str, actor: &str) -> Result<Option<Zeroizing<Vec<u8>>>> {
+    pub fn read(
+        &self,
+        class: SensitivityClass,
+        user_key: &str,
+        actor: &str,
+    ) -> Result<Option<Zeroizing<Vec<u8>>>> {
         let sub: Zeroizing<[u8; 32]> = {
             let sm = self.sm.lock().unwrap();
             let sub = sm
                 .subkey(class)
-                .ok_or_else(|| anyhow!("vault sealed for {:?}", class))?;
+                .ok_or_else(|| anyhow!("vault sealed for {class:?}"))?;
             Zeroizing::new(*sub)
         };
         let result = match self.store.get(&Self::key_for(class, user_key))? {
             None => Ok(None),
-            Some(ct) => Ok(Some(age_codec::decrypt(&*sub, &ct)?)),
+            Some(ct) => Ok(Some(age_codec::decrypt(&sub, &ct)?)),
         };
         if class == SensitivityClass::Secret {
             if let Some(log) = &self.audit {
@@ -191,16 +202,24 @@ mod tests {
     fn public_read_after_auto_unseal_only() {
         let store: Arc<dyn Store> = Arc::new(MemStore::default());
         let v = HostVault::new(store, [9u8; 32]);
-        v.write(SensitivityClass::Public, "x", b"hi", "host").unwrap();
+        v.write(SensitivityClass::Public, "x", b"hi", "host")
+            .unwrap();
         assert_eq!(
-            *v.read(SensitivityClass::Public, "x", "host").unwrap().unwrap(),
+            *v.read(SensitivityClass::Public, "x", "host")
+                .unwrap()
+                .unwrap(),
             b"hi".to_vec()
         );
-        assert!(v.write(SensitivityClass::Private, "y", b"z", "host").is_err());
+        assert!(v
+            .write(SensitivityClass::Private, "y", b"z", "host")
+            .is_err());
         v.unseal_full();
-        v.write(SensitivityClass::Private, "y", b"z", "host").unwrap();
+        v.write(SensitivityClass::Private, "y", b"z", "host")
+            .unwrap();
         assert_eq!(
-            *v.read(SensitivityClass::Private, "y", "host").unwrap().unwrap(),
+            *v.read(SensitivityClass::Private, "y", "host")
+                .unwrap()
+                .unwrap(),
             b"z".to_vec()
         );
     }
@@ -209,8 +228,12 @@ mod tests {
     fn read_returns_zeroizing_plaintext() {
         let v = HostVault::new_in_memory();
         v.unseal_full();
-        v.write(SensitivityClass::Secret, "k", b"plaintext", "test").unwrap();
-        let z = v.read(SensitivityClass::Secret, "k", "test").unwrap().unwrap();
+        v.write(SensitivityClass::Secret, "k", b"plaintext", "test")
+            .unwrap();
+        let z = v
+            .read(SensitivityClass::Secret, "k", "test")
+            .unwrap()
+            .unwrap();
         // The type itself is the test — must be Zeroizing<Vec<u8>>.
         assert_eq!(*z, b"plaintext".to_vec());
         // (We don't test the post-drop bytes — Rust's allocator will likely overwrite anyway.
@@ -221,8 +244,8 @@ mod tests {
 #[cfg(test)]
 mod tests_persistence {
     use super::*;
-    use tempfile::tempdir;
     use crate::host::vault::store::FsStore;
+    use tempfile::tempdir;
 
     #[test]
     fn vault_persists_across_reopen() {
@@ -232,13 +255,16 @@ mod tests_persistence {
             let store: Arc<dyn Store> = Arc::new(FsStore::new(d.path()).unwrap());
             let v = HostVault::new(store, master);
             v.unseal_full();
-            v.write(SensitivityClass::Private, "k", b"hello", "host").unwrap();
+            v.write(SensitivityClass::Private, "k", b"hello", "host")
+                .unwrap();
         }
         let store: Arc<dyn Store> = Arc::new(FsStore::new(d.path()).unwrap());
         let v = HostVault::new(store, master);
         v.unseal_full();
         assert_eq!(
-            *v.read(SensitivityClass::Private, "k", "host").unwrap().unwrap(),
+            *v.read(SensitivityClass::Private, "k", "host")
+                .unwrap()
+                .unwrap(),
             b"hello".to_vec()
         );
     }

@@ -1,23 +1,16 @@
 pub mod v2;
 pub use v2::{
-    AnalyticsPluginV2,
-    nearest_noise_embeddings_via_host,
-    nearest_to_signature_via_host,
-    noise_signature_id_via_host,
-    noise_signatures_without_embeddings_via_host,
-    record_command_stat_via_host,
-    record_noise_signature_via_host,
-    top_noise_signatures_via_host,
-    total_savings_via_host,
-    upsert_noise_embedding_via_host,
+    nearest_noise_embeddings_via_host, nearest_to_signature_via_host, noise_signature_id_via_host,
+    noise_signatures_without_embeddings_via_host, record_command_stat_via_host,
+    record_noise_signature_via_host, top_noise_signatures_via_host, total_savings_via_host,
+    upsert_noise_embedding_via_host, AnalyticsPluginV2,
 };
 
 use anyhow::Result;
 use rusqlite::{params, Connection};
 
-// Legacy AnalyticsPlugin (implements LegacyPlugin) has been removed in favour
-// of AnalyticsPluginV2 (implements tkr_api::plugin::Plugin, vault-backed).
-// AnalyticsStore is kept for the `tkr gain` / `tkr suggest` read path.
+// Legacy AnalyticsPlugin has been removed in favour of AnalyticsPluginV2 (vault-backed).
+// `AnalyticsStore` remains for unit tests and tooling that target a standalone SQLite file.
 
 pub struct AnalyticsStore {
     conn: Connection,
@@ -89,7 +82,11 @@ impl AnalyticsStore {
         Ok(())
     }
 
-    pub fn top_noise_signatures(&self, min_occurrences: u64, min_chars: u64) -> Result<Vec<NoiseRow>> {
+    pub fn top_noise_signatures(
+        &self,
+        min_occurrences: u64,
+        min_chars: u64,
+    ) -> Result<Vec<NoiseRow>> {
         let mut stmt = self.conn.prepare(
             "SELECT command, signature, sample, occurrences, total_chars
              FROM noise_signatures
@@ -156,9 +153,27 @@ mod tests {
     #[test]
     fn record_and_query_signatures() {
         let store = AnalyticsStore::open(":memory:").unwrap();
-        store.record_signature("git status", "[T] hello", "[2026-01-01T00:00:00] hello", 3, 90).unwrap();
-        store.record_signature("git status", "[T] hello", "[2026-01-01T00:00:00] hello", 4, 120).unwrap();
-        store.record_signature("git status", "rare", "rare", 1, 4).unwrap();
+        store
+            .record_signature(
+                "git status",
+                "[T] hello",
+                "[2026-01-01T00:00:00] hello",
+                3,
+                90,
+            )
+            .unwrap();
+        store
+            .record_signature(
+                "git status",
+                "[T] hello",
+                "[2026-01-01T00:00:00] hello",
+                4,
+                120,
+            )
+            .unwrap();
+        store
+            .record_signature("git status", "rare", "rare", 1, 4)
+            .unwrap();
         let rows = store.top_noise_signatures(5, 100).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].signature, "[T] hello");

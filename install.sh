@@ -15,6 +15,7 @@ case "${OS}-${ARCH}" in
   linux-aarch64)  ARCHIVE="tkr-aarch64-unknown-linux-gnu.tar.gz" ;;
   *)
     echo "Unsupported platform: ${OS}-${ARCH}" >&2
+    echo "Windows x86_64: get tkr-x86_64-pc-windows-msvc.tar.gz from https://github.com/${REPO}/releases/latest" >&2
     exit 1
     ;;
 esac

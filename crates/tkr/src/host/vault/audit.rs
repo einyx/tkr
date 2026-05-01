@@ -1,8 +1,8 @@
-use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditEvent {
@@ -71,8 +71,7 @@ impl AuditLog {
                 None => {
                     // Entries exist but tip is missing — treat as corruption.
                     return Err(anyhow::anyhow!(
-                        "audit log tip file missing but log has {} entries; possible truncation",
-                        n
+                        "audit log tip file missing but log has {n} entries; possible truncation"
                     ));
                 }
                 Some(tip) => {
@@ -96,8 +95,7 @@ impl AuditLog {
     }
 
     pub fn open_temp() -> Self {
-        let p = std::env::temp_dir()
-            .join(format!("tkr-audit-{}.log", std::process::id()));
+        let p = std::env::temp_dir().join(format!("tkr-audit-{}.log", std::process::id()));
         let _ = std::fs::remove_file(&p);
         let _ = std::fs::remove_file(tip_path(&p));
         Self::open(&p).unwrap()
@@ -108,9 +106,7 @@ impl AuditLog {
     fn compute_last_hash(path: &Path) -> Result<(String, u64)> {
         let s = match std::fs::read_to_string(path) {
             Ok(s) => s,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                return Ok((String::new(), 0))
-            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((String::new(), 0)),
             Err(e) => return Err(e.into()),
         };
         let mut last = String::new();
@@ -128,10 +124,7 @@ impl AuditLog {
                         eprintln!("audit: warning: skipping torn tail entry at line {}", i + 1);
                     } else {
                         // Mid-file corruption — propagate as actual error.
-                        return Err(anyhow::anyhow!(
-                            "audit log parse error at line {}",
-                            i + 1
-                        ));
+                        return Err(anyhow::anyhow!("audit log parse error at line {}", i + 1));
                     }
                 }
             }
@@ -163,7 +156,13 @@ impl AuditLog {
         drop(f);
 
         let new_n = state.1 + 1;
-        write_tip(&self.path, &Tip { hash: hash.clone(), n: new_n })?;
+        write_tip(
+            &self.path,
+            &Tip {
+                hash: hash.clone(),
+                n: new_n,
+            },
+        )?;
         *state = (hash, new_n);
         Ok(())
     }

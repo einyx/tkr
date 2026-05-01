@@ -22,7 +22,9 @@ pub struct ModelDecl {
     pub name: String,
 }
 
-fn default_tool_config() -> toml::Value { toml::Value::Table(toml::map::Map::new()) }
+fn default_tool_config() -> toml::Value {
+    toml::Value::Table(toml::map::Map::new())
+}
 
 #[derive(Debug, Deserialize, PartialEq)]
 pub struct ToolDecl {
@@ -39,8 +41,12 @@ pub enum AgentMode {
     Auto,
 }
 
-fn default_mode() -> AgentMode { AgentMode::Approve }
-fn default_max_steps() -> u32 { 20 }
+fn default_mode() -> AgentMode {
+    AgentMode::Approve
+}
+fn default_max_steps() -> u32 {
+    20
+}
 
 impl Manifest {
     pub fn parse(input: &str) -> anyhow::Result<Self> {

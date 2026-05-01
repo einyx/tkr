@@ -110,7 +110,7 @@ mod tests {
         RankedCandidate {
             command: cmd.into(),
             signature: sig.into(),
-            sample: format!("{} sample", sig),
+            sample: format!("{sig} sample"),
             occurrences: occ,
             total_chars: chars,
             source: "test",
@@ -121,10 +121,7 @@ mod tests {
     fn rrf_merges_overlapping_candidates() {
         // alpha appears at rank 0 in BOTH rankings (unambiguous winner).
         // beta appears at rank 1 in both. gamma only appears in b.
-        let a = vec![
-            cand("git", "alpha", 5, 500),
-            cand("git", "beta", 3, 300),
-        ];
+        let a = vec![cand("git", "alpha", 5, 500), cand("git", "beta", 3, 300)];
         let b = vec![
             cand("git", "alpha", 2, 200),
             cand("git", "beta", 4, 400),
@@ -135,7 +132,7 @@ mod tests {
         assert!(fused.iter().any(|c| c.signature == "beta"));
         assert!(fused.iter().any(|c| c.signature == "gamma"));
         assert_eq!(fused[0].signature, "alpha"); // best position in both
-        assert_eq!(fused[1].signature, "beta");  // second in both
+        assert_eq!(fused[1].signature, "beta"); // second in both
         assert_eq!(fused[2].signature, "gamma"); // only in one ranker
     }
 
@@ -172,9 +169,18 @@ mod tests {
     #[test]
     fn groups_same_shape_lines() {
         let lines = vec![
-            KeptLine { command: "git", line: "[2026-04-28T10:00:00] tick" },
-            KeptLine { command: "git", line: "[2026-04-28T10:00:01] tick" },
-            KeptLine { command: "git", line: "[2026-04-28T10:00:02] tick" },
+            KeptLine {
+                command: "git",
+                line: "[2026-04-28T10:00:00] tick",
+            },
+            KeptLine {
+                command: "git",
+                line: "[2026-04-28T10:00:01] tick",
+            },
+            KeptLine {
+                command: "git",
+                line: "[2026-04-28T10:00:02] tick",
+            },
         ];
         let mut r = ShapeRanker;
         let ranked = r.rank(&lines);
@@ -186,8 +192,14 @@ mod tests {
     #[test]
     fn singletons_are_dropped() {
         let lines = vec![
-            KeptLine { command: "git", line: "unique line one" },
-            KeptLine { command: "git", line: "totally different content here" },
+            KeptLine {
+                command: "git",
+                line: "unique line one",
+            },
+            KeptLine {
+                command: "git",
+                line: "totally different content here",
+            },
         ];
         let mut r = ShapeRanker;
         assert!(r.rank(&lines).is_empty());
@@ -196,10 +208,22 @@ mod tests {
     #[test]
     fn sorts_by_total_chars_desc() {
         let lines = vec![
-            KeptLine { command: "git", line: "short 1" },
-            KeptLine { command: "git", line: "short 2" },
-            KeptLine { command: "git", line: "a much longer line with number 1 here" },
-            KeptLine { command: "git", line: "a much longer line with number 2 here" },
+            KeptLine {
+                command: "git",
+                line: "short 1",
+            },
+            KeptLine {
+                command: "git",
+                line: "short 2",
+            },
+            KeptLine {
+                command: "git",
+                line: "a much longer line with number 1 here",
+            },
+            KeptLine {
+                command: "git",
+                line: "a much longer line with number 2 here",
+            },
         ];
         let mut r = ShapeRanker;
         let ranked = r.rank(&lines);
@@ -210,10 +234,22 @@ mod tests {
     #[test]
     fn separates_by_command() {
         let lines = vec![
-            KeptLine { command: "git", line: "shared shape 1" },
-            KeptLine { command: "git", line: "shared shape 2" },
-            KeptLine { command: "cargo", line: "shared shape 1" },
-            KeptLine { command: "cargo", line: "shared shape 2" },
+            KeptLine {
+                command: "git",
+                line: "shared shape 1",
+            },
+            KeptLine {
+                command: "git",
+                line: "shared shape 2",
+            },
+            KeptLine {
+                command: "cargo",
+                line: "shared shape 1",
+            },
+            KeptLine {
+                command: "cargo",
+                line: "shared shape 2",
+            },
         ];
         let mut r = ShapeRanker;
         let ranked = r.rank(&lines);

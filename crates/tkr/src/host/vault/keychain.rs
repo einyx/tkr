@@ -21,7 +21,9 @@ pub const SERVICE_DEFAULT: &str = "tkr-vault";
 
 fn key_path(service: &str) -> PathBuf {
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-    home.join(".tkr").join("vault").join(format!(".{}.key", service))
+    home.join(".tkr")
+        .join("vault")
+        .join(format!(".{service}.key"))
 }
 
 pub fn set_master_key(service: &str, _user: &str, key: &[u8]) -> Result<()> {
@@ -52,7 +54,7 @@ pub fn get_master_key(service: &str, user: &str) -> Result<Vec<u8>> {
         let _ = set_master_key(service, user, &legacy);
         return Ok(legacy);
     }
-    anyhow::bail!("master key not found for service '{}'", service)
+    anyhow::bail!("master key not found for service '{service}'")
 }
 
 pub fn delete_master_key(service: &str, _user: &str) -> Result<()> {
@@ -75,7 +77,9 @@ pub fn init_master_key_if_missing(service: &str, user: &str) -> Result<Vec<u8>> 
 }
 
 fn legacy_keyring_get(service: &str, user: &str) -> Result<Vec<u8>> {
-    Ok(keyring::Entry::new(service, user)?.get_secret().context("legacy keyring read")?)
+    keyring::Entry::new(service, user)?
+        .get_secret()
+        .context("legacy keyring read")
 }
 
 #[cfg(test)]

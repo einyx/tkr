@@ -37,12 +37,11 @@ fn sqlite3_malloc_copy(src: &[u8]) -> Result<rusqlite::serialize::OwnedData> {
 fn ensure_sqlite_vec_loaded() {
     use std::sync::Once;
     static REGISTER: Once = Once::new();
-    REGISTER.call_once(|| {
-        unsafe {
-            rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
-                sqlite_vec::sqlite3_vec_init as *const (),
-            )));
-        }
+    REGISTER.call_once(|| unsafe {
+        #[allow(clippy::missing_transmute_annotations)]
+        rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
+            sqlite_vec::sqlite3_vec_init as *const (),
+        )));
     });
 }
 
@@ -55,11 +54,7 @@ pub struct KvImpl {
 }
 
 impl KvImpl {
-    pub fn new(
-        vault: Arc<HostVault>,
-        plugin: impl Into<String>,
-        class: SensitivityClass,
-    ) -> Self {
+    pub fn new(vault: Arc<HostVault>, plugin: impl Into<String>, class: SensitivityClass) -> Self {
         Self {
             vault,
             plugin: plugin.into(),
@@ -81,16 +76,15 @@ impl tkr_api::handles::Kv for KvImpl {
         {
             None => Ok(None),
             Some(z) => {
-                let v: Value = serde_json::from_slice(&z[..])
-                    .map_err(|e| Error::Vault(e.to_string()))?;
+                let v: Value =
+                    serde_json::from_slice(&z[..]).map_err(|e| Error::Vault(e.to_string()))?;
                 Ok(Some(v))
             }
         }
     }
 
     fn put(&self, key: &str, val: Value) -> Result<()> {
-        let bytes =
-            serde_json::to_vec(&val).map_err(|e| Error::Vault(e.to_string()))?;
+        let bytes = serde_json::to_vec(&val).map_err(|e| Error::Vault(e.to_string()))?;
         self.vault
             .write(self.class, &self.key(key), &bytes, &self.plugin)
             .map_err(|e| Error::Vault(e.to_string()))
@@ -189,8 +183,7 @@ impl SqliteImpl {
         // Bump the seq counter so it's still globally unique (used elsewhere).
         let _ = SEQ.fetch_add(1, Ordering::Relaxed);
 
-        let mut conn = Connection::open_in_memory()
-            .map_err(|e| Error::Vault(e.to_string()))?;
+        let mut conn = Connection::open_in_memory().map_err(|e| Error::Vault(e.to_string()))?;
 
         // If the vault blob is unreadable (corrupt, wrong key, or written by
         // an older codec we no longer accept), don't fail open() — that path
@@ -203,10 +196,8 @@ impl SqliteImpl {
                 // sqlite3_malloc (so it can later free / realloc it). Copy our
                 // decrypted bytes into one.
                 let owned = sqlite3_malloc_copy(&z[..])?;
-                unsafe {
-                    conn.deserialize(rusqlite::DatabaseName::Main, owned, false)
-                        .map_err(|e| Error::Vault(e.to_string()))?;
-                }
+                conn.deserialize(rusqlite::DatabaseName::Main, owned, false)
+                    .map_err(|e| Error::Vault(e.to_string()))?;
             }
             Ok(None) => {}
             Err(e) => {
@@ -296,9 +287,7 @@ impl tkr_api::handles::Sqlite for SqliteImpl {
     fn query(&self, sql: &str, params: &[Value]) -> Result<Vec<Vec<Value>>> {
         let conn = self.conn.lock().unwrap();
         let p: Vec<SqlValue> = params.iter().map(json_to_sql).collect();
-        let mut stmt = conn
-            .prepare(sql)
-            .map_err(|e| Error::Vault(e.to_string()))?;
+        let mut stmt = conn.prepare(sql).map_err(|e| Error::Vault(e.to_string()))?;
         let col_count = stmt.column_count();
         let rows: Vec<Vec<Value>> = stmt
             .query_map(params_from_iter(p.iter()), |r| {
@@ -347,11 +336,8 @@ mod tests_sqlite {
                 "CREATE TABLE IF NOT EXISTS t(x INTEGER);",
             )
             .unwrap();
-            s.execute(
-                "INSERT INTO t VALUES (?)",
-                &[Value::Number(42.into())],
-            )
-            .unwrap();
+            s.execute("INSERT INTO t VALUES (?)", &[Value::Number(42.into())])
+                .unwrap();
         }
         let s2 = SqliteImpl::open(
             vault.clone(),
@@ -374,11 +360,7 @@ pub struct FsImpl {
 }
 
 impl FsImpl {
-    pub fn new(
-        vault: Arc<HostVault>,
-        plugin: impl Into<String>,
-        class: SensitivityClass,
-    ) -> Self {
+    pub fn new(vault: Arc<HostVault>, plugin: impl Into<String>, class: SensitivityClass) -> Self {
         Self {
             vault,
             plugin: plugin.into(),

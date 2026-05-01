@@ -1,8 +1,8 @@
 use crate::{
-    handles::{Kv, Sqlite, Fs},
     bus::Bus,
-    vault::Vault,
+    handles::{Fs, Kv, Sqlite},
     manifest::SensitivityClass,
+    vault::Vault,
     Result,
 };
 

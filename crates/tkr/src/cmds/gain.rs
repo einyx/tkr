@@ -42,11 +42,8 @@ impl Style {
 pub fn run(breakdown: bool, sort: &str, plain: bool) -> Result<()> {
     let vault = crate::host::boot::vault();
     let host_handle = crate::host::boot::get_host();
-    let analytics_host = crate::host::RealHost::new(
-        "tkr-analytics",
-        vault,
-        host_handle.bus.clone(),
-    );
+    let analytics_host =
+        crate::host::RealHost::new("tkr-analytics", vault, host_handle.bus.clone());
     let mut rows = match tkr_analytics::total_savings_via_host(&analytics_host) {
         Ok(r) => r,
         Err(e) => {
@@ -55,7 +52,8 @@ pub fn run(breakdown: bool, sort: &str, plain: bool) -> Result<()> {
         }
     };
     if rows.is_empty() {
-        println!("No analytics data yet. Run some commands with tkr first.");
+        println!("No analytics data yet — run commands through `tkr` (e.g. `tkr git status`).");
+        println!("If you already proxy commands but still see this, check stderr for `tkr: warning:` lines.");
         return Ok(());
     }
 
@@ -71,7 +69,16 @@ pub fn run(breakdown: bool, sort: &str, plain: bool) -> Result<()> {
     let s = Style::new(plain);
 
     print_banner(&s);
-    print_aggregate(&s, total_in, total_saved, total_kept, pct, usd_saved, total_runs, rows.len());
+    print_aggregate(
+        &s,
+        total_in,
+        total_saved,
+        total_kept,
+        pct,
+        usd_saved,
+        total_runs,
+        rows.len(),
+    );
     print_aggregate_bar(&s, total_in, total_saved);
     println!();
     print_table(&s, &rows, breakdown);
@@ -130,6 +137,7 @@ fn print_banner(s: &Style) {
     println!();
 }
 
+#[allow(clippy::too_many_arguments)]
 fn print_aggregate(
     s: &Style,
     total_in: u64,
@@ -224,11 +232,7 @@ fn print_aggregate_bar(s: &Style, total_in: u64, total_saved: u64) {
         "▒".repeat(kept_w),
         s.p(RESET),
     );
-    println!(
-        "  {}█ saved   ▒ kept (sent to LLM){}",
-        s.p(DIM),
-        s.p(RESET)
-    );
+    println!("  {}█ saved   ▒ kept (sent to LLM){}", s.p(DIM), s.p(RESET));
 }
 
 fn print_table(s: &Style, rows: &[SavingsRow], breakdown: bool) {
@@ -240,8 +244,17 @@ fn print_table(s: &Style, rows: &[SavingsRow], breakdown: bool) {
         rows.iter().filter(|r| r.tokens_saved > 0).collect()
     };
     let hidden = rows.len() - visible.len();
-    let limit = if breakdown { visible.len() } else { 10.min(visible.len()) };
-    let max_saved = visible.iter().map(|r| r.tokens_saved).max().unwrap_or(1).max(1);
+    let limit = if breakdown {
+        visible.len()
+    } else {
+        10.min(visible.len())
+    };
+    let max_saved = visible
+        .iter()
+        .map(|r| r.tokens_saved)
+        .max()
+        .unwrap_or(1)
+        .max(1);
 
     println!();
     println!(
@@ -250,16 +263,20 @@ fn print_table(s: &Style, rows: &[SavingsRow], breakdown: bool) {
         s.p(MAGENTA),
         s.p(RESET)
     );
-    println!("  {}{}{}", s.p(GREY), "─".repeat(TABLE_WIDTH - 2), s.p(RESET));
     println!(
-        "  {}{:<22} {:>9} {:>9} {:>4} {:>5}  {}{}",
+        "  {}{}{}",
+        s.p(GREY),
+        "─".repeat(TABLE_WIDTH - 2),
+        s.p(RESET)
+    );
+    println!(
+        "  {}{:<22} {:>9} {:>9} {:>4} {:>5}  {}",
         s.p(DIM),
         "command",
         "in",
         "saved",
         "runs",
         "ratio",
-        "",
         s.p(RESET),
     );
 
@@ -298,10 +315,10 @@ fn print_table(s: &Style, rows: &[SavingsRow], breakdown: bool) {
         let extra = visible.len().saturating_sub(limit);
         let mut bits = Vec::new();
         if extra > 0 {
-            bits.push(format!("{} more", extra));
+            bits.push(format!("{extra} more"));
         }
         if hidden > 0 {
-            bits.push(format!("{} with 0% savings", hidden));
+            bits.push(format!("{hidden} with 0% savings"));
         }
         println!(
             "  {}… {} (use {}--breakdown{} to see all){}",
@@ -339,7 +356,12 @@ fn print_improvement_opportunities(s: &Style, rows: &[SavingsRow]) {
         s.p(DIM),
         s.p(RESET),
     );
-    println!("  {}{}{}", s.p(GREY), "─".repeat(TABLE_WIDTH - 2), s.p(RESET));
+    println!(
+        "  {}{}{}",
+        s.p(GREY),
+        "─".repeat(TABLE_WIDTH - 2),
+        s.p(RESET)
+    );
     for row in candidates.iter().take(3) {
         let row_pct = ratio_pct(row.tokens_saved, row.tokens_in);
         let unsaved = row.tokens_in.saturating_sub(row.tokens_saved);
@@ -360,11 +382,10 @@ fn print_improvement_opportunities(s: &Style, rows: &[SavingsRow]) {
 fn print_footer(s: &Style) {
     println!();
     println!(
-        "  {}sort: --sort=savings|in|runs|ratio · {}--breakdown{}{} for all{}",
+        "  {}sort: --sort=savings|in|runs|ratio · {}--breakdown{} for all{}",
         s.p(DIM),
         s.p(YELLOW),
         s.p(DIM),
-        "",
         s.p(RESET),
     );
     println!();
@@ -455,9 +476,9 @@ mod tests {
     #[test]
     fn sort_by_ratio() {
         let mut r = vec![
-            mk("low", 1000, 100, 1),  // 10%
-            mk("hi", 100, 90, 1),     // 90%
-            mk("mid", 100, 50, 1),    // 50%
+            mk("low", 1000, 100, 1), // 10%
+            mk("hi", 100, 90, 1),    // 90%
+            mk("mid", 100, 50, 1),   // 50%
         ];
         sort_rows(&mut r, "ratio");
         assert_eq!(r[0].command, "hi");

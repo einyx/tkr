@@ -4,13 +4,23 @@ use tkr_agent::provider::{ContentBlock, Message, Provider, ProviderResponse, Sto
 use tkr_agent::{Manifest, ProcessTool, ToolRegistry};
 use tkr_sandbox::SandboxPolicy;
 
-struct ScriptedProvider { script: RefCell<Vec<ProviderResponse>> }
+struct ScriptedProvider {
+    script: RefCell<Vec<ProviderResponse>>,
+}
 impl Provider for ScriptedProvider {
-    fn send(&self, _: Option<&str>, _: &[Message], _: &[serde_json::Value], _: u32)
-        -> anyhow::Result<ProviderResponse>
-    {
+    fn send(
+        &self,
+        _: Option<&str>,
+        _: &[Message],
+        _: &[serde_json::Value],
+        _: u32,
+    ) -> anyhow::Result<ProviderResponse> {
         let mut s = self.script.borrow_mut();
-        if s.is_empty() { Err(anyhow::anyhow!("script exhausted")) } else { Ok(s.remove(0)) }
+        if s.is_empty() {
+            Err(anyhow::anyhow!("script exhausted"))
+        } else {
+            Ok(s.remove(0))
+        }
     }
 }
 
@@ -18,7 +28,9 @@ impl Provider for ScriptedProvider {
 fn agent_loop_runs_sandboxed_tool() {
     let policy = SandboxPolicy::builder().allow_read("/").build();
     let process_tool = ProcessTool::new(
-        "say", "echoes a message", "/bin/echo",
+        "say",
+        "echoes a message",
+        "/bin/echo",
         vec!["{msg}".into()],
         policy,
         json!({"type":"object","properties":{"msg":{"type":"string"}},"required":["msg"]}),
@@ -32,16 +44,19 @@ fn agent_loop_runs_sandboxed_tool() {
                     input: json!({"msg":"sandboxed"}),
                 }],
                 stop_reason: StopReason::ToolUse,
-                input_tokens: 1, output_tokens: 1,
+                input_tokens: 1,
+                output_tokens: 1,
             },
             ProviderResponse {
                 content: vec![ContentBlock::Text { text: "fin".into() }],
                 stop_reason: StopReason::EndTurn,
-                input_tokens: 1, output_tokens: 1,
+                input_tokens: 1,
+                output_tokens: 1,
             },
         ]),
     };
-    let manifest = Manifest::parse(r#"
+    let manifest = Manifest::parse(
+        r#"
 name = "t"
 task = "test"
 mode = "auto"
@@ -50,7 +65,9 @@ max_steps = 4
 [model]
 provider = "anthropic"
 name = "x"
-"#).unwrap();
+"#,
+    )
+    .unwrap();
     let mut tools = ToolRegistry::new();
     tools.register(Box::new(process_tool));
     let outcome = tkr_agent::run(&manifest, &provider, &mut tools, None).unwrap();

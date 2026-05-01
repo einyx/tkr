@@ -1,9 +1,9 @@
 use tkr_api::{
-    FilterResult,
-    manifest::Manifest,
-    host::Host,
-    plugin::{CommandCtx, FilterDecision, Plugin},
     capability,
+    host::Host,
+    manifest::Manifest,
+    plugin::{CommandCtx, FilterDecision, Plugin},
+    FilterResult,
 };
 // ApiResult (tkr_api::Error) — used for Plugin trait method return types.
 use tkr_api::Result as ApiResult;
@@ -160,15 +160,11 @@ prefix = "warning:"
         .unwrap();
 
         // git command: rule must be skipped
-        let dec = p
-            .on_line("warning: foo", &ctx("git", "status"))
-            .unwrap();
+        let dec = p.on_line("warning: foo", &ctx("git", "status")).unwrap();
         assert_eq!(dec, FilterDecision::Pass);
 
         // cargo command: rule fires
-        let dec = p
-            .on_line("warning: foo", &ctx("cargo", "build"))
-            .unwrap();
+        let dec = p.on_line("warning: foo", &ctx("cargo", "build")).unwrap();
         assert_eq!(dec, FilterDecision::Suppress);
     }
 
@@ -214,10 +210,12 @@ prefix = "warning:"
     // manifest reports correct name and capability
     #[test]
     fn v2_manifest() {
-        let p = FilterPluginV2::from_toml(r#"[[rules]]
+        let p = FilterPluginV2::from_toml(
+            r#"[[rules]]
 type = "suppress_prefix"
 prefix = "x"
-"#)
+"#,
+        )
         .unwrap();
         let m = p.manifest();
         assert_eq!(m.name, "tkr-filter");

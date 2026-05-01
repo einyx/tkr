@@ -6,10 +6,11 @@ use tkr_api::{Error, Result as ApiResult};
 
 type Handler = Box<dyn Fn(Request) -> ApiResult<Reply> + Send + Sync>;
 type Subscriber = Box<dyn Fn(Event) -> ApiResult<()> + Send + Sync>;
+type HandlerEntry = (Handler, Vec<String>);
 
 pub struct InProcBus {
     /// (plugin_target, method) -> (handler, required_caps_for_call).
-    handlers: RwLock<HashMap<(String, String), (Handler, Vec<String>)>>,
+    handlers: RwLock<HashMap<(String, String), HandlerEntry>>,
     /// topic -> subscribers
     subscribers: RwLock<HashMap<String, Vec<(String, Subscriber)>>>,
     /// caller plugin -> capability set
@@ -161,7 +162,11 @@ mod tests {
             "burn",
             "secret",
             vec!["cap:vault.read.secret".into()],
-            |_req| Ok(Reply { payload: json!(true) }),
+            |_req| {
+                Ok(Reply {
+                    payload: json!(true),
+                })
+            },
         );
         let r = bus
             .request(Request {

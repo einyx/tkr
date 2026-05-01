@@ -18,8 +18,8 @@ fn send_round_trips_through_mock_server() {
         .with_body(body)
         .create();
 
-    let provider = AnthropicProvider::new("test-key", "claude-sonnet-4-6")
-        .with_base_url(server.url());
+    let provider =
+        AnthropicProvider::new("test-key", "claude-sonnet-4-6").with_base_url(server.url());
     let msgs = vec![Message::User {
         content: vec![ContentBlock::Text { text: "hi".into() }],
     }];
@@ -38,8 +38,7 @@ fn send_surfaces_api_error() {
         .with_body(r#"{"error":{"type":"authentication_error","message":"bad key"}}"#)
         .create();
 
-    let provider = AnthropicProvider::new("nope", "claude-sonnet-4-6")
-        .with_base_url(server.url());
+    let provider = AnthropicProvider::new("nope", "claude-sonnet-4-6").with_base_url(server.url());
     let err = provider.send(None, &[], &[], 16).unwrap_err();
     assert!(err.to_string().contains("401"));
 }

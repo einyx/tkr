@@ -1,21 +1,30 @@
 use crate::error::SandboxError;
-use crate::policy::SandboxPolicy;
 use crate::exec::SandboxOutput;
+use crate::policy::SandboxPolicy;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
 
-pub fn run(command: &str, args: &[&str], policy: &SandboxPolicy) -> Result<SandboxOutput, SandboxError> {
+pub fn run(
+    command: &str,
+    args: &[&str],
+    policy: &SandboxPolicy,
+) -> Result<SandboxOutput, SandboxError> {
     let profile = build_profile(policy);
-    let mut tmp = tempfile::NamedTempFile::new().map_err(|e| SandboxError::Backend(e.to_string()))?;
-    tmp.write_all(profile.as_bytes()).map_err(|e| SandboxError::Backend(e.to_string()))?;
+    let mut tmp =
+        tempfile::NamedTempFile::new().map_err(|e| SandboxError::Backend(e.to_string()))?;
+    tmp.write_all(profile.as_bytes())
+        .map_err(|e| SandboxError::Backend(e.to_string()))?;
     let profile_path = tmp.path().to_path_buf();
 
     let mut cmd = Command::new("/usr/bin/sandbox-exec");
     cmd.arg("-f").arg(&profile_path).arg(command).args(args);
-    let out = cmd.output().map_err(|e| SandboxError::Backend(e.to_string()))?;
+    let out = cmd
+        .output()
+        .map_err(|e| SandboxError::Backend(e.to_string()))?;
     Ok(SandboxOutput {
-        stdout: out.stdout, stderr: out.stderr,
+        stdout: out.stdout,
+        stderr: out.stderr,
         exit: out.status.code().unwrap_or(-1),
     })
 }
@@ -41,29 +50,33 @@ pub(crate) fn build_profile(policy: &SandboxPolicy) -> String {
     for p in &policy.fs_read {
         let canon = canonical(p);
         let path_str = canon.to_string_lossy();
-        s.push_str(&format!("(allow file-read* (subpath \"{}\"))\n", esc(&path_str)));
+        let esc_path = esc(&path_str);
+        s.push_str(&format!("(allow file-read* (subpath \"{esc_path}\"))\n"));
         // Also allow the original path in case they differ
         if canon != *p {
-            s.push_str(&format!("(allow file-read* (subpath \"{}\"))\n", esc(&p.to_string_lossy())));
+            let esc_orig = esc(&p.to_string_lossy());
+            s.push_str(&format!("(allow file-read* (subpath \"{esc_orig}\"))\n"));
         }
     }
     for p in &policy.fs_write {
         let canon = canonical(p);
         let canon_str = canon.to_string_lossy();
         let e = esc(&canon_str);
-        s.push_str(&format!("(allow file-read* (subpath \"{}\"))\n", e));
-        s.push_str(&format!("(allow file-write* (subpath \"{}\"))\n", e));
+        s.push_str(&format!("(allow file-read* (subpath \"{e}\"))\n"));
+        s.push_str(&format!("(allow file-write* (subpath \"{e}\"))\n"));
         // Also allow the original path
         if canon != *p {
             let orig = esc(&p.to_string_lossy());
-            s.push_str(&format!("(allow file-read* (subpath \"{}\"))\n", orig));
-            s.push_str(&format!("(allow file-write* (subpath \"{}\"))\n", orig));
+            s.push_str(&format!("(allow file-read* (subpath \"{orig}\"))\n"));
+            s.push_str(&format!("(allow file-write* (subpath \"{orig}\"))\n"));
         }
     }
     s
 }
 
-fn esc(s: &str) -> String { s.replace('\\', "\\\\").replace('"', "\\\"") }
+fn esc(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
 
 #[cfg(test)]
 mod tests {
@@ -77,7 +90,9 @@ mod tests {
     fn profile_includes_writable_paths() {
         let p = SandboxPolicy::builder().allow_write("/tmp/foo").build();
         let s = build_profile(&p);
-        assert!(s.contains("(allow file-write* (subpath \"/tmp/foo\"))") ||
-                s.contains("(allow file-write* (subpath \"/private/tmp/foo\"))"));
+        assert!(
+            s.contains("(allow file-write* (subpath \"/tmp/foo\"))")
+                || s.contains("(allow file-write* (subpath \"/private/tmp/foo\"))")
+        );
     }
 }

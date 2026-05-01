@@ -1,10 +1,10 @@
-use std::sync::Arc;
 use crate::{
-    Result,
     bus::{Event, Reply, Request},
     host::Host,
     manifest::Manifest,
+    Result,
 };
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct CommandCtx {
@@ -29,43 +29,68 @@ pub trait Plugin: Send {
     /// it for later calls (e.g. to access sqlite / kv in `on_command_end`).
     fn on_load(&mut self, host: Arc<dyn Host>) -> Result<()>;
 
-    fn on_start(&mut self) -> Result<()> { Ok(()) }
+    fn on_start(&mut self) -> Result<()> {
+        Ok(())
+    }
 
     // Filter-shaped hooks (opt-in via Manifest capabilities)
-    fn on_command_begin(&mut self, _ctx: &CommandCtx) -> Result<()> { Ok(()) }
+    fn on_command_begin(&mut self, _ctx: &CommandCtx) -> Result<()> {
+        Ok(())
+    }
     fn on_line(&mut self, _line: &str, _ctx: &CommandCtx) -> Result<FilterDecision> {
         Ok(FilterDecision::Pass)
     }
-    fn on_command_end(&mut self, _ctx: &CommandCtx) -> Result<String> { Ok(String::new()) }
+    fn on_command_end(&mut self, _ctx: &CommandCtx) -> Result<String> {
+        Ok(String::new())
+    }
 
     // Bus-shaped hooks (opt-in via Manifest)
-    fn on_event(&mut self, _evt: Event) -> Result<()> { Ok(()) }
+    fn on_event(&mut self, _evt: Event) -> Result<()> {
+        Ok(())
+    }
     fn on_request(&mut self, req: Request) -> Result<Reply> {
         Err(crate::Error::UnknownMethod(req.method))
     }
 
-    fn on_shutdown(&mut self) -> Result<()> { Ok(()) }
+    fn on_shutdown(&mut self) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::manifest::Manifest;
     use crate::host::Host;
+    use crate::manifest::Manifest;
 
     struct Noop;
     impl Plugin for Noop {
-        fn manifest(&self) -> Manifest { Manifest { name: "noop".into(), version: "0".into(), ..Default::default() } }
-        fn on_load(&mut self, _: Arc<dyn Host>) -> crate::Result<()> { Ok(()) }
+        fn manifest(&self) -> Manifest {
+            Manifest {
+                name: "noop".into(),
+                version: "0".into(),
+                ..Default::default()
+            }
+        }
+        fn on_load(&mut self, _: Arc<dyn Host>) -> crate::Result<()> {
+            Ok(())
+        }
     }
 
-    #[test] fn defaults_compile() {
+    #[test]
+    fn defaults_compile() {
         let _: Box<dyn Plugin> = Box::new(Noop);
     }
 
-    #[test] fn default_on_request_returns_unknown_method() {
+    #[test]
+    fn default_on_request_returns_unknown_method() {
         let mut p = Noop;
-        let req = crate::bus::Request { target: "noop".into(), method: "what".into(), payload: serde_json::json!({}), caller: "x".into() };
+        let req = crate::bus::Request {
+            target: "noop".into(),
+            method: "what".into(),
+            payload: serde_json::json!({}),
+            caller: "x".into(),
+        };
         let err = p.on_request(req).unwrap_err();
         assert!(matches!(err, crate::Error::UnknownMethod(m) if m == "what"));
     }

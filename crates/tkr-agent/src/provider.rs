@@ -11,9 +11,20 @@ pub enum Message {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentBlock {
-    Text { text: String },
-    ToolUse { id: String, name: String, input: serde_json::Value },
-    ToolResult { tool_use_id: String, content: String, #[serde(default)] is_error: bool },
+    Text {
+        text: String,
+    },
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+    ToolResult {
+        tool_use_id: String,
+        content: String,
+        #[serde(default)]
+        is_error: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

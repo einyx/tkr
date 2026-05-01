@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct Config {
     pub core: CoreConfig,
     pub plugins: PluginsConfig,
@@ -15,6 +16,7 @@ pub struct CoreConfig {
     pub plugin_dir: String,
     pub socket_path: String,
     pub filter_dir: String,
+    pub output_prefix: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,10 +32,6 @@ pub struct AnalyticsConfig {
     pub db_path: String,
 }
 
-impl Default for Config {
-    fn default() -> Self { Self { core: CoreConfig::default(), plugins: PluginsConfig::default() } }
-}
-
 impl Default for CoreConfig {
     fn default() -> Self {
         let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
@@ -41,6 +39,7 @@ impl Default for CoreConfig {
             plugin_dir: home.join(".tkr/plugins").to_string_lossy().into(),
             socket_path: home.join(".tkr/session.sock").to_string_lossy().into(),
             filter_dir: home.join(".tkr/filters").to_string_lossy().into(),
+            output_prefix: String::new(),
         }
     }
 }
@@ -59,19 +58,26 @@ impl Default for PluginsConfig {
 impl Default for AnalyticsConfig {
     fn default() -> Self {
         let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-        Self { db_path: home.join(".tkr/analytics.db").to_string_lossy().into() }
+        Self {
+            db_path: home.join(".tkr/analytics.db").to_string_lossy().into(),
+        }
     }
 }
 
 pub fn load() -> Result<Config> {
     let path = config_path();
-    if !path.exists() { return Ok(Config::default()); }
-    let text = std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+    if !path.exists() {
+        return Ok(Config::default());
+    }
+    let text =
+        std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
     toml::from_str(&text).with_context(|| format!("parsing {}", path.display()))
 }
 
 pub fn config_path() -> PathBuf {
-    dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")).join(".tkr/config.toml")
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".tkr/config.toml")
 }
 
 pub fn bundled_filters_dir() -> Option<PathBuf> {

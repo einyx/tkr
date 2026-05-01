@@ -21,9 +21,13 @@ pub fn run_sandboxed(
         return run_unsandboxed(command, args);
     }
     #[cfg(target_os = "linux")]
-    { return crate::linux::run(command, args, policy); }
+    {
+        crate::linux::run(command, args, policy)
+    }
     #[cfg(target_os = "macos")]
-    { return crate::macos::run(command, args, policy); }
+    {
+        crate::macos::run(command, args, policy)
+    }
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         let _ = (command, args);
@@ -34,7 +38,8 @@ pub fn run_sandboxed(
 fn run_unsandboxed(command: &str, args: &[&str]) -> Result<SandboxOutput, SandboxError> {
     let out = Command::new(command).args(args).output()?;
     Ok(SandboxOutput {
-        stdout: out.stdout, stderr: out.stderr,
+        stdout: out.stdout,
+        stderr: out.stderr,
         exit: out.status.code().unwrap_or(-1),
     })
 }

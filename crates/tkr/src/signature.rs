@@ -123,17 +123,24 @@ fn replace_iso_timestamps(s: &str) -> String {
 
 fn is_iso(c: &[char]) -> bool {
     let d = |i: usize| c[i].is_ascii_digit();
-    d(0) && d(1) && d(2) && d(3)
+    d(0) && d(1)
+        && d(2)
+        && d(3)
         && c[4] == '-'
-        && d(5) && d(6)
+        && d(5)
+        && d(6)
         && c[7] == '-'
-        && d(8) && d(9)
+        && d(8)
+        && d(9)
         && c[10] == 'T'
-        && d(11) && d(12)
+        && d(11)
+        && d(12)
         && c[13] == ':'
-        && d(14) && d(15)
+        && d(14)
+        && d(15)
         && c[16] == ':'
-        && d(17) && d(18)
+        && d(17)
+        && d(18)
 }
 
 fn replace_uuids(s: &str) -> String {
@@ -287,7 +294,10 @@ mod tests {
 
     #[test]
     fn ipv4_collapses() {
-        assert_eq!(signature_of("client 10.0.0.1 connected"), "client IP connected");
+        assert_eq!(
+            signature_of("client 10.0.0.1 connected"),
+            "client IP connected"
+        );
     }
 
     #[test]
@@ -306,7 +316,10 @@ mod tests {
 
     #[test]
     fn pattern_for_signature_handles_ip() {
-        assert_eq!(pattern_for_signature("from IP done"), r"from \d+\.\d+\.\d+\.\d+ done");
+        assert_eq!(
+            pattern_for_signature("from IP done"),
+            r"from \d+\.\d+\.\d+\.\d+ done"
+        );
     }
 
     #[test]

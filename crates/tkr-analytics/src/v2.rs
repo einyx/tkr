@@ -1,13 +1,12 @@
-use std::sync::{Arc, Mutex};
 use serde_json::json;
+use std::sync::{Arc, Mutex};
 use tkr_api::{
-    Result as ApiResult,
-    Error,
     bus::{Reply, Request},
+    capability,
     host::Host,
     manifest::{Manifest, SensitivityClass, StorageKind, StorageRequest},
-    capability,
     plugin::{CommandCtx, FilterDecision, Plugin},
+    Error, Result as ApiResult,
 };
 
 // ── Schema ────────────────────────────────────────────────────────────────────
@@ -32,14 +31,22 @@ const SCHEMA_SQL: &str = "
         UNIQUE(command, signature)
     );
     CREATE INDEX IF NOT EXISTS idx_noise_command ON noise_signatures(command);
-    -- Vector index over signature embeddings (384-dim MiniLM L6 v2).
-    -- Empty until something writes to it (currently the embedding ranker
-    -- populates it during `tkr suggest --features embeddings`).
+";
+
+/// sqlite-vec `vec0` module — installed lazily so `command_stats` / `tkr gain`
+/// still work when vec0 fails to load on a host (broken extension, stale build).
+const SCHEMA_VEC_EMBEDDINGS: &str = "
     CREATE VIRTUAL TABLE IF NOT EXISTS noise_embeddings USING vec0(
         signature_id INTEGER PRIMARY KEY,
         embedding FLOAT[384]
     );
 ";
+
+fn ensure_vec_embeddings(host: &dyn Host) -> ApiResult<()> {
+    let db = host.sqlite(SCHEMA_SQL, SensitivityClass::Public)?;
+    db.execute(SCHEMA_VEC_EMBEDDINGS, &[])?;
+    Ok(())
+}
 
 const NOISE_UPSERT_SQL: &str = "
     INSERT INTO noise_signatures (command, signature, sample, occurrences, total_chars, last_seen)
@@ -220,7 +227,11 @@ impl Plugin for AnalyticsPluginV2 {
         let items: Vec<serde_json::Value> = rows
             .iter()
             .map(|row| {
-                let command = row.get(0).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let command = row
+                    .first()
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 let chars_in = row.get(1).and_then(|v| v.as_i64()).unwrap_or(0);
                 let chars_saved = row.get(2).and_then(|v| v.as_i64()).unwrap_or(0);
                 let runs = row.get(3).and_then(|v| v.as_i64()).unwrap_or(0);
@@ -257,6 +268,7 @@ pub fn upsert_noise_embedding_via_host(
     if embedding.is_empty() {
         return Ok(());
     }
+    ensure_vec_embeddings(host)?;
     let db = host.sqlite(SCHEMA_SQL, SensitivityClass::Public)?;
     // sqlite-vec expects the embedding as a JSON array or as a raw bytes blob.
     // Use the JSON form — simpler, and serde_json gives us a clean roundtrip.
@@ -283,6 +295,7 @@ pub fn nearest_to_signature_via_host(
     signature_id: i64,
     k: usize,
 ) -> ApiResult<Vec<(i64, String, String, f32)>> {
+    ensure_vec_embeddings(host)?;
     let db = host.sqlite(SCHEMA_SQL, SensitivityClass::Public)?;
     // sqlite-vec lets us pass a subquery into MATCH so we don't have to
     // round-trip the embedding bytes through Rust.
@@ -321,6 +334,7 @@ pub fn nearest_noise_embeddings_via_host(
     if query_embedding.is_empty() {
         return Ok(Vec::new());
     }
+    ensure_vec_embeddings(host)?;
     let db = host.sqlite(SCHEMA_SQL, SensitivityClass::Public)?;
     let arr = serde_json::Value::Array(
         query_embedding
@@ -338,12 +352,7 @@ pub fn nearest_noise_embeddings_via_host(
     )?;
     Ok(rows
         .into_iter()
-        .filter_map(|r| {
-            Some((
-                r.get(0)?.as_i64()?,
-                r.get(1)?.as_f64()? as f32,
-            ))
-        })
+        .filter_map(|r| Some((r.first()?.as_i64()?, r.get(1)?.as_f64()? as f32)))
         .collect())
 }
 
@@ -369,24 +378,27 @@ pub fn noise_signatures_without_embeddings_via_host(
     limit: usize,
 ) -> ApiResult<Vec<(i64, String)>> {
     let db = host.sqlite(SCHEMA_SQL, SensitivityClass::Public)?;
-    let rows = db.query(
-        "SELECT s.id, s.sample
-         FROM noise_signatures s
-         WHERE NOT EXISTS (
-             SELECT 1 FROM noise_embeddings e WHERE e.signature_id = s.id
-         )
-         ORDER BY s.total_chars DESC
-         LIMIT ?1",
-        &[json!(limit as i64)],
-    )?;
+    let lim = json!(limit as i64);
+    let rows = if db.execute(SCHEMA_VEC_EMBEDDINGS, &[]).is_ok() {
+        db.query(
+            "SELECT s.id, s.sample
+             FROM noise_signatures s
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM noise_embeddings e WHERE e.signature_id = s.id
+             )
+             ORDER BY s.total_chars DESC
+             LIMIT ?1",
+            &[lim],
+        )?
+    } else {
+        db.query(
+            "SELECT id, sample FROM noise_signatures ORDER BY total_chars DESC LIMIT ?1",
+            &[lim],
+        )?
+    };
     Ok(rows
         .into_iter()
-        .filter_map(|r| {
-            Some((
-                r.first()?.as_i64()?,
-                r.get(1)?.as_str()?.to_string(),
-            ))
-        })
+        .filter_map(|r| Some((r.first()?.as_i64()?, r.get(1)?.as_str()?.to_string())))
         .collect())
 }
 
@@ -453,7 +465,11 @@ pub fn total_savings_via_host(host: &dyn Host) -> ApiResult<Vec<crate::SavingsRo
     Ok(rows
         .into_iter()
         .map(|row| {
-            let command = row.get(0).and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let command = row
+                .first()
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let chars_in = row.get(1).and_then(|v| v.as_i64()).unwrap_or(0).max(0) as u64;
             let chars_saved = row.get(2).and_then(|v| v.as_i64()).unwrap_or(0).max(0) as u64;
             let runs = row.get(3).and_then(|v| v.as_i64()).unwrap_or(0).max(0) as u64;
@@ -489,9 +505,21 @@ pub fn top_noise_signatures_via_host(
     Ok(rows
         .into_iter()
         .map(|row| {
-            let command = row.get(0).and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let signature = row.get(1).and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let sample = row.get(2).and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let command = row
+                .first()
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let signature = row
+                .get(1)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let sample = row
+                .get(2)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let occurrences = row.get(3).and_then(|v| v.as_i64()).unwrap_or(0).max(0) as u64;
             let total_chars = row.get(4).and_then(|v| v.as_i64()).unwrap_or(0).max(0) as u64;
             crate::NoiseRow {
@@ -535,12 +563,11 @@ fn migrate_legacy_db(host: &dyn Host) -> ApiResult<()> {
 
     // Collect all rows.
     let rows_result = {
-        let mut stmt = match conn.prepare(
-            "SELECT command, chars_in, chars_saved, runs FROM command_stats",
-        ) {
-            Ok(s) => s,
-            Err(_) => return Ok(()), // table may not exist
-        };
+        let mut stmt =
+            match conn.prepare("SELECT command, chars_in, chars_saved, runs FROM command_stats") {
+                Ok(s) => s,
+                Err(_) => return Ok(()), // table may not exist
+            };
         let rows: Vec<(String, i64, i64, i64)> = stmt
             .query_map([], |r| {
                 Ok((
@@ -580,11 +607,10 @@ fn migrate_legacy_db(host: &dyn Host) -> ApiResult<()> {
 
     // Migrate noise_signatures (filter-learning candidates) from the legacy DB.
     if let Ok(conn) = rusqlite::Connection::open(&legacy_path) {
-        let sig_rows: Vec<(String, String, String, i64, i64, i64)> = match conn
-            .prepare(
-                "SELECT command, signature, sample, occurrences, total_chars, last_seen
+        let sig_rows: Vec<(String, String, String, i64, i64, i64)> = match conn.prepare(
+            "SELECT command, signature, sample, occurrences, total_chars, last_seen
                  FROM noise_signatures",
-            ) {
+        ) {
             Ok(mut stmt) => stmt
                 .query_map([], |r| {
                     Ok((
@@ -632,7 +658,9 @@ fn migrate_legacy_db(host: &dyn Host) -> ApiResult<()> {
 mod tests {
     use super::*;
     use std::sync::Arc;
-    use tkr_api::plugin::{CommandCtx, Plugin};
+    #[cfg(feature = "test-host")]
+    use tkr_api::plugin::CommandCtx;
+    use tkr_api::plugin::Plugin;
 
     // Use TestHost from tkr-api (test-host feature) wrapped in Arc.
     // TestSqlite is a no-op (records calls, returns empty rows), which is
@@ -642,6 +670,82 @@ mod tests {
         Arc::new(tkr_api::test_host::TestHost::new("tkr-analytics"))
     }
 
+    #[cfg(not(feature = "test-host"))]
+    mod noop_host_stub {
+        use std::sync::Arc;
+
+        use tkr_api::bus::{Bus, Event, Reply, Request};
+        use tkr_api::handles::{Fs, Kv, Sqlite};
+        use tkr_api::host::Host;
+        use tkr_api::manifest::SensitivityClass;
+        use tkr_api::vault::{SealState, Vault};
+        use tkr_api::{Error, Result as ApiResult};
+
+        struct StubBus;
+
+        impl Bus for StubBus {
+            fn request(&self, req: Request) -> ApiResult<Reply> {
+                Err(Error::UnknownMethod(req.method))
+            }
+
+            fn emit(&self, _evt: Event) -> ApiResult<()> {
+                Ok(())
+            }
+        }
+
+        struct StubVault;
+
+        impl Vault for StubVault {
+            fn state(&self) -> SealState {
+                SealState::Sealed
+            }
+
+            fn read_secret(&self, _key: &str) -> ApiResult<Vec<u8>> {
+                Err(Error::Vault("stub".into()))
+            }
+
+            fn write_secret(&self, _key: &str, _val: &[u8]) -> ApiResult<()> {
+                Err(Error::Vault("stub".into()))
+            }
+        }
+
+        struct NoopHost;
+
+        static STUB_BUS: StubBus = StubBus;
+        static STUB_VAULT: StubVault = StubVault;
+
+        impl Host for NoopHost {
+            fn plugin_name(&self) -> &str {
+                "test"
+            }
+
+            fn bus(&self) -> &dyn Bus {
+                &STUB_BUS
+            }
+
+            fn vault(&self) -> &dyn Vault {
+                &STUB_VAULT
+            }
+
+            fn kv(&self, _: SensitivityClass) -> ApiResult<&dyn Kv> {
+                Err(Error::Plugin("noop".into()))
+            }
+
+            fn sqlite(&self, _: &str, _: SensitivityClass) -> ApiResult<&dyn Sqlite> {
+                Err(Error::Plugin("noop".into()))
+            }
+
+            fn fs(&self, _: SensitivityClass) -> ApiResult<&dyn Fs> {
+                Err(Error::Plugin("noop".into()))
+            }
+        }
+
+        pub(super) fn make_host() -> Arc<dyn Host + 'static> {
+            Arc::new(NoopHost)
+        }
+    }
+
+    #[cfg(feature = "test-host")]
     fn ctx(command: &str, args: &str) -> CommandCtx {
         CommandCtx {
             command: command.into(),
@@ -679,7 +783,8 @@ mod tests {
         });
         assert!(
             upsert_call.is_some(),
-            "expected UPSERT for 'git status'; recorded calls: {:?}", calls
+            "expected UPSERT for 'git status'; recorded calls: {:?}",
+            calls
         );
 
         let (_sql, params) = upsert_call.unwrap();
@@ -733,8 +838,8 @@ mod tests {
     /// call on_load, and verify the legacy file is renamed.
     #[test]
     fn migrates_legacy_analytics_db() {
+        use rusqlite::{params, Connection};
         use tempfile::tempdir;
-        use rusqlite::{Connection, params};
 
         // Create a temp directory to act as HOME.
         let fake_home = tempdir().unwrap();
@@ -765,25 +870,15 @@ mod tests {
 
         // Override HOME so migrate_legacy_db picks up the fake home.
         // SAFETY: this test must not run in parallel with other HOME-dependent tests.
-        unsafe { std::env::set_var("HOME", fake_home.path()); }
+        unsafe {
+            std::env::set_var("HOME", fake_home.path());
+        }
 
         // Use a minimal TestHost; migration outcome is visible via the file system.
         #[cfg(feature = "test-host")]
         let host: Arc<dyn Host + 'static> = make_test_host();
         #[cfg(not(feature = "test-host"))]
-        let host: Arc<dyn Host + 'static> = {
-            // When test-host feature is not enabled, build a minimal no-op host.
-            struct NoopHost;
-            impl Host for NoopHost {
-                fn plugin_name(&self) -> &str { "test" }
-                fn bus(&self) -> &dyn tkr_api::bus::Bus { unimplemented!() }
-                fn vault(&self) -> &dyn tkr_api::vault::Vault { unimplemented!() }
-                fn kv(&self, _: SensitivityClass) -> ApiResult<&dyn tkr_api::handles::Kv> { Err(Error::Plugin("noop".into())) }
-                fn sqlite(&self, _: &str, _: SensitivityClass) -> ApiResult<&dyn tkr_api::handles::Sqlite> { Err(Error::Plugin("noop".into())) }
-                fn fs(&self, _: SensitivityClass) -> ApiResult<&dyn tkr_api::handles::Fs> { Err(Error::Plugin("noop".into())) }
-            }
-            Arc::new(NoopHost)
-        };
+        let host: Arc<dyn Host + 'static> = noop_host_stub::make_host();
 
         let mut p = AnalyticsPluginV2::new();
         p.on_load(host).unwrap();
@@ -796,7 +891,9 @@ mod tests {
         let migrated = tkr_dir.join("analytics.db.migrated");
         assert!(migrated.exists(), "migrated sentinel file should exist");
 
-        unsafe { std::env::remove_var("HOME"); }
+        unsafe {
+            std::env::remove_var("HOME");
+        }
     }
 
     /// `total_savings_via_host` must return Ok with an empty vec when the host

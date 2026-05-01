@@ -5,11 +5,12 @@ const REPO_NAME: &str = "tkr";
 const BIN_NAME: &str = "tkr";
 
 fn is_brew_managed() -> bool {
-    let exe = std::env::current_exe().ok().and_then(|p| std::fs::canonicalize(&p).ok());
+    let exe = std::env::current_exe()
+        .ok()
+        .and_then(|p| std::fs::canonicalize(&p).ok());
     if let Some(p) = exe {
         let s = p.to_string_lossy();
-        return s.contains("/Cellar/") || s.contains("/homebrew/")
-            || s.contains("/linuxbrew/");
+        return s.contains("/Cellar/") || s.contains("/homebrew/") || s.contains("/linuxbrew/");
     }
     false
 }
@@ -22,11 +23,8 @@ pub fn run(check_only: bool, force: bool) -> Result<()> {
     }
 
     let current = env!("CARGO_PKG_VERSION");
-    println!("Current version: {}", current);
-    println!(
-        "Checking github.com/{}/{} for newer release...",
-        REPO_OWNER, REPO_NAME
-    );
+    println!("Current version: {current}");
+    println!("Checking github.com/{REPO_OWNER}/{REPO_NAME} for newer release...");
 
     let releases = self_update::backends::github::ReleaseList::configure()
         .repo_owner(REPO_OWNER)
@@ -49,17 +47,17 @@ pub fn run(check_only: bool, force: bool) -> Result<()> {
 
     if check_only {
         if latest_version != current {
-            println!("New version available: {}", latest_version);
+            println!("New version available: {latest_version}");
             std::process::exit(2);
         }
         return Ok(());
     }
 
-    println!("New version available: {}", latest_version);
+    println!("New version available: {latest_version}");
 
     let target = self_update::get_target();
-    let asset = format!("{}-{}.tar.gz", BIN_NAME, target);
-    println!("Downloading {}...", asset);
+    let asset = format!("{BIN_NAME}-{target}.tar.gz");
+    println!("Downloading {asset}...");
 
     let status = self_update::backends::github::Update::configure()
         .repo_owner(REPO_OWNER)

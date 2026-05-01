@@ -1,5 +1,5 @@
-use std::sync::{Arc, Mutex, OnceLock};
 use anyhow::Result;
+use std::sync::{Arc, Mutex, OnceLock};
 
 static HOST: OnceLock<HostHandle> = OnceLock::new();
 /// Tracks whether the full boot (vault + analytics) has been performed.
@@ -10,7 +10,8 @@ static FULL_BOOT_MUTEX: Mutex<()> = Mutex::new(());
 /// Returns a reference to the process-global `HostHandle`.
 /// Panics if neither `ensure()` nor `ensure_full()` has been called yet.
 pub fn get_host() -> &'static HostHandle {
-    HOST.get().expect("HostHandle not initialized — call host::boot::ensure() first")
+    HOST.get()
+        .expect("HostHandle not initialized — call host::boot::ensure() first")
 }
 
 /// Fast boot: register only the filter plugin. No keychain access, no vault,
@@ -71,8 +72,8 @@ use crate::host::{
     bus::InProcBus,
     loader::PluginRegistry,
     vault::{
-        HostVault,
         store::{FsStore, MemStore, Store},
+        HostVault,
     },
 };
 use tkr_api::capability::{CapSet, STDOUT_FILTER, VAULT_READ_PUBLIC, VAULT_WRITE_PUBLIC};
@@ -135,19 +136,22 @@ fn upgrade_to_full(host: &HostHandle) -> Result<()> {
     let vault_root_str = vault_root.to_string_lossy().into_owned();
 
     let (store, master): (Arc<dyn Store>, [u8; 32]) =
-        match crate::host::vault::keychain::init_master_key_if_missing("tkr-vault", &vault_root_str) {
+        match crate::host::vault::keychain::init_master_key_if_missing("tkr-vault", &vault_root_str)
+        {
             Ok(key_bytes) => {
                 let mut master = [0u8; 32];
                 let len = key_bytes.len().min(32);
                 master[..len].copy_from_slice(&key_bytes[..len]);
-                let store: Arc<dyn Store> = Arc::new(
-                    FsStore::new(&vault_root)
-                        .unwrap_or_else(|_| panic!("cannot open vault dir {}", vault_root.display())),
-                );
+                let store: Arc<dyn Store> =
+                    Arc::new(FsStore::new(&vault_root).unwrap_or_else(|_| {
+                        panic!("cannot open vault dir {}", vault_root.display())
+                    }));
                 (store, master)
             }
             Err(e) => {
-                eprintln!("tkr: keychain unavailable ({e}); using in-memory vault (no persistence)");
+                eprintln!(
+                    "tkr: could not initialize master key ({e}); using in-memory vault (no persistence)"
+                );
                 let store: Arc<dyn Store> = Arc::new(MemStore::default());
                 (store, [0u8; 32])
             }
@@ -240,13 +244,16 @@ pub fn filter_for_command(cmd_name: &str) -> Arc<Mutex<FilterPlugin>> {
     }
 
     let fp = Arc::new(Mutex::new(inner));
-    filter_cache().lock().unwrap().insert(base.to_string(), fp.clone());
+    filter_cache()
+        .lock()
+        .unwrap()
+        .insert(base.to_string(), fp.clone());
     fp
 }
 
 /// Bootstrap the host: vault → bus → registry → plugins loaded and started.
 ///
-/// Falls back to an in-memory vault if the OS keychain is unavailable (CI/headless).
+/// Falls back to an in-memory vault if the master key cannot be loaded (e.g. CI/headless).
 ///
 /// DEPRECATED: prefer `ensure()` (fast) or `ensure_full()` (full boot).
 /// Kept for backwards compatibility with tests/benchmarks that call `boot()` directly.
@@ -257,21 +264,24 @@ pub fn boot() -> Result<HostHandle> {
 
     let vault_root_str = vault_root.to_string_lossy().into_owned();
 
-    // Try to get/create the master key from the OS keychain.
+    // Try to create or load the master key (file under ~/.tkr/vault/, with legacy keychain migration).
     let (store, master): (Arc<dyn Store>, [u8; 32]) =
-        match crate::host::vault::keychain::init_master_key_if_missing("tkr-vault", &vault_root_str) {
+        match crate::host::vault::keychain::init_master_key_if_missing("tkr-vault", &vault_root_str)
+        {
             Ok(key_bytes) => {
                 let mut master = [0u8; 32];
                 let len = key_bytes.len().min(32);
                 master[..len].copy_from_slice(&key_bytes[..len]);
-                let store: Arc<dyn Store> = Arc::new(
-                    FsStore::new(&vault_root)
-                        .unwrap_or_else(|_| panic!("cannot open vault dir {}", vault_root.display())),
-                );
+                let store: Arc<dyn Store> =
+                    Arc::new(FsStore::new(&vault_root).unwrap_or_else(|_| {
+                        panic!("cannot open vault dir {}", vault_root.display())
+                    }));
                 (store, master)
             }
             Err(e) => {
-                eprintln!("tkr: keychain unavailable ({e}); using in-memory vault (no persistence)");
+                eprintln!(
+                    "tkr: could not initialize master key ({e}); using in-memory vault (no persistence)"
+                );
                 let store: Arc<dyn Store> = Arc::new(MemStore::default());
                 (store, [0u8; 32])
             }
@@ -296,8 +306,8 @@ pub fn boot() -> Result<HostHandle> {
     // Register built-in filter plugin — loads bundled TOML rules first, then
     // user overrides from ~/.tkr/filters/.
     {
-        use tkr_filter::FilterPlugin;
         use tkr_filter::v2::FilterPluginV2;
+        use tkr_filter::FilterPlugin;
 
         let mut inner = FilterPlugin::new();
         if let Some(bundled) = crate::config::bundled_filters_dir() {

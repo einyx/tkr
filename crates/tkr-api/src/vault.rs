@@ -1,16 +1,11 @@
 use crate::Result;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum SealState {
+    #[default]
     Sealed,
     AutoUnsealed,
     FullyUnsealed,
-}
-
-impl Default for SealState {
-    fn default() -> Self {
-        SealState::Sealed
-    }
 }
 
 pub trait Vault: Send + Sync {

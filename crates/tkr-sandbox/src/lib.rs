@@ -1,6 +1,6 @@
 pub mod error;
-pub mod policy;
 pub mod exec;
+pub mod policy;
 
 #[cfg(target_os = "linux")]
 mod linux;
@@ -9,5 +9,5 @@ mod linux;
 mod macos;
 
 pub use error::SandboxError;
-pub use policy::{SandboxPolicy, PolicyBuilder};
 pub use exec::{run_sandboxed, SandboxOutput};
+pub use policy::{PolicyBuilder, SandboxPolicy};

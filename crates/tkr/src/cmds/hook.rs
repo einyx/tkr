@@ -1,5 +1,8 @@
 //! `tkr hook claude` — Claude Code PreToolUse Bash hook.
 //!
+//! `tkr hook universal` — same JSON response shape; accepts either Claude's
+//! `tool_input.command` or a top-level `"command"` field (shell / IDE wrappers).
+//!
 //! Reads a JSON object from stdin like:
 //!   {"tool_input": {"command": "git status"}}
 //!
@@ -24,10 +27,42 @@ use std::io::{Read, Write};
 const MAX_PAYLOAD_BYTES: u64 = 1_048_576;
 
 pub fn run_claude() -> Result<()> {
-    process_claude(&mut std::io::stdin().lock(), &mut std::io::stdout().lock())
+    process_hook(
+        &mut std::io::stdin().lock(),
+        &mut std::io::stdout().lock(),
+        extract_command_claude,
+    )
 }
 
-fn process_claude<R: Read, W: Write>(input: &mut R, output: &mut W) -> Result<()> {
+pub fn run_universal() -> Result<()> {
+    process_hook(
+        &mut std::io::stdin().lock(),
+        &mut std::io::stdout().lock(),
+        extract_command_universal,
+    )
+}
+
+fn extract_command_claude(payload: &Value) -> Option<&str> {
+    payload
+        .get("tool_input")
+        .and_then(|t| t.get("command"))
+        .and_then(|c| c.as_str())
+        .filter(|s| !s.is_empty())
+}
+
+fn extract_command_universal(payload: &Value) -> Option<&str> {
+    extract_command_claude(payload).or_else(|| {
+        payload
+            .get("command")
+            .and_then(|c| c.as_str())
+            .filter(|s| !s.is_empty())
+    })
+}
+
+fn process_hook<R: Read, W: Write, F>(input: &mut R, output: &mut W, extract: F) -> Result<()>
+where
+    F: Fn(&Value) -> Option<&str>,
+{
     let mut buf = String::new();
     let _ = input.take(MAX_PAYLOAD_BYTES).read_to_string(&mut buf);
     if buf.trim().is_empty() {
@@ -39,11 +74,7 @@ fn process_claude<R: Read, W: Write>(input: &mut R, output: &mut W) -> Result<()
         Err(_) => return Ok(()),
     };
 
-    let cmd = payload
-        .get("tool_input")
-        .and_then(|t| t.get("command"))
-        .and_then(|c| c.as_str())
-        .unwrap_or("");
+    let cmd = extract(&payload).unwrap_or("");
     if cmd.is_empty() {
         return Ok(());
     }
@@ -71,7 +102,7 @@ fn process_claude<R: Read, W: Write>(input: &mut R, output: &mut W) -> Result<()
             "updatedInput": updated
         }
     });
-    let _ = writeln!(output, "{}", response);
+    let _ = writeln!(output, "{response}");
     Ok(())
 }
 
@@ -81,7 +112,13 @@ mod tests {
 
     fn run(input: &str) -> String {
         let mut out: Vec<u8> = Vec::new();
-        process_claude(&mut input.as_bytes(), &mut out).unwrap();
+        process_hook(&mut input.as_bytes(), &mut out, extract_command_claude).unwrap();
+        String::from_utf8(out).unwrap()
+    }
+
+    fn run_universal(input: &str) -> String {
+        let mut out: Vec<u8> = Vec::new();
+        process_hook(&mut input.as_bytes(), &mut out, extract_command_universal).unwrap();
         String::from_utf8(out).unwrap()
     }
 
@@ -126,7 +163,8 @@ mod tests {
 
     #[test]
     fn preserves_other_tool_input_fields() {
-        let out = run(r#"{"tool_input":{"command":"git status","timeout":5000,"description":"check"}}"#);
+        let out =
+            run(r#"{"tool_input":{"command":"git status","timeout":5000,"description":"check"}}"#);
         assert!(out.contains("\"timeout\":5000"));
         assert!(out.contains("\"description\":\"check\""));
         assert!(out.contains("\"command\":\"tkr git status\""));
@@ -152,5 +190,17 @@ mod tests {
         let payload = format!(r#"{{"tool_input":{{"command":"{big}"}}}}"#);
         // Truncated read will produce malformed JSON → fail-open, no output.
         let _ = run(&payload);
+    }
+
+    #[test]
+    fn universal_top_level_command_rewrites() {
+        let out = run_universal(r#"{"command":"git status"}"#);
+        assert!(out.contains("\"command\":\"tkr git status\""));
+    }
+
+    #[test]
+    fn universal_prefers_tool_input_over_top_level() {
+        let out = run_universal(r#"{"tool_input":{"command":"git status"},"command":"echo noop"}"#);
+        assert!(out.contains("\"command\":\"tkr git status\""));
     }
 }

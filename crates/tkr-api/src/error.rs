@@ -2,9 +2,16 @@
 #[derive(Debug)]
 pub enum Error {
     UnknownMethod(String),
-    CapabilityDenied { cap: String, plugin: String },
+    CapabilityDenied {
+        cap: String,
+        plugin: String,
+    },
     Sealed,
-    SchemaMismatch { plugin: String, field: String, detail: String },
+    SchemaMismatch {
+        plugin: String,
+        field: String,
+        detail: String,
+    },
     Vault(String),
     Plugin(String),
 }
@@ -19,8 +26,15 @@ impl std::fmt::Display for Error {
                 write!(f, "capability '{cap}' denied for plugin '{plugin}'")
             }
             Error::Sealed => write!(f, "vault is sealed"),
-            Error::SchemaMismatch { plugin, field, detail } => {
-                write!(f, "schema mismatch in plugin '{plugin}', field '{field}': {detail}")
+            Error::SchemaMismatch {
+                plugin,
+                field,
+                detail,
+            } => {
+                write!(
+                    f,
+                    "schema mismatch in plugin '{plugin}', field '{field}': {detail}"
+                )
             }
             Error::Vault(msg) => write!(f, "vault error: {msg}"),
             Error::Plugin(msg) => write!(f, "plugin error: {msg}"),

@@ -3,6 +3,9 @@
 # Pinning here so `cargo build` auto-fetches a compatible toolchain via
 # rustup, instead of falling through to whatever rustc is on $PATH (which
 # may be Homebrew's older one).
+#
+# If `rustc --version` stays old in this directory, you are not using rustup's
+# cargo — put ~/.cargo/bin before brew in PATH, or run: rustup default 1.88.0
 channel = "1.88.0"
 profile = "minimal"
 components = ["rustc", "cargo"]

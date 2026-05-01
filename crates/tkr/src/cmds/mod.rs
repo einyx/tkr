@@ -1,9 +1,10 @@
 pub mod bench;
-pub mod gain;
-pub mod watch;
 pub mod discover;
+pub mod explain;
+pub mod gain;
 pub mod hook;
 pub mod install;
 pub mod rewrite;
 pub mod suggest;
 pub mod update;
+pub mod watch;

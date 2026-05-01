@@ -45,6 +45,12 @@ pub struct FilterPlugin {
     groups: Vec<FilterGroup>,
 }
 
+impl Default for FilterPlugin {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FilterPlugin {
     pub fn new() -> Self {
         Self { groups: vec![] }
@@ -78,7 +84,7 @@ impl FilterPlugin {
             for entry in std::fs::read_dir(dir)? {
                 let entry = entry?;
                 let path = entry.path();
-                if path.extension().map_or(false, |e| e == "toml") {
+                if path.extension().is_some_and(|e| e == "toml") {
                     let text = std::fs::read_to_string(&path)?;
                     let def: FilterDef = toml::from_str(&text)?;
                     let rules = def

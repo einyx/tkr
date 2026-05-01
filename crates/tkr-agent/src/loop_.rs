@@ -2,8 +2,8 @@ use crate::manifest::Manifest;
 use crate::provider::{ContentBlock, Message, Provider, StopReason};
 use crate::tool::{ToolRegistry, ToolResult};
 use anyhow::{anyhow, Result};
-use tkr_filter::FilterPlugin;
 use tkr_api::{FilterResult, LegacyPlugin as Plugin};
+use tkr_filter::FilterPlugin;
 
 #[derive(Debug, Clone)]
 pub struct RunOutcome {
@@ -25,7 +25,9 @@ pub fn run(
     let schemas = tools.schemas();
 
     let mut messages: Vec<Message> = vec![Message::User {
-        content: vec![ContentBlock::Text { text: manifest.task.clone() }],
+        content: vec![ContentBlock::Text {
+            text: manifest.task.clone(),
+        }],
     }];
 
     let mut steps = 0u32;
@@ -38,16 +40,13 @@ pub fn run(
 
     while steps < manifest.max_steps {
         steps += 1;
-        let resp = provider.send(
-            manifest.system.as_deref(),
-            &messages,
-            &schemas,
-            1024,
-        )?;
+        let resp = provider.send(manifest.system.as_deref(), &messages, &schemas, 1024)?;
         input_tokens_total += resp.input_tokens;
         output_tokens_total += resp.output_tokens;
 
-        messages.push(Message::Assistant { content: resp.content.clone() });
+        messages.push(Message::Assistant {
+            content: resp.content.clone(),
+        });
 
         match resp.stop_reason {
             StopReason::EndTurn | StopReason::MaxTokens => {
@@ -81,7 +80,7 @@ pub fn run(
                 messages.push(Message::User { content: blocks });
             }
             StopReason::Other(s) => {
-                return Err(anyhow!("unexpected stop reason: {}", s));
+                return Err(anyhow!("unexpected stop reason: {s}"));
             }
         }
     }
@@ -117,7 +116,7 @@ fn run_tool_calls(
         if let ContentBlock::ToolUse { id, name, input } = b {
             let tool = tools
                 .get_mut(name)
-                .ok_or_else(|| anyhow!("unknown tool: {}", name))?;
+                .ok_or_else(|| anyhow!("unknown tool: {name}"))?;
             let res = tool.run(input)?;
             out.push((id.clone(), res, name.clone()));
         }
@@ -129,23 +128,34 @@ fn apply_filter(plugin: &mut FilterPlugin, tool_name: &str, content: &str) -> St
     let mut out = String::new();
     for (idx, line) in content.lines().enumerate() {
         match plugin.filter(line, tool_name, "", idx as u64) {
-            FilterResult::Pass => { out.push_str(line); out.push('\n'); }
+            FilterResult::Pass => {
+                out.push_str(line);
+                out.push('\n');
+            }
             FilterResult::Suppress | FilterResult::SuppressWithNote(_) => {}
-            FilterResult::Replace(s) => { out.push_str(&s); out.push('\n'); }
-            FilterResult::Annotate(_) => { out.push_str(line); out.push('\n'); }
+            FilterResult::Replace(s) => {
+                out.push_str(&s);
+                out.push('\n');
+            }
+            FilterResult::Annotate(_) => {
+                out.push_str(line);
+                out.push('\n');
+            }
         }
     }
     let summary = plugin.flush();
-    if !summary.is_empty() { out.push_str(&summary); }
+    if !summary.is_empty() {
+        out.push_str(&summary);
+    }
     out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::manifest::{Manifest, ModelDecl, AgentMode};
-    use crate::tool::Tool;
+    use crate::manifest::{AgentMode, Manifest, ModelDecl};
     use crate::provider::ProviderResponse;
+    use crate::tool::Tool;
     use serde_json::json;
     use std::cell::RefCell;
 
@@ -171,11 +181,20 @@ mod tests {
 
     struct LoudEcho;
     impl Tool for LoudEcho {
-        fn name(&self) -> &str { "echo" }
-        fn input_schema(&self) -> serde_json::Value { json!({}) }
+        fn name(&self) -> &str {
+            "echo"
+        }
+        fn input_schema(&self) -> serde_json::Value {
+            json!({})
+        }
         fn run(&mut self, _input: &serde_json::Value) -> Result<ToolResult> {
             let s = "EE\n".to_string();
-            Ok(ToolResult { content: s.clone(), raw_bytes: s.len(), filtered_bytes: s.len(), exit: 0 })
+            Ok(ToolResult {
+                content: s.clone(),
+                raw_bytes: s.len(),
+                filtered_bytes: s.len(),
+                exit: 0,
+            })
         }
     }
 
@@ -183,7 +202,10 @@ mod tests {
         let _ = AgentMode::Approve;
         Manifest {
             name: "t".into(),
-            model: ModelDecl { provider: "anthropic".into(), name: "x".into() },
+            model: ModelDecl {
+                provider: "anthropic".into(),
+                name: "x".into(),
+            },
             system: None,
             task: "say hi".into(),
             tools: vec![],
@@ -196,9 +218,12 @@ mod tests {
     fn loop_terminates_on_end_turn() {
         let provider = ScriptedProvider {
             script: RefCell::new(vec![ProviderResponse {
-                content: vec![ContentBlock::Text { text: "hi back".into() }],
+                content: vec![ContentBlock::Text {
+                    text: "hi back".into(),
+                }],
                 stop_reason: StopReason::EndTurn,
-                input_tokens: 1, output_tokens: 1,
+                input_tokens: 1,
+                output_tokens: 1,
             }]),
         };
         let mut tools = ToolRegistry::new();
@@ -218,12 +243,16 @@ mod tests {
                         input: json!({}),
                     }],
                     stop_reason: StopReason::ToolUse,
-                    input_tokens: 2, output_tokens: 2,
+                    input_tokens: 2,
+                    output_tokens: 2,
                 },
                 ProviderResponse {
-                    content: vec![ContentBlock::Text { text: "done".into() }],
+                    content: vec![ContentBlock::Text {
+                        text: "done".into(),
+                    }],
                     stop_reason: StopReason::EndTurn,
-                    input_tokens: 1, output_tokens: 1,
+                    input_tokens: 1,
+                    output_tokens: 1,
                 },
             ]),
         };
@@ -246,10 +275,13 @@ mod tests {
                     input: json!({}),
                 }],
                 stop_reason: StopReason::ToolUse,
-                input_tokens: 0, output_tokens: 0,
+                input_tokens: 0,
+                output_tokens: 0,
             });
         }
-        let provider = ScriptedProvider { script: RefCell::new(script) };
+        let provider = ScriptedProvider {
+            script: RefCell::new(script),
+        };
         let mut tools = ToolRegistry::new();
         tools.register(Box::new(LoudEcho));
         let mut m = manifest();
@@ -274,11 +306,20 @@ pattern = "^DROP "
 
         struct NoisyEcho;
         impl Tool for NoisyEcho {
-            fn name(&self) -> &str { "echo" }
-            fn input_schema(&self) -> serde_json::Value { json!({}) }
+            fn name(&self) -> &str {
+                "echo"
+            }
+            fn input_schema(&self) -> serde_json::Value {
+                json!({})
+            }
             fn run(&mut self, _input: &serde_json::Value) -> Result<ToolResult> {
                 let s = "KEEP one\nDROP two\nKEEP three\n".to_string();
-                Ok(ToolResult { content: s.clone(), raw_bytes: s.len(), filtered_bytes: s.len(), exit: 0 })
+                Ok(ToolResult {
+                    content: s.clone(),
+                    raw_bytes: s.len(),
+                    filtered_bytes: s.len(),
+                    exit: 0,
+                })
             }
         }
 
@@ -286,15 +327,19 @@ pattern = "^DROP "
             script: RefCell::new(vec![
                 ProviderResponse {
                     content: vec![ContentBlock::ToolUse {
-                        id: "tu".into(), name: "echo".into(), input: json!({}),
+                        id: "tu".into(),
+                        name: "echo".into(),
+                        input: json!({}),
                     }],
                     stop_reason: StopReason::ToolUse,
-                    input_tokens: 0, output_tokens: 0,
+                    input_tokens: 0,
+                    output_tokens: 0,
                 },
                 ProviderResponse {
                     content: vec![ContentBlock::Text { text: "ok".into() }],
                     stop_reason: StopReason::EndTurn,
-                    input_tokens: 0, output_tokens: 0,
+                    input_tokens: 0,
+                    output_tokens: 0,
                 },
             ]),
         };

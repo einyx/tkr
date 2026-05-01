@@ -55,8 +55,8 @@ mod imp {
     impl EmbeddingRanker {
         pub fn new() -> Option<Self> {
             // AllMiniLML6V2 — 384 dim, ~80MB, downloads to ~/.cache/fastembed.
-            let model = TextEmbedding::try_new(InitOptions::new(EmbeddingModel::AllMiniLML6V2))
-                .ok()?;
+            let model =
+                TextEmbedding::try_new(InitOptions::new(EmbeddingModel::AllMiniLML6V2)).ok()?;
             Some(Self {
                 model,
                 threshold: 0.85,
@@ -175,7 +175,7 @@ mod tests {
     fn ranker_compiles_without_feature() {
         // With default features (no `embeddings`), EmbeddingRanker exists as
         // a stub that returns no candidates.
-        let mut r = EmbeddingRanker::default();
+        let mut r = EmbeddingRanker;
         let lines = vec![KeptLine {
             command: "git",
             line: "anything",

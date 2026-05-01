@@ -13,7 +13,10 @@ pub struct ProcessTool {
 }
 
 #[derive(Clone)]
-enum ArgSlot { Literal(String), Named(String) }
+enum ArgSlot {
+    Literal(String),
+    Named(String),
+}
 
 impl ProcessTool {
     pub fn new(
@@ -24,13 +27,16 @@ impl ProcessTool {
         policy: SandboxPolicy,
         input_schema: Value,
     ) -> Self {
-        let slots = arg_template.into_iter().map(|s| {
-            if let Some(name) = s.strip_prefix('{').and_then(|x| x.strip_suffix('}')) {
-                ArgSlot::Named(name.to_string())
-            } else {
-                ArgSlot::Literal(s)
-            }
-        }).collect();
+        let slots = arg_template
+            .into_iter()
+            .map(|s| {
+                if let Some(name) = s.strip_prefix('{').and_then(|x| x.strip_suffix('}')) {
+                    ArgSlot::Named(name.to_string())
+                } else {
+                    ArgSlot::Literal(s)
+                }
+            })
+            .collect();
         Self {
             name: name.into(),
             description: description.into(),
@@ -41,7 +47,9 @@ impl ProcessTool {
         }
     }
 
-    pub fn description(&self) -> &str { &self.description }
+    pub fn description(&self) -> &str {
+        &self.description
+    }
 
     fn render_args(&self, input: &Value) -> Result<Vec<String>> {
         let mut out = Vec::with_capacity(self.arg_template.len());
@@ -49,7 +57,9 @@ impl ProcessTool {
             match slot {
                 ArgSlot::Literal(s) => out.push(s.clone()),
                 ArgSlot::Named(k) => {
-                    let v = input.get(k).ok_or_else(|| anyhow::anyhow!("missing input field '{}'", k))?;
+                    let v = input
+                        .get(k)
+                        .ok_or_else(|| anyhow::anyhow!("missing input field '{k}'"))?;
                     let s = match v {
                         Value::String(s) => s.clone(),
                         other => other.to_string(),
@@ -63,19 +73,28 @@ impl ProcessTool {
 }
 
 impl Tool for ProcessTool {
-    fn name(&self) -> &str { &self.name }
-    fn input_schema(&self) -> Value { self.input_schema.clone() }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn input_schema(&self) -> Value {
+        self.input_schema.clone()
+    }
     fn run(&mut self, input: &Value) -> Result<ToolResult> {
         let args = self.render_args(input)?;
         let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
         let out = run_sandboxed(&self.command, &arg_refs, &self.policy)
-            .map_err(|e| anyhow::anyhow!("sandbox: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("sandbox: {e}"))?;
         let mut content = String::from_utf8_lossy(&out.stdout).into_owned();
         if !out.stderr.is_empty() {
             content.push_str(&String::from_utf8_lossy(&out.stderr));
         }
         let raw = content.len();
-        Ok(ToolResult { content, raw_bytes: raw, filtered_bytes: raw, exit: out.exit })
+        Ok(ToolResult {
+            content,
+            raw_bytes: raw,
+            filtered_bytes: raw,
+            exit: out.exit,
+        })
     }
 }
 
@@ -88,7 +107,9 @@ mod tests {
     fn renders_literal_and_named_args() {
         // Allow reading whole filesystem so the binary's dyld deps are reachable.
         let mut t = ProcessTool::new(
-            "say", "echoes", "/bin/echo",
+            "say",
+            "echoes",
+            "/bin/echo",
             vec!["--".into(), "{msg}".into()],
             SandboxPolicy::builder().allow_read("/").build(),
             json!({"type":"object","properties":{"msg":{"type":"string"}},"required":["msg"]}),
@@ -101,7 +122,9 @@ mod tests {
     #[test]
     fn missing_named_field_errors() {
         let mut t = ProcessTool::new(
-            "say", "", "/bin/echo",
+            "say",
+            "",
+            "/bin/echo",
             vec!["{msg}".into()],
             SandboxPolicy::builder().allow_read("/").build(),
             json!({}),

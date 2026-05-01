@@ -6,18 +6,18 @@ use anyhow::Result;
 /// Conservative — for unknown flags we treat the next token as the value
 /// only if the flag form has no `=`.
 const VALUE_FLAGS: &[&str] = &[
-    "-C",     // git -C <path>
-    "-c",     // git -c <key=val>
-    "-p",     // cargo -p <pkg>, kubectl -p, npm -p
+    "-C", // git -C <path>
+    "-c", // git -c <key=val>
+    "-p", // cargo -p <pkg>, kubectl -p, npm -p
     "--package",
     "--config",
     "--manifest-path",
     "--target",
     "-f",
-    "-n",     // kubectl -n <ns>
+    "-n", // kubectl -n <ns>
     "--namespace",
     "--context",
-    "-o",     // kubectl -o <fmt>
+    "-o", // kubectl -o <fmt>
     "--output",
     "--format",
     "-l",
@@ -43,7 +43,7 @@ fn first_positional(args: &[String]) -> &str {
         }
         if a.starts_with('-') {
             // Flag. If known to take a value (and no `=`), also skip the next token.
-            if VALUE_FLAGS.iter().any(|f| *f == a) {
+            if VALUE_FLAGS.contains(&a) {
                 i += 2;
             } else {
                 i += 1;
@@ -56,6 +56,13 @@ fn first_positional(args: &[String]) -> &str {
 }
 
 pub fn run(cfg: Config, args: &[String]) -> Result<()> {
+    let safe_prefix = sanitize_prefix(&cfg.core.output_prefix);
+    if !safe_prefix.is_empty() {
+        std::env::set_var("TKR_OUTPUT_PREFIX", safe_prefix);
+    } else {
+        std::env::remove_var("TKR_OUTPUT_PREFIX");
+    }
+
     let (cmd, cmd_args) = args.split_first().expect("at least one arg");
     let cmd_args_str = cmd_args.join(" ");
 
@@ -82,7 +89,7 @@ pub fn run(cfg: Config, args: &[String]) -> Result<()> {
 
     // Run the fast pipeline: uses the per-command FilterPlugin directly,
     // bypassing the registry's (empty) filter plugin.
-    let result = crate::stream::run_pipeline_direct(lines, &mut *filter_guard, cmd, &cmd_args_str);
+    let result = crate::stream::run_pipeline_direct(lines, &mut filter_guard, cmd, &cmd_args_str);
 
     let tokens_in = chars_to_tokens(result.chars_in);
     let tokens_saved = chars_to_tokens(result.chars_suppressed);
@@ -118,19 +125,42 @@ pub fn run(cfg: Config, args: &[String]) -> Result<()> {
         let handle = std::thread::spawn(move || {
             let vault = crate::host::boot::vault();
             let analytics_host = crate::host::RealHost::new("tkr-analytics", vault, bus);
-            let _ = tkr_analytics::record_command_stat_via_host(
+            if let Err(e) = tkr_analytics::record_command_stat_via_host(
                 &analytics_host,
                 &key_owned,
                 chars_in as u64,
                 chars_saved as u64,
-            );
+            ) {
+                eprintln!("tkr: warning: could not save analytics for `{key_owned}`: {e}");
+            }
         });
-        let _ = handle.join();
+        if let Err(e) = handle.join() {
+            eprintln!("tkr: warning: analytics writer thread panicked: {e:?}");
+        }
     }
 
     Ok(())
 }
 
+fn sanitize_prefix(raw: &str) -> String {
+    // `output_prefix = "tkr"` was an old default that makes `tkr ls` render
+    // as `tkr <line>`, which is noisy for normal shell use. Treat that legacy
+    // value as disabled so existing configs stop prefixing output lines.
+    if raw.trim() == "tkr" {
+        return String::new();
+    }
+
+    let mut out = String::with_capacity(raw.len().min(32));
+    for ch in raw.chars() {
+        if out.len() >= 32 {
+            break;
+        }
+        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | ':') {
+            out.push(ch);
+        }
+    }
+    out
+}
 
 #[cfg(test)]
 mod tests {
@@ -163,5 +193,16 @@ mod tests {
     #[test]
     fn returns_first_positional() {
         assert_eq!(first_positional(&s(&["status", "--short"])), "status");
+    }
+
+    #[test]
+    fn legacy_tkr_prefix_is_disabled() {
+        assert_eq!(sanitize_prefix("tkr"), "");
+        assert_eq!(sanitize_prefix(" tkr "), "");
+    }
+
+    #[test]
+    fn custom_prefix_still_allowed() {
+        assert_eq!(sanitize_prefix("cmd"), "cmd");
     }
 }

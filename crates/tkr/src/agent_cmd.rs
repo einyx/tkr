@@ -17,7 +17,7 @@ pub fn run_agent(manifest_path: &Path) -> Result<()> {
     for decl in &manifest.tools {
         match decl.name.as_str() {
             "echo" => tools.register(Box::new(EchoTool)),
-            other => return Err(anyhow!("unknown tool '{}' (v1 only ships 'echo')", other)),
+            other => return Err(anyhow!("unknown tool '{other}' (v1 only ships 'echo')")),
         }
     }
 
@@ -27,7 +27,11 @@ pub fn run_agent(manifest_path: &Path) -> Result<()> {
                 .map_err(|_| anyhow!("ANTHROPIC_API_KEY not set"))?;
             AnthropicProvider::new(key, &manifest.model.name)
         }
-        other => return Err(anyhow!("unknown provider '{}' (v1 only ships 'anthropic')", other)),
+        other => {
+            return Err(anyhow!(
+                "unknown provider '{other}' (v1 only ships 'anthropic')"
+            ))
+        }
     };
 
     let started_at = Utc::now();
@@ -41,7 +45,7 @@ pub fn run_agent(manifest_path: &Path) -> Result<()> {
             println!("{}", outcome.final_text);
             println!();
             let receipt = RunReceipt::from_outcome(&manifest.name, &outcome);
-            println!("{}", receipt);
+            println!("{receipt}");
 
             let record = run_record::record_from_run(
                 &manifest,

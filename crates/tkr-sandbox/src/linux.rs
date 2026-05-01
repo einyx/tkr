@@ -1,10 +1,14 @@
 use crate::error::SandboxError;
-use crate::policy::SandboxPolicy;
 use crate::exec::SandboxOutput;
+use crate::policy::SandboxPolicy;
 use std::os::unix::process::CommandExt;
 use std::process::Command;
 
-pub fn run(command: &str, args: &[&str], policy: &SandboxPolicy) -> Result<SandboxOutput, SandboxError> {
+pub fn run(
+    command: &str,
+    args: &[&str],
+    policy: &SandboxPolicy,
+) -> Result<SandboxOutput, SandboxError> {
     let read = policy.fs_read.clone();
     let write = policy.fs_write.clone();
 
@@ -19,9 +23,12 @@ pub fn run(command: &str, args: &[&str], policy: &SandboxPolicy) -> Result<Sandb
         });
     }
 
-    let out = cmd.output().map_err(|e| SandboxError::Backend(e.to_string()))?;
+    let out = cmd
+        .output()
+        .map_err(|e| SandboxError::Backend(e.to_string()))?;
     Ok(SandboxOutput {
-        stdout: out.stdout, stderr: out.stderr,
+        stdout: out.stdout,
+        stderr: out.stderr,
         exit: out.status.code().unwrap_or(-1),
     })
 }

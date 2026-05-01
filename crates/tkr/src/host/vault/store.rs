@@ -1,7 +1,10 @@
+use anyhow::Result;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Mutex, atomic::{AtomicU64, Ordering}};
-use anyhow::Result;
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex,
+};
 
 pub trait Store: Send + Sync {
     fn get(&self, key: &str) -> Result<Option<Vec<u8>>>;
@@ -58,7 +61,10 @@ impl FsStore {
     pub fn new(root: impl Into<PathBuf>) -> Result<Self> {
         let root = root.into();
         std::fs::create_dir_all(&root)?;
-        let store = Self { root, lock: Mutex::new(()) };
+        let store = Self {
+            root,
+            lock: Mutex::new(()),
+        };
         // Reconcile: drop index entries whose .age files are missing (crash safety net).
         store.reconcile()?;
         Ok(store)
@@ -161,7 +167,10 @@ impl Store for FsStore {
     fn list(&self, prefix: &str) -> Result<Vec<String>> {
         // lockless: one atomic read of index.json
         let idx = self.load_index()?;
-        Ok(idx.into_values().filter(|k| k.starts_with(prefix)).collect())
+        Ok(idx
+            .into_values()
+            .filter(|k| k.starts_with(prefix))
+            .collect())
     }
 }
 
@@ -217,10 +226,14 @@ mod tests_fs {
             s.put("x", b"hi").unwrap();
         }
         // Manually nuke the data file but leave the index claiming it exists.
-        let entries = std::fs::read_dir(d.path()).unwrap().filter_map(|e| e.ok())
+        let entries = std::fs::read_dir(d.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
             .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("age"))
             .collect::<Vec<_>>();
-        for e in entries { std::fs::remove_file(e.path()).unwrap(); }
+        for e in entries {
+            std::fs::remove_file(e.path()).unwrap();
+        }
         // Reopen and list — orphan should be reconciled away.
         let s2 = FsStore::new(d.path()).unwrap();
         let listed = s2.list("").unwrap();

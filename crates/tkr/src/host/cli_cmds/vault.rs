@@ -1,6 +1,6 @@
+use crate::host::vault::HostVault;
 use anyhow::Result;
 use tkr_api::vault::{SealState, Vault as VaultTrait};
-use crate::host::vault::HostVault;
 
 pub fn status(vault: &HostVault) -> Result<i32> {
     let state = match vault.state() {
@@ -17,33 +17,34 @@ pub fn status(vault: &HostVault) -> Result<i32> {
 use std::path::Path;
 
 pub enum InitMode<'a> {
-    Keychain,
+    /// Master key at `~/.tkr/vault/.tkr-vault.key` (0600); legacy OS keychain entries migrate once on read.
+    MasterKeyFile,
     Passphrase(&'a str),
 }
 
 pub fn init(vault_root: &Path, mode: InitMode) -> Result<i32> {
+    use crate::host::vault::keychain;
     use anyhow::Context;
     use rand::RngCore;
-    use crate::host::vault::keychain;
 
     std::fs::create_dir_all(vault_root).context("create vault dir")?;
     let mut master = [0u8; 32];
     rand::rngs::OsRng.fill_bytes(&mut master);
 
     match mode {
-        InitMode::Keychain => {
+        InitMode::MasterKeyFile => {
             let user = vault_root.to_string_lossy();
-            // If keychain already has a master, leave it alone (idempotent).
+            // Idempotent if master key already exists (file or legacy keychain migration).
             if keychain::get_master_key("tkr-vault", &user).is_ok() {
                 println!(
-                    "vault already initialized at {} (keychain entry exists)",
+                    "vault already initialized at {} (master key already present)",
                     vault_root.display()
                 );
                 return Ok(0);
             }
             keychain::set_master_key("tkr-vault", &user, &master)?;
             println!(
-                "vault initialized at {} (master key stored in OS keychain)",
+                "vault initialized at {}; master key at ~/.tkr/vault/.tkr-vault.key (0600)",
                 vault_root.display()
             );
         }
@@ -58,8 +59,7 @@ pub fn init(vault_root: &Path, mode: InitMode) -> Result<i32> {
             }
             use age::secrecy::SecretString;
             use std::io::Write;
-            let enc =
-                age::Encryptor::with_user_passphrase(SecretString::new(p.to_string()));
+            let enc = age::Encryptor::with_user_passphrase(SecretString::new(p.to_string()));
             let mut wrapped = Vec::new();
             let mut writer = enc.wrap_output(&mut wrapped).context("wrap master")?;
             writer.write_all(&master)?;
@@ -77,8 +77,8 @@ pub fn init(vault_root: &Path, mode: InitMode) -> Result<i32> {
 #[cfg(test)]
 mod tests_init {
     use super::*;
-    use tempfile::tempdir;
     use crate::host::vault::keychain;
+    use tempfile::tempdir;
 
     #[test]
     fn init_passphrase_writes_master_age() {
@@ -98,14 +98,14 @@ mod tests_init {
         assert_eq!(bytes_first, bytes_second);
     }
 
-    // Keychain test is #[ignore]'d like the existing keychain_round_trip — touches OS keyring.
+    // Writes real ~/.tkr/vault/.tkr-vault.key — isolate HOME before running.
     #[test]
     #[ignore]
-    fn init_keychain_creates_entry() {
+    fn init_master_key_file_smoke() {
         let d = tempdir().unwrap();
         let user = d.path().to_string_lossy().to_string();
         let _ = keychain::delete_master_key("tkr-vault", &user);
-        init(d.path(), InitMode::Keychain).unwrap();
+        init(d.path(), InitMode::MasterKeyFile).unwrap();
         let key = keychain::get_master_key("tkr-vault", &user).unwrap();
         assert_eq!(key.len(), 32);
         let _ = keychain::delete_master_key("tkr-vault", &user);
@@ -115,8 +115,8 @@ mod tests_init {
 #[cfg(test)]
 mod tests_status {
     use super::*;
-    use std::sync::Arc;
     use crate::host::vault::store::{MemStore, Store};
+    use std::sync::Arc;
 
     #[test]
     fn status_sealed_by_default_in_memory() {
@@ -153,9 +153,9 @@ pub fn seal(vault: &HostVault) -> Result<i32> {
 #[cfg(test)]
 mod tests_seal {
     use super::*;
-    use tkr_api::vault::SealState;
-    use std::sync::Arc;
     use crate::host::vault::store::{MemStore, Store};
+    use std::sync::Arc;
+    use tkr_api::vault::SealState;
 
     #[test]
     fn unseal_promotes_to_fully_unsealed() {
@@ -181,16 +181,16 @@ mod tests_seal {
 // Re-encrypts every vault entry under a freshly generated master key and
 // atomically swaps the vault directory. The new master key is returned to the
 // caller via `new_master` out-parameter; the caller is responsible for
-// persisting it (keychain replace or master.age rewrite). This responsibility
+// persisting it (rewrite ~/.tkr/vault/.tkr-vault.key or master.age). This responsibility
 // is deliberately left to the caller because the persistence strategy differs
-// between Keychain and Passphrase modes — Task 5.5 / 6.3 will wire up the
+// between default file-backed mode and Passphrase modes — Task 5.5 / 6.3 will wire up the
 // appropriate callbacks when rotate is integrated into the CLI.
 
 pub fn rotate(old: &HostVault, vault_root: &Path) -> Result<[u8; 32]> {
+    use crate::host::vault::store::{FsStore, Store};
     use anyhow::Context;
     use rand::RngCore;
     use std::sync::Arc;
-    use crate::host::vault::store::{FsStore, Store};
     use tkr_api::manifest::SensitivityClass;
 
     // Fully unseal old vault so we can read every class.
@@ -198,7 +198,11 @@ pub fn rotate(old: &HostVault, vault_root: &Path) -> Result<[u8; 32]> {
 
     let shadow_dir = {
         let mut p = vault_root.to_path_buf();
-        let stem = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+        let stem = p
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
         p.set_file_name(format!("{stem}.rotating"));
         p
     };
@@ -231,7 +235,11 @@ pub fn rotate(old: &HostVault, vault_root: &Path) -> Result<[u8; 32]> {
     // Atomic swap: rename original to .old, shadow to original, delete .old.
     let old_dir = {
         let mut p = vault_root.to_path_buf();
-        let stem = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+        let stem = p
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
         p.set_file_name(format!("{stem}.old"));
         p
     };
@@ -243,7 +251,7 @@ pub fn rotate(old: &HostVault, vault_root: &Path) -> Result<[u8; 32]> {
     std::fs::remove_dir_all(&old_dir)?;
 
     println!("vault rotated under new master key");
-    // NOTE: caller must persist `new_master` (keychain replace or master.age rewrite).
+    // NOTE: caller must persist `new_master` (master key file replace or master.age rewrite).
     // This gap is documented: Task 5.5 / 6.3 will close it by accepting a
     // persistence callback or by integrating with the chosen InitMode.
     Ok(new_master)
@@ -285,7 +293,10 @@ pub fn audit(vault_root: &Path, opts: AuditOpts) -> Result<i32> {
     let lines: Vec<&str> = s.lines().filter(|l| !l.trim().is_empty()).collect();
     let total = lines.len();
     let start = total.saturating_sub(n);
-    println!("audit log: {total} entries (showing last {})", total - start);
+    println!(
+        "audit log: {total} entries (showing last {})",
+        total - start
+    );
     for line in &lines[start..] {
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
             if let Some(ev) = v.get("event") {
@@ -303,13 +314,20 @@ pub fn audit(vault_root: &Path, opts: AuditOpts) -> Result<i32> {
 #[cfg(test)]
 mod tests_audit {
     use super::*;
+    use crate::host::vault::audit::{AuditEvent, AuditLog};
     use tempfile::tempdir;
-    use crate::host::vault::audit::{AuditLog, AuditEvent};
 
     #[test]
     fn audit_print_no_log() {
         let d = tempdir().unwrap();
-        let r = audit(d.path(), AuditOpts { verify: false, last_n: Some(5) }).unwrap();
+        let r = audit(
+            d.path(),
+            AuditOpts {
+                verify: false,
+                last_n: Some(5),
+            },
+        )
+        .unwrap();
         assert_eq!(r, 0);
     }
 
@@ -317,8 +335,21 @@ mod tests_audit {
     fn audit_verify_fresh_log_is_ok() {
         let d = tempdir().unwrap();
         let log = AuditLog::open(d.path().join("audit.log")).unwrap();
-        log.append(AuditEvent { actor: "p".into(), op: "x".into(), key: "k".into(), ts: 1 }).unwrap();
-        let r = audit(d.path(), AuditOpts { verify: true, last_n: None }).unwrap();
+        log.append(AuditEvent {
+            actor: "p".into(),
+            op: "x".into(),
+            key: "k".into(),
+            ts: 1,
+        })
+        .unwrap();
+        let r = audit(
+            d.path(),
+            AuditOpts {
+                verify: true,
+                last_n: None,
+            },
+        )
+        .unwrap();
         assert_eq!(r, 0);
     }
 
@@ -326,15 +357,34 @@ mod tests_audit {
     fn audit_verify_detects_truncation() {
         let d = tempdir().unwrap();
         let log = AuditLog::open(d.path().join("audit.log")).unwrap();
-        log.append(AuditEvent { actor: "p".into(), op: "x".into(), key: "k".into(), ts: 1 }).unwrap();
-        log.append(AuditEvent { actor: "p".into(), op: "y".into(), key: "k".into(), ts: 2 }).unwrap();
+        log.append(AuditEvent {
+            actor: "p".into(),
+            op: "x".into(),
+            key: "k".into(),
+            ts: 1,
+        })
+        .unwrap();
+        log.append(AuditEvent {
+            actor: "p".into(),
+            op: "y".into(),
+            key: "k".into(),
+            ts: 2,
+        })
+        .unwrap();
         // Truncate last line:
         let path = d.path().join("audit.log");
         let s = std::fs::read_to_string(&path).unwrap();
         let lines: Vec<&str> = s.lines().collect();
-        std::fs::write(&path, lines[..lines.len()-1].join("\n") + "\n").unwrap();
-        let r = audit(d.path(), AuditOpts { verify: true, last_n: None }).unwrap();
-        assert_eq!(r, 1);  // verification failed → non-zero exit
+        std::fs::write(&path, lines[..lines.len() - 1].join("\n") + "\n").unwrap();
+        let r = audit(
+            d.path(),
+            AuditOpts {
+                verify: true,
+                last_n: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(r, 1); // verification failed → non-zero exit
     }
 
     #[test]
@@ -342,9 +392,22 @@ mod tests_audit {
         let d = tempdir().unwrap();
         let log = AuditLog::open(d.path().join("audit.log")).unwrap();
         for i in 0..5 {
-            log.append(AuditEvent { actor: "p".into(), op: "op".into(), key: format!("k{i}"), ts: i as u64 }).unwrap();
+            log.append(AuditEvent {
+                actor: "p".into(),
+                op: "op".into(),
+                key: format!("k{i}"),
+                ts: i as u64,
+            })
+            .unwrap();
         }
-        let r = audit(d.path(), AuditOpts { verify: false, last_n: Some(3) }).unwrap();
+        let r = audit(
+            d.path(),
+            AuditOpts {
+                verify: false,
+                last_n: Some(3),
+            },
+        )
+        .unwrap();
         assert_eq!(r, 0);
     }
 }
@@ -353,8 +416,8 @@ mod tests_audit {
 
 pub fn export(vault_root: &Path, out_path: &Path) -> anyhow::Result<i32> {
     use anyhow::Context;
-    use flate2::Compression;
     use flate2::write::GzEncoder;
+    use flate2::Compression;
     let f = std::fs::File::create(out_path).context("create export bundle")?;
     let gz = GzEncoder::new(f, Compression::default());
     let mut tar = tar::Builder::new(gz);
@@ -408,9 +471,12 @@ pub fn import(bundle_path: &Path, vault_root: &Path) -> anyhow::Result<i32> {
 #[cfg(test)]
 mod tests_export_import {
     use super::*;
+    use crate::host::vault::{
+        store::{FsStore, Store},
+        HostVault,
+    };
     use std::sync::Arc;
     use tempfile::tempdir;
-    use crate::host::vault::{HostVault, store::{FsStore, Store}};
     use tkr_api::manifest::SensitivityClass;
 
     #[test]
@@ -423,8 +489,10 @@ mod tests_export_import {
             let store: Arc<dyn Store> = Arc::new(FsStore::new(&src).unwrap());
             let v = HostVault::new(store, master);
             v.unseal_full();
-            v.write(SensitivityClass::Public, "k", b"hello", "test").unwrap();
-            v.write(SensitivityClass::Private, "p", b"private", "test").unwrap();
+            v.write(SensitivityClass::Public, "k", b"hello", "test")
+                .unwrap();
+            v.write(SensitivityClass::Private, "p", b"private", "test")
+                .unwrap();
         }
 
         let bundle = d.path().join("vault.tar.gz");
@@ -438,9 +506,15 @@ mod tests_export_import {
         let store: Arc<dyn Store> = Arc::new(FsStore::new(&dst).unwrap());
         let v = HostVault::new(store, master);
         v.unseal_full();
-        let bytes = v.read(SensitivityClass::Public, "k", "test").unwrap().unwrap();
+        let bytes = v
+            .read(SensitivityClass::Public, "k", "test")
+            .unwrap()
+            .unwrap();
         assert_eq!(&bytes[..], b"hello");
-        let bytes = v.read(SensitivityClass::Private, "p", "test").unwrap().unwrap();
+        let bytes = v
+            .read(SensitivityClass::Private, "p", "test")
+            .unwrap()
+            .unwrap();
         assert_eq!(&bytes[..], b"private");
     }
 
@@ -454,7 +528,11 @@ mod tests_export_import {
         // Make a tiny empty bundle to import.
         let f = std::fs::File::create(&bundle).unwrap();
         let gz = flate2::write::GzEncoder::new(f, flate2::Compression::default());
-        tar::Builder::new(gz).into_inner().unwrap().finish().unwrap();
+        tar::Builder::new(gz)
+            .into_inner()
+            .unwrap()
+            .finish()
+            .unwrap();
 
         assert!(import(&bundle, &src).is_err());
     }
@@ -463,8 +541,8 @@ mod tests_export_import {
 #[cfg(test)]
 mod tests_rotate {
     use super::*;
-    use std::sync::Arc;
     use crate::host::vault::store::{FsStore, Store};
+    use std::sync::Arc;
     use tempfile::tempdir;
     use tkr_api::manifest::SensitivityClass;
 
@@ -478,9 +556,12 @@ mod tests_rotate {
             let store: Arc<dyn Store> = Arc::new(FsStore::new(&vault_path).unwrap());
             let v = HostVault::new(store, master);
             v.unseal_full();
-            v.write(SensitivityClass::Public, "a", b"alpha", "test").unwrap();
-            v.write(SensitivityClass::Private, "b", b"bravo", "test").unwrap();
-            v.write(SensitivityClass::Secret, "c", b"charlie", "test").unwrap();
+            v.write(SensitivityClass::Public, "a", b"alpha", "test")
+                .unwrap();
+            v.write(SensitivityClass::Private, "b", b"bravo", "test")
+                .unwrap();
+            v.write(SensitivityClass::Secret, "c", b"charlie", "test")
+                .unwrap();
         }
 
         // Reopen for rotate

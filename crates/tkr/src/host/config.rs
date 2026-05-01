@@ -1,9 +1,9 @@
-use std::collections::BTreeMap;
-use std::path::Path;
 use anyhow::{anyhow, Result};
 use jsonschema::JSONSchema;
 use serde::Deserialize;
 use serde_json::Value;
+use std::collections::BTreeMap;
+use std::path::Path;
 use tkr_api::capability::CapSet;
 use tkr_api::manifest::Manifest;
 

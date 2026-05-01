@@ -1,8 +1,8 @@
+use anyhow::Result;
 use clap::{Arg, Command};
 use serde_json::json;
 use tkr_api::bus::Bus;
 use tkr_api::manifest::CliSpec;
-use anyhow::Result;
 
 use crate::host::loader::PluginRegistry;
 
@@ -21,13 +21,12 @@ pub fn build_plugin_cli(mounts: &[CliMount]) -> Command {
         let mut plugin_cmd = Command::new(plugin_name);
         for spec in &m.specs {
             let spec_name: &'static str = Box::leak(spec.name.clone().into_boxed_str());
-            let sub = Command::new(spec_name)
-                .arg(
-                    Arg::new("args")
-                        .num_args(0..)
-                        .trailing_var_arg(true)
-                        .help("forwarded to plugin"),
-                );
+            let sub = Command::new(spec_name).arg(
+                Arg::new("args")
+                    .num_args(0..)
+                    .trailing_var_arg(true)
+                    .help("forwarded to plugin"),
+            );
             plugin_cmd = plugin_cmd.subcommand(sub);
         }
         root = root.subcommand(plugin_cmd);
@@ -39,9 +38,8 @@ pub fn build_plugin_cli(mounts: &[CliMount]) -> Command {
 ///
 /// `argv[0]` is the plugin name, `argv[1]` the subcommand name; rest are args.
 ///
-/// NOTE(6.3): Production wiring of bus handlers will be done by the registry in `load_all`
-/// once it auto-registers `<plugin>::cli.invoke`. For now, callers must register the handler
-/// manually (e.g., via `InProcBus::register_handler`) before calling `dispatch`.
+/// Plugin registry [`register`](crate::host::loader::PluginRegistry::register) installs a bus
+/// handler for `(plugin_name, "cli.invoke")` when the manifest declares `cli_subcommands`.
 ///
 /// NOTE(deferred): Richer per-spec arg parsing (flag extraction, required args, etc.) is
 /// deferred. For now, every subcommand accepts trailing positional args as `Vec<String>`.
@@ -86,14 +84,14 @@ pub fn dispatch(reg: &PluginRegistry, bus: &dyn Bus, argv: &[String]) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::host::bus::InProcBus;
+    use crate::host::loader::PluginRegistry;
+    use crate::host::vault::store::{MemStore, Store};
+    use crate::host::vault::HostVault;
     use std::sync::Arc;
     use tkr_api::bus::Reply;
     use tkr_api::manifest::Manifest;
     use tkr_api::plugin::Plugin;
-    use crate::host::bus::InProcBus;
-    use crate::host::loader::PluginRegistry;
-    use crate::host::vault::HostVault;
-    use crate::host::vault::store::{MemStore, Store};
 
     struct EchoPlugin;
 
@@ -110,7 +108,10 @@ mod tests {
                 ..Default::default()
             }
         }
-        fn on_load(&mut self, _host: std::sync::Arc<dyn tkr_api::host::Host>) -> tkr_api::Result<()> {
+        fn on_load(
+            &mut self,
+            _host: std::sync::Arc<dyn tkr_api::host::Host>,
+        ) -> tkr_api::Result<()> {
             Ok(())
         }
         fn on_request(&mut self, req: tkr_api::bus::Request) -> tkr_api::Result<Reply> {
@@ -155,27 +156,6 @@ mod tests {
         caps.grant(tkr_api::capability::CLI_SUBCOMMAND);
         reg.grant("demo", caps);
         reg.register(Box::new(EchoPlugin)).unwrap();
-        // Wire the bus handler manually for the test.
-        // TODO(6.3): the registry's load_all will auto-register cli.invoke handlers.
-        bus.register_handler("demo", "cli.invoke", vec![], |req| {
-            let args: Vec<String> = req
-                .payload
-                .get("args")
-                .and_then(|v| v.as_array())
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|x| x.as_str().map(String::from))
-                        .collect()
-                })
-                .unwrap_or_default();
-            Ok(tkr_api::bus::Reply {
-                payload: serde_json::json!({
-                    "exit_code": 0,
-                    "stdout": format!("you said: {}\n", args.join(" ")),
-                    "stderr": ""
-                }),
-            })
-        });
 
         let argv: Vec<String> = ["demo", "say", "hi", "there"]
             .iter()
@@ -197,8 +177,14 @@ mod tests {
         let mounts = vec![CliMount {
             plugin: "demo".into(),
             specs: vec![
-                CliSpec { name: "say".into(), args: serde_json::json!({}) },
-                CliSpec { name: "shout".into(), args: serde_json::json!(null) },
+                CliSpec {
+                    name: "say".into(),
+                    args: serde_json::json!({}),
+                },
+                CliSpec {
+                    name: "shout".into(),
+                    args: serde_json::json!(null),
+                },
             ],
         }];
         let cmd = build_plugin_cli(&mounts);

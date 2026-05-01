@@ -97,7 +97,7 @@ impl Provider for AnthropicProvider {
             Ok(r) => r,
             Err(ureq::Error::Status(code, r)) => {
                 let body = r.into_string().unwrap_or_default();
-                return Err(anyhow!("anthropic api {}: {}", code, body));
+                return Err(anyhow!("anthropic api {code}: {body}"));
             }
             Err(e) => return Err(anyhow!(e)),
         };
@@ -113,7 +113,9 @@ mod tests {
     #[test]
     fn build_request_includes_system_and_tools() {
         let p = AnthropicProvider::new("k", "claude-sonnet-4-6");
-        let msgs = vec![Message::User { content: vec![ContentBlock::Text { text: "hi".into() }] }];
+        let msgs = vec![Message::User {
+            content: vec![ContentBlock::Text { text: "hi".into() }],
+        }];
         let tools = vec![json!({ "name": "echo", "input_schema": {} })];
         let body = p.build_request(Some("be brief"), &msgs, &tools, 256);
         assert_eq!(body["model"], "claude-sonnet-4-6");
@@ -143,7 +145,7 @@ mod tests {
         assert_eq!(r.stop_reason, StopReason::EndTurn);
         match &r.content[0] {
             ContentBlock::Text { text } => assert_eq!(text, "hello"),
-            other => panic!("unexpected: {:?}", other),
+            other => panic!("unexpected: {other:?}"),
         }
     }
 

@@ -1,4 +1,4 @@
-//! `tkr suggest` — examine the analytics DB and suggest concrete filter
+//! `tkr suggest` — examine vault-backed analytics and suggest concrete filter
 //! improvements for commands with low savings ratios. Surfaces:
 //!   - high-volume / low-savings commands → which filter file to edit
 //!   - commands tkr is recording but has no filter file for
@@ -19,11 +19,8 @@ const RED: &str = "\x1b[31m";
 pub fn run() -> Result<()> {
     let vault = crate::host::boot::vault();
     let host_handle = crate::host::boot::get_host();
-    let analytics_host = crate::host::RealHost::new(
-        "tkr-analytics",
-        vault,
-        host_handle.bus.clone(),
-    );
+    let analytics_host =
+        crate::host::RealHost::new("tkr-analytics", vault, host_handle.bus.clone());
     // Lazy: persist embeddings for any noise signatures missing them, so the
     // vault accumulates a vector index across sessions. No-op without the
     // `embeddings` cargo feature.
@@ -32,8 +29,7 @@ pub fn run() -> Result<()> {
         eprintln!("tkr suggest: embedded {new_embeds} new noise signatures into the vault");
     }
 
-    let mut rows = tkr_analytics::total_savings_via_host(&analytics_host)
-        .unwrap_or_default();
+    let mut rows = tkr_analytics::total_savings_via_host(&analytics_host).unwrap_or_default();
     if rows.is_empty() {
         println!("No analytics rows yet.");
         return Ok(());
@@ -122,7 +118,7 @@ pub fn run() -> Result<()> {
         if i > 0 {
             println!();
         }
-        println!("{}", s);
+        println!("{s}");
     }
     if suggestions.len() > 5 {
         println!();
@@ -148,8 +144,7 @@ pub fn run() -> Result<()> {
 
 fn print_noise_section(host: &dyn tkr_api::host::Host, on: bool) -> Result<()> {
     let p = |c: &'static str| if on { c } else { "" };
-    let rows = tkr_analytics::top_noise_signatures_via_host(host, 5, 100)
-        .unwrap_or_default();
+    let rows = tkr_analytics::top_noise_signatures_via_host(host, 5, 100).unwrap_or_default();
     if rows.is_empty() {
         return Ok(());
     }
@@ -168,11 +163,8 @@ fn print_noise_section(host: &dyn tkr_api::host::Host, on: bool) -> Result<()> {
     println!();
     let vault2 = crate::host::boot::vault();
     let host_handle2 = crate::host::boot::get_host();
-    let analytics_host = crate::host::RealHost::new(
-        "tkr-analytics",
-        vault2,
-        host_handle2.bus.clone(),
-    );
+    let analytics_host =
+        crate::host::RealHost::new("tkr-analytics", vault2, host_handle2.bus.clone());
 
     for row in rows.iter().take(8) {
         let regex = signature_to_regex(&row.signature);
@@ -188,7 +180,7 @@ fn print_noise_section(host: &dyn tkr_api::host::Host, on: bool) -> Result<()> {
             fmt_num(row.total_chars),
         );
         println!("     sample: {}{}{}", p(DIM), row.sample, p(RESET));
-        println!("     suppress_regex = '{}'", regex);
+        println!("     suppress_regex = '{regex}'");
 
         // If this signature has an embedding in the vault, surface its k-NN
         // family — patterns that probably want the same suppress rule.
@@ -200,7 +192,10 @@ fn print_noise_section(host: &dyn tkr_api::host::Host, on: bool) -> Result<()> {
             if let Ok(neighbors) =
                 tkr_analytics::nearest_to_signature_via_host(&analytics_host, sig_id, 3)
             {
-                let close: Vec<_> = neighbors.into_iter().filter(|(_, _, _, d)| *d < 0.6).collect();
+                let close: Vec<_> = neighbors
+                    .into_iter()
+                    .filter(|(_, _, _, d)| *d < 0.6)
+                    .collect();
                 if !close.is_empty() {
                     println!(
                         "     {}near-duplicate family ({} signatures):{}",
@@ -248,7 +243,7 @@ fn bundled_filter_set() -> Vec<String> {
         if let Ok(entries) = std::fs::read_dir(&d) {
             for entry in entries.flatten() {
                 let p = entry.path();
-                if p.extension().map_or(false, |e| e == "toml") {
+                if p.extension().is_some_and(|e| e == "toml") {
                     if let Ok(text) = std::fs::read_to_string(&p) {
                         if let Ok(v) = toml::from_str::<toml::Value>(&text) {
                             if let Some(cmd) = v.get("command").and_then(|c| c.as_str()) {
@@ -264,4 +259,3 @@ fn bundled_filter_set() -> Vec<String> {
     commands.dedup();
     commands
 }
-

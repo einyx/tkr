@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Install `tkr` into ~/.cargo/bin using rustup's Cargo (not Homebrew's).
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+exec "$ROOT/scripts/rustup-cargo" install --path "$ROOT/crates/tkr" --locked --force "$@"

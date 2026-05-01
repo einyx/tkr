@@ -12,8 +12,12 @@ pub struct SandboxPolicy {
 }
 
 impl SandboxPolicy {
-    pub fn deny_all() -> Self { Self::default() }
-    pub fn builder() -> PolicyBuilder { PolicyBuilder::default() }
+    pub fn deny_all() -> Self {
+        Self::default()
+    }
+    pub fn builder() -> PolicyBuilder {
+        PolicyBuilder::default()
+    }
     pub fn validate(&self) -> Result<(), String> {
         for p in self.fs_read.iter().chain(self.fs_write.iter()) {
             if !p.is_absolute() {
@@ -25,16 +29,22 @@ impl SandboxPolicy {
 }
 
 #[derive(Debug, Default)]
-pub struct PolicyBuilder { inner: SandboxPolicy }
+pub struct PolicyBuilder {
+    inner: SandboxPolicy,
+}
 
 impl PolicyBuilder {
     pub fn allow_read<P: AsRef<Path>>(mut self, p: P) -> Self {
-        self.inner.fs_read.push(p.as_ref().to_path_buf()); self
+        self.inner.fs_read.push(p.as_ref().to_path_buf());
+        self
     }
     pub fn allow_write<P: AsRef<Path>>(mut self, p: P) -> Self {
-        self.inner.fs_write.push(p.as_ref().to_path_buf()); self
+        self.inner.fs_write.push(p.as_ref().to_path_buf());
+        self
     }
-    pub fn build(self) -> SandboxPolicy { self.inner }
+    pub fn build(self) -> SandboxPolicy {
+        self.inner
+    }
 }
 
 #[cfg(test)]
@@ -49,7 +59,10 @@ mod tests {
 
     #[test]
     fn builder_chains() {
-        let p = SandboxPolicy::builder().allow_read("/etc").allow_write("/tmp/foo").build();
+        let p = SandboxPolicy::builder()
+            .allow_read("/etc")
+            .allow_write("/tmp/foo")
+            .build();
         assert_eq!(p.fs_read, vec![PathBuf::from("/etc")]);
         assert_eq!(p.fs_write, vec![PathBuf::from("/tmp/foo")]);
     }
