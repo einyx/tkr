@@ -64,14 +64,16 @@ publish:
 	@echo "==> Done. Run: brew upgrade tkr   or   cargo install tkr"
 
 # Publish all workspace crates to crates.io in dependency order.
+# Each step is non-fatal — if a version already exists, skip it. The main
+# `tkr` crate name is owned by someone else on crates.io, so it never publishes.
 publish-cargo:
-	$(CARGO) publish -p tkr-api     --no-verify
-	$(CARGO) publish -p tkr-sandbox --no-verify
-	$(CARGO) publish -p tkr-filter  --no-verify
-	$(CARGO) publish -p tkr-analytics --no-verify
-	$(CARGO) publish -p tkr-agent   --no-verify
-	$(CARGO) publish -p tkr-providers --no-verify
-	$(CARGO) publish -p tkr         --no-verify
+	-$(CARGO) publish -p tkr-api       --no-verify
+	-$(CARGO) publish -p tkr-sandbox   --no-verify
+	-$(CARGO) publish -p tkr-filter    --no-verify
+	-$(CARGO) publish -p tkr-analytics --no-verify
+	-$(CARGO) publish -p tkr-agent     --no-verify
+	-$(CARGO) publish -p tkr-providers --no-verify
+	-$(CARGO) publish -p tkr           --no-verify
 
 _bump-tap:
 	$(eval SHA_ARM_MAC := $(shell cat /tmp/tkr-release-$(VERSION)/tkr-aarch64-apple-darwin.tar.gz.sha256))
