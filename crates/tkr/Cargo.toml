@@ -1,6 +1,6 @@
 [package]
 name = "tkr"
-version = "0.2.14"
+version = "0.2.15"
 edition = "2021"
 rust-version.workspace = true
 description = "Token-optimized CLI proxy for LLM development workflows"

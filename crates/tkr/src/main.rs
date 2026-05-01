@@ -189,6 +189,7 @@ fn main() -> anyhow::Result<()> {
         }
         Some(Commands::CleanStats { yes }) => clean_stats(yes),
         Some(Commands::Install { claude, codex, cursor }) => cmds::install::run(claude, codex, cursor),
+        Some(Commands::Uninstall { claude, codex, cursor }) => cmds::install::uninstall(claude, codex, cursor),
         Some(Commands::Bench { command }) => cmds::bench::run(&command),
         Some(Commands::Agent { cmd }) => match cmd {
             AgentCmd::Run { manifest } => agent_cmd::run_agent(&manifest),
