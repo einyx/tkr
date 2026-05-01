@@ -41,6 +41,142 @@ pub fn run(only_claude: bool, only_codex: bool, only_cursor: bool) -> Result<()>
     Ok(())
 }
 
+pub fn uninstall(only_claude: bool, only_codex: bool, only_cursor: bool) -> Result<()> {
+    let home = dirs::home_dir().context("could not determine $HOME")?;
+
+    let auto = !only_claude && !only_codex && !only_cursor;
+    let do_claude = only_claude || (auto && home.join(".claude").exists());
+    let do_codex  = only_codex  || (auto && home.join(".codex").exists());
+    let do_cursor = only_cursor || (auto && home.join(".cursor").exists());
+
+    if !do_claude && !do_codex && !do_cursor {
+        println!("No supported AI tools detected. Nothing to uninstall.");
+        return Ok(());
+    }
+
+    if do_claude {
+        uninstall_claude(&home)?;
+    }
+    if do_codex {
+        uninstall_codex(&home)?;
+    }
+    if do_cursor {
+        uninstall_cursor(&home)?;
+    }
+
+    Ok(())
+}
+
+fn uninstall_claude(home: &std::path::Path) -> Result<()> {
+    let settings_path = home.join(".claude").join("settings.json");
+    if !settings_path.exists() {
+        println!("✓ Claude Code: nothing to remove ({} not found)", settings_path.display());
+        return Ok(());
+    }
+
+    let text = std::fs::read_to_string(&settings_path)
+        .with_context(|| format!("reading {}", settings_path.display()))?;
+    let mut settings: Value = serde_json::from_str(&text)
+        .with_context(|| format!("parsing {}", settings_path.display()))?;
+
+    let removed = settings
+        .get_mut("hooks")
+        .and_then(|h| h.get_mut("PreToolUse"))
+        .and_then(|p| p.as_array_mut())
+        .map(|pretool| {
+            let mut removed = 0usize;
+            for entry in pretool.iter_mut() {
+                if let Some(hooks) = entry.get_mut("hooks").and_then(|h| h.as_array_mut()) {
+                    let before = hooks.len();
+                    hooks.retain(|h| {
+                        let cmd = h.get("command").and_then(|c| c.as_str()).unwrap_or("");
+                        !(cmd.contains("tkr") && cmd.contains("hook claude"))
+                    });
+                    removed += before - hooks.len();
+                }
+            }
+            removed
+        })
+        .unwrap_or(0);
+
+    if removed == 0 {
+        println!("✓ Claude Code: tkr hook not present in {}", settings_path.display());
+        return Ok(());
+    }
+
+    let serialized = serde_json::to_string_pretty(&settings)?;
+    std::fs::write(&settings_path, serialized + "\n")
+        .with_context(|| format!("writing {}", settings_path.display()))?;
+    println!("✓ Claude Code: removed tkr hook from {}", settings_path.display());
+    Ok(())
+}
+
+fn uninstall_cursor(home: &std::path::Path) -> Result<()> {
+    let rule_path = home.join(CURSOR_RULE_PATH);
+    if !rule_path.exists() {
+        println!("✓ Cursor: nothing to remove ({} not found)", rule_path.display());
+        return Ok(());
+    }
+    std::fs::remove_file(&rule_path)
+        .with_context(|| format!("removing {}", rule_path.display()))?;
+    println!("✓ Cursor: removed {}", rule_path.display());
+    Ok(())
+}
+
+fn uninstall_codex(home: &std::path::Path) -> Result<()> {
+    let config_path = home.join(".codex").join("config.toml");
+    if !config_path.exists() {
+        println!("✓ Codex: nothing to remove ({} not found)", config_path.display());
+        return Ok(());
+    }
+
+    let text = std::fs::read_to_string(&config_path)
+        .with_context(|| format!("reading {}", config_path.display()))?;
+
+    // Remove every `[[hooks.PreToolUse]]` block whose body mentions both
+    // "tkr" and "hook claude". A block runs from its `[[hooks.PreToolUse]]`
+    // header up to (but not including) the next top-level `[…]`/`[[…]]`
+    // header or end of file.
+    let mut out = String::with_capacity(text.len());
+    let mut iter = text.lines().peekable();
+    let mut removed = 0usize;
+    while let Some(line) = iter.next() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("[[hooks.PreToolUse]]") {
+            let mut block = String::from(line);
+            block.push('\n');
+            while let Some(next) = iter.peek() {
+                let nt = next.trim_start();
+                let starts_new_top = nt.starts_with("[[") && !nt.starts_with("[[hooks.PreToolUse.hooks");
+                let starts_new_section = nt.starts_with('[') && !nt.starts_with("[[") && !nt.starts_with("[hooks.");
+                if starts_new_top || starts_new_section {
+                    break;
+                }
+                block.push_str(iter.next().unwrap());
+                block.push('\n');
+            }
+            if block.contains("tkr") && block.contains("hook claude") {
+                removed += 1;
+                continue;
+            }
+            out.push_str(&block);
+        } else {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+
+    if removed == 0 {
+        println!("✓ Codex: tkr hook not present in {}", config_path.display());
+        return Ok(());
+    }
+
+    std::fs::write(&config_path, out)
+        .with_context(|| format!("writing {}", config_path.display()))?;
+    println!("✓ Codex: removed tkr hook from {}", config_path.display());
+    Ok(())
+}
+
 // ── Claude Code ───────────────────────────────────────────────────────────────
 
 fn install_claude(home: &std::path::Path, bin: &str) -> Result<()> {

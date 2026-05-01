@@ -88,6 +88,19 @@ pub enum Commands {
         #[arg(long)]
         cursor: bool,
     },
+    /// Remove the tkr hook from AI coding tools.
+    /// Auto-detects installed tools when no flag is given.
+    Uninstall {
+        /// Remove only from Claude Code (~/.claude/settings.json)
+        #[arg(long)]
+        claude: bool,
+        /// Remove only from Codex CLI (~/.codex/config.toml)
+        #[arg(long)]
+        codex: bool,
+        /// Remove only from Cursor (~/.cursor/rules/tkr.mdc)
+        #[arg(long)]
+        cursor: bool,
+    },
     /// Benchmark how much tkr would save on a given command.
     /// Runs raw vs filtered, compares chars/tokens, prints ratio.
     Bench {
