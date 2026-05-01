@@ -42,7 +42,10 @@ struct StateInner {
     ai_provider: String,
     db_configured: bool,
     vault: Mutex<BTreeMap<String, StoredSession>>,
+    admin_password: String,
 }
+
+const INDEX_HTML: &str = include_str!("../static/index.html");
 
 // Wire types mirror crates/tkr-session-recorder/src/storage.rs. Kept inline
 // rather than depending on the recorder so the server doesn't pull in the
@@ -128,7 +131,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 async fn async_main() -> anyhow::Result<()> {
-    let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+    let host = std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
     let port = std::env::var("PORT")
         .ok()
         .and_then(|v| v.parse::<u16>().ok())
@@ -136,6 +139,28 @@ async fn async_main() -> anyhow::Result<()> {
     let addr: SocketAddr = format!("{host}:{port}")
         .parse()
         .with_context(|| format!("invalid listen address {host}:{port}"))?;
+
+    // Refuse to start with a public-facing bind unless TKR_ADMIN_PASSWORD is
+    // set. Loopback (127.0.0.1, ::1) gets a dev fallback so local development
+    // continues to "just work".
+    let env_password = std::env::var("TKR_ADMIN_PASSWORD").ok();
+    let is_loopback = addr.ip().is_loopback();
+    let admin_password = match (env_password, is_loopback) {
+        (Some(p), _) if p.len() >= 8 => p,
+        (Some(_), _) => {
+            anyhow::bail!("TKR_ADMIN_PASSWORD must be at least 8 characters")
+        }
+        (None, true) => {
+            eprintln!("tkr-server: TKR_ADMIN_PASSWORD unset, using dev password 'correct' (loopback only)");
+            "correct".to_string()
+        }
+        (None, false) => {
+            anyhow::bail!(
+                "refusing to bind to non-loopback address {addr} without TKR_ADMIN_PASSWORD set \
+                 (use HOST=127.0.0.1 for local dev, or set TKR_ADMIN_PASSWORD for public bind)"
+            )
+        }
+    };
 
     let state = AppState {
         inner: Arc::new(StateInner {
@@ -147,6 +172,7 @@ async fn async_main() -> anyhow::Result<()> {
             ai_provider: std::env::var("AI_PROVIDER").unwrap_or_else(|_| "openai".to_string()),
             db_configured: std::env::var("DATABASE_URL").map(|v| !v.is_empty()).unwrap_or(false),
             vault: Mutex::new(BTreeMap::new()),
+            admin_password,
         }),
     };
 
@@ -173,6 +199,7 @@ async fn async_main() -> anyhow::Result<()> {
 async fn route(req: Request<Incoming>, state: AppState) -> Result<Response<Body>, Infallible> {
     let response = match (req.method(), req.uri().path()) {
         (&Method::OPTIONS, _) => no_content(&req),
+        (&Method::GET, "/") | (&Method::GET, "/index.html") => html_response(INDEX_HTML),
         (&Method::GET, "/health") => json_response(
             req.headers(),
             StatusCode::OK,
@@ -218,6 +245,30 @@ async fn route(req: Request<Incoming>, state: AppState) -> Result<Response<Body>
     Ok(response)
 }
 
+fn html_response(body: &'static str) -> Response<Body> {
+    let bytes = Bytes::from_static(body.as_bytes());
+    let len = bytes.len();
+    let mut builder = Response::builder().status(StatusCode::OK);
+    let headers = builder.headers_mut().expect("headers");
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8"));
+    headers.insert(
+        CONTENT_LENGTH,
+        HeaderValue::from_str(&len.to_string()).expect("content length"),
+    );
+    builder.body(Full::new(bytes)).expect("response")
+}
+
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff: u8 = 0;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 fn no_content(req: &Request<Incoming>) -> Response<Body> {
     let mut builder = Response::builder().status(StatusCode::NO_CONTENT);
     apply_cors_headers(builder.headers_mut().expect("headers_mut"), req.headers());
@@ -240,7 +291,7 @@ async fn handle_login(req: Request<Incoming>, state: AppState) -> Response<Body>
     let password_ok = payload
         .get("password")
         .and_then(|v| v.as_str())
-        .map(|v| v == "correct")
+        .map(|v| constant_time_eq(v.as_bytes(), state.inner.admin_password.as_bytes()))
         .unwrap_or(false);
     if !password_ok {
         return json_error(

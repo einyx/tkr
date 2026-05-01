@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>tkr</title>
+<style>
+  :root {
+    --bg: #0b0d0e;
+    --bg-2: #14181a;
+    --bg-3: #1c2125;
+    --line: #232a2f;
+    --fg: #d8dde2;
+    --muted: #6f7a83;
+    --accent: #7dd3a3;
+    --accent-2: #5fb3ff;
+    --error: #ee6b6b;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  a { color: var(--accent-2); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  button {
+    font: inherit;
+    background: var(--bg-3);
+    color: var(--fg);
+    border: 1px solid var(--line);
+    padding: 6px 12px;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  input {
+    font: inherit;
+    background: var(--bg-2);
+    color: var(--fg);
+    border: 1px solid var(--line);
+    padding: 6px 10px;
+    width: 100%;
+  }
+  input:focus { outline: none; border-color: var(--accent-2); }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg-2);
+  }
+  header .brand { font-weight: 600; letter-spacing: 0.04em; }
+  header .brand::before { content: "▲ "; color: var(--accent); }
+  header .who { color: var(--muted); font-size: 12px; }
+
+  main { padding: 24px; max-width: 1100px; margin: 0 auto; }
+
+  .login-card {
+    max-width: 360px;
+    margin: 80px auto;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    padding: 28px;
+  }
+  .login-card h1 { margin: 0 0 6px 0; font-size: 20px; font-weight: 600; }
+  .login-card p { margin: 0 0 18px 0; color: var(--muted); font-size: 12px; }
+  .login-card .row { margin-bottom: 12px; }
+  .login-card label {
+    display: block;
+    color: var(--muted);
+    margin-bottom: 4px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .panel {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    margin-bottom: 18px;
+  }
+  .panel-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--line);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 11px;
+  }
+  .panel-head .count { color: var(--accent); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { padding: 8px 16px; text-align: left; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: normal; text-transform: uppercase; font-size: 10px; letter-spacing: 0.06em; }
+  tr:hover td { background: var(--bg-3); }
+  tr.session-row { cursor: pointer; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.muted { color: var(--muted); }
+
+  .empty { padding: 32px; text-align: center; color: var(--muted); font-size: 12px; }
+  .err { color: var(--error); font-size: 12px; margin-top: 8px; }
+  .ok { color: var(--accent); }
+
+  pre {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    padding: 10px;
+    overflow-x: auto;
+    margin: 0;
+    font-size: 11px;
+    color: var(--muted);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .crumbs { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  .crumbs a { color: var(--muted); }
+
+  .status-dot {
+    display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--muted); margin-right: 6px; vertical-align: middle;
+  }
+  .status-dot.live { background: var(--accent); animation: pulse 2s infinite; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+</style>
+</head>
+<body>
+  <div id="app"></div>
+
+<script>
+"use strict";
+
+// All dynamic content is inserted via textContent or DOM APIs.
+// innerHTML is used ONLY for static template strings with no interpolation.
+
+const $ = (sel, root) => (root || document).querySelector(sel);
+
+function el(tag, attrs, children) {
+  const node = document.createElement(tag);
+  if (attrs) {
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === "text") node.textContent = v;
+      else if (k === "onclick") node.addEventListener("click", v);
+      else if (k === "onsubmit") node.addEventListener("submit", v);
+      else if (v !== false && v != null) node.setAttribute(k, v);
+    }
+  }
+  if (children) {
+    for (const child of [].concat(children)) {
+      if (child == null) continue;
+      node.appendChild(typeof child === "string" ? document.createTextNode(child) : child);
+    }
+  }
+  return node;
+}
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    credentials: "include",
+    headers: { "content-type": "application/json", ...(opts.headers || {}) },
+    ...opts,
+  });
+  const text = await res.text();
+  let body = null;
+  try { body = text ? JSON.parse(text) : null; } catch { body = { raw: text }; }
+  if (!res.ok) {
+    const code = body?.error?.code || res.status;
+    const msg = body?.error?.message || res.statusText;
+    const err = new Error(code + ": " + msg);
+    err.status = res.status;
+    throw err;
+  }
+  return body;
+}
+
+const app = $("#app");
+function clear() { while (app.firstChild) app.removeChild(app.firstChild); }
+function mount(node) { clear(); app.appendChild(node); }
+
+// ---------- Login ----------
+
+function loginView(errorMsg) {
+  const passwordInput = el("input", { id: "password", type: "password", autocomplete: "current-password", autofocus: "" });
+  const errBox = el("div", { class: "err" });
+  if (errorMsg) errBox.textContent = errorMsg;
+
+  const form = el("form", {
+    onsubmit: async (e) => {
+      e.preventDefault();
+      try {
+        await api("/api/auth/login", { method: "POST", body: JSON.stringify({ password: passwordInput.value }) });
+        await boot();
+      } catch (err) {
+        loginView(err.message);
+      }
+    },
+  }, [
+    el("div", { class: "row" }, [
+      el("label", { text: "password" }),
+      passwordInput,
+    ]),
+    el("button", { type: "submit", text: "sign in" }),
+    errBox,
+  ]);
+
+  const main = el("main", null, [
+    el("div", { class: "login-card" }, [
+      el("h1", { text: "tkr" }),
+      el("p", { text: "session vault · sign in" }),
+      form,
+    ]),
+  ]);
+  mount(main);
+}
+
+// ---------- Boot ----------
+
+async function boot() {
+  try {
+    const me = await api("/api/auth/me");
+    dashboardView(me);
+  } catch (err) {
+    if (err.status === 401) { loginView(); return; }
+    const main = el("main", null, [el("div", { class: "err", text: "failed to boot: " + err.message })]);
+    mount(main);
+  }
+}
+
+// ---------- Dashboard ----------
+
+function dashboardView(me) {
+  const who = el("div", { class: "who" }, [
+    me?.user?.email || "anon",
+    " · ",
+    el("a", {
+      href: "#",
+      text: "sign out",
+      onclick: async (e) => {
+        e.preventDefault();
+        try { await api("/api/auth/logout", { method: "POST" }); } catch {}
+        loginView();
+      },
+    }),
+  ]);
+  const header = el("header", null, [el("div", { class: "brand", text: "tkr" }), who]);
+
+  const sessionsBody = el("div", { id: "sessions-body", class: "empty", text: "loading…" });
+  const sessionsCount = el("span", { class: "count", id: "sessions-count", text: "…" });
+  const headLeft = el("span", null, [el("span", { class: "status-dot live" }), "sessions"]);
+
+  const main = el("main", null, [
+    el("div", { class: "panel", id: "sessions-panel" }, [
+      el("div", { class: "panel-head" }, [headLeft, sessionsCount]),
+      sessionsBody,
+    ]),
+  ]);
+
+  clear();
+  app.appendChild(header);
+  app.appendChild(main);
+  loadSessions(sessionsBody, sessionsCount);
+}
+
+async function loadSessions(bodyNode, countNode) {
+  let sessions;
+  try {
+    const r = await api("/api/v1/sessions");
+    sessions = r.sessions || [];
+  } catch (err) {
+    bodyNode.className = "err";
+    bodyNode.style.padding = "24px";
+    bodyNode.textContent = err.message;
+    return;
+  }
+
+  countNode.textContent = String(sessions.length);
+  if (sessions.length === 0) {
+    bodyNode.className = "empty";
+    bodyNode.textContent = "no sessions yet — POST a vault to /api/v1/ingest to populate.";
+    return;
+  }
+
+  const tbody = el("tbody");
+  for (const s of sessions) {
+    const row = el("tr", { class: "session-row", "data-id": s.session_id }, [
+      el("td", { text: s.session_id || "" }),
+      el("td", { class: "muted", text: s.agent || "" }),
+      el("td", { class: "muted", text: s.started_at || "" }),
+      el("td", { class: "muted", text: s.tkr_version || "" }),
+    ]);
+    row.addEventListener("click", () => sessionView(s.session_id));
+    tbody.appendChild(row);
+  }
+
+  const thead = el("thead", null, [
+    el("tr", null, [
+      el("th", { text: "id" }), el("th", { text: "agent" }),
+      el("th", { text: "started" }), el("th", { text: "tkr" }),
+    ]),
+  ]);
+
+  bodyNode.className = "";
+  bodyNode.removeAttribute("style");
+  bodyNode.textContent = "";
+  bodyNode.appendChild(el("table", null, [thead, tbody]));
+}
+
+// ---------- Session detail ----------
+
+async function sessionView(id) {
+  let data;
+  try {
+    data = await api("/api/v1/sessions/" + encodeURIComponent(id) + "/events");
+  } catch (err) {
+    mount(el("main", null, [el("div", { class: "err", text: err.message })]));
+    return;
+  }
+  const events = data.events || [];
+  const totalIn = events.reduce((a, e) => a + (e.tokens_in || 0), 0);
+  const totalSaved = events.reduce((a, e) => a + (e.filter_savings_tokens || 0), 0);
+  const pct = totalIn > 0 ? ((totalSaved / totalIn) * 100).toFixed(1) : "0.0";
+
+  const back = el("a", { href: "#", text: "← back", onclick: (e) => { e.preventDefault(); boot(); } });
+  const header = el("header", null, [
+    el("div", { class: "brand", text: "tkr" }),
+    el("div", { class: "who" }, [back]),
+  ]);
+
+  const summary = el("table", null, [
+    el("tr", null, [el("td", { class: "muted", text: "tokens in" }), el("td", { class: "num", text: totalIn.toLocaleString() })]),
+    el("tr", null, [el("td", { class: "muted", text: "tokens saved" }), el("td", { class: "num ok", text: totalSaved.toLocaleString() })]),
+    el("tr", null, [el("td", { class: "muted", text: "reduction" }), el("td", { class: "num", text: pct + "%" })]),
+    el("tr", null, [el("td", { class: "muted", text: "events" }), el("td", { class: "num", text: String(events.length) })]),
+  ]);
+
+  const sessionPanel = el("div", { class: "panel" }, [
+    el("div", { class: "panel-head" }, [
+      el("span", { text: "session" }),
+      el("span", { class: "muted", text: (data.meta?.agent || "") + " · " + (data.meta?.started_at || "") }),
+    ]),
+    summary,
+  ]);
+
+  let eventsPanel;
+  if (events.length === 0) {
+    eventsPanel = el("div", { class: "panel" }, [
+      el("div", { class: "panel-head" }, [el("span", { text: "events" }), el("span", { class: "count", text: "0" })]),
+      el("div", { class: "empty", text: "no events recorded" }),
+    ]);
+  } else {
+    const tbody = el("tbody");
+    for (const e of events) {
+      tbody.appendChild(el("tr", null, [
+        el("td", { class: "muted", text: String(e.seq) }),
+        el("td", { text: e.tool || "" }),
+        el("td", null, [el("pre", { text: JSON.stringify(e.input) })]),
+        el("td", { class: "num", text: (e.tokens_in || 0).toLocaleString() }),
+        el("td", { class: "num ok", text: (e.filter_savings_tokens || 0).toLocaleString() }),
+        el("td", { class: "num muted", text: String(e.duration_ms || 0) }),
+      ]));
+    }
+    const thead = el("thead", null, [
+      el("tr", null, [
+        el("th", { text: "seq" }), el("th", { text: "tool" }), el("th", { text: "input" }),
+        el("th", { class: "num", text: "in" }), el("th", { class: "num", text: "saved" }), el("th", { class: "num", text: "ms" }),
+      ]),
+    ]);
+    eventsPanel = el("div", { class: "panel" }, [
+      el("div", { class: "panel-head" }, [el("span", { text: "events" }), el("span", { class: "count", text: String(events.length) })]),
+      el("table", null, [thead, tbody]),
+    ]);
+  }
+
+  const crumbs = el("div", { class: "crumbs" }, ["sessions / ", el("span", { text: id })]);
+  const main = el("main", null, [crumbs, sessionPanel, eventsPanel]);
+
+  clear();
+  app.appendChild(header);
+  app.appendChild(main);
+}
+
+// ---------- entry ----------
+boot();
+</script>
+</body>
+</html>
