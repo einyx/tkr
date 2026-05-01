@@ -76,7 +76,10 @@ use crate::host::{
         HostVault,
     },
 };
-use tkr_api::capability::{CapSet, STDOUT_FILTER, VAULT_READ_PUBLIC, VAULT_WRITE_PUBLIC};
+use tkr_api::capability::{
+    CapSet, STDOUT_FILTER, VAULT_READ_PUBLIC, VAULT_READ_SECRET, VAULT_WRITE_PUBLIC,
+    VAULT_WRITE_SECRET,
+};
 
 /// Process-global host resources.
 ///
@@ -184,6 +187,24 @@ fn upgrade_to_full(host: &HostHandle) -> Result<()> {
         analytics_registry.start_all();
         // analytics_registry is dropped here — the plugin itself is ephemeral
         // since the proxy path uses record_noise_signature_via_host directly.
+    }
+
+    // Register session-recorder plugin (v2 — vault-backed FS).
+    {
+        use tkr_session_recorder::SessionRecorderPluginV2;
+        let mut recorder_registry = PluginRegistry::new(full_vault.clone(), host.bus.clone());
+
+        let mut recorder_caps = CapSet::new();
+        recorder_caps.grant(STDOUT_FILTER);
+        recorder_caps.grant(VAULT_READ_SECRET);
+        recorder_caps.grant(VAULT_WRITE_SECRET);
+        recorder_registry.grant("tkr-session-recorder", recorder_caps);
+
+        recorder_registry.register(Box::new(SessionRecorderPluginV2::new()))?;
+        if let Err(e) = recorder_registry.load_all() {
+            eprintln!("tkr: session-recorder plugin load warning: {e}");
+        }
+        recorder_registry.start_all();
     }
 
     Ok(())
@@ -303,6 +324,12 @@ pub fn boot() -> Result<HostHandle> {
     analytics_caps.grant(VAULT_WRITE_PUBLIC);
     registry.grant("tkr-analytics", analytics_caps);
 
+    let mut recorder_caps = CapSet::new();
+    recorder_caps.grant(STDOUT_FILTER);
+    recorder_caps.grant(VAULT_READ_SECRET);
+    recorder_caps.grant(VAULT_WRITE_SECRET);
+    registry.grant("tkr-session-recorder", recorder_caps);
+
     // Register built-in filter plugin — loads bundled TOML rules first, then
     // user overrides from ~/.tkr/filters/.
     {
@@ -324,6 +351,12 @@ pub fn boot() -> Result<HostHandle> {
     {
         use tkr_analytics::AnalyticsPluginV2;
         registry.register(Box::new(AnalyticsPluginV2::new()))?;
+    }
+
+    // Register session-recorder plugin (v2 — vault-backed FS).
+    {
+        use tkr_session_recorder::SessionRecorderPluginV2;
+        registry.register(Box::new(SessionRecorderPluginV2::new()))?;
     }
 
     // on_load: initialize schemas and run migrations.

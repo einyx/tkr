@@ -4434,6 +4434,7 @@ dependencies = [
  "tkr-api",
  "tkr-filter",
  "tkr-providers",
+ "tkr-session-recorder",
  "toml 0.8.23",
  "uuid",
  "zeroize",
@@ -4527,6 +4528,18 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "tkr-session-recorder"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "rand 0.8.6",
+ "serde",
+ "serde_json",
+ "tkr-api",
 ]
 
 [[package]]

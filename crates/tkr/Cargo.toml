@@ -29,6 +29,7 @@ tkr-providers = { path = "../tkr-providers" }
 tkr-api = { path = "../tkr-api" }
 tkr-filter = { path = "../tkr-filter" }
 tkr-analytics = { path = "../tkr-analytics" }
+tkr-session-recorder = { path = "../tkr-session-recorder" }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

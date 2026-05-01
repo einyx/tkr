@@ -4,6 +4,7 @@ members = [
     "crates/tkr-api",
     "crates/tkr-filter",
     "crates/tkr-analytics",
+    "crates/tkr-session-recorder",
     "crates/tkr-agent",
     "crates/tkr-providers",
     "crates/tkr-sandbox",
