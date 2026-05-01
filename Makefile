@@ -5,7 +5,33 @@ RUSTUP  := $(HOME)/.rustup/toolchains/1.88.0-aarch64-apple-darwin/bin
 VERSION := $(shell grep -m1 '^version' crates/tkr/Cargo.toml | sed 's/.*= "\(.*\)"/\1/')
 TAP     := /opt/homebrew/Library/Taps/einyx/homebrew-tap/Formula/tkr.rb
 
-.PHONY: install build publish publish-cargo _bump-tap
+.PHONY: install build publish publish-cargo _bump-tap \
+        contracts-bootstrap contracts-test contracts-build anvil-fork deploy-local
+
+# ---------- Smart contracts (foundry) ----------
+# One-time bootstrap installs forge-std + openzeppelin into contracts/lib.
+contracts-bootstrap:
+	@command -v forge >/dev/null || (echo "error: foundry not installed — run: curl -L https://foundry.paradigm.xyz | bash && foundryup" >&2 && exit 1)
+	cd contracts && forge install --no-commit foundry-rs/forge-std openzeppelin/openzeppelin-contracts
+
+contracts-build:
+	cd contracts && forge build
+
+contracts-test:
+	cd contracts && forge test -vv
+
+# Boot a local anvil node forked from Base mainnet on :8545.
+# Real USDC at 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 is callable from test accounts.
+anvil-fork:
+	@command -v anvil >/dev/null || (echo "error: anvil not installed — run: curl -L https://foundry.paradigm.xyz | bash && foundryup" >&2 && exit 1)
+	anvil --fork-url https://mainnet.base.org --chain-id 8453
+
+# Deploy MeshEscrow to the local anvil node. Requires anvil-fork running in another terminal.
+deploy-local:
+	cd contracts && forge create src/MeshEscrow.sol:MeshEscrow \
+		--rpc-url http://127.0.0.1:8545 \
+		--private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+
 
 install:
 	@test -x "$(CARGO)" || (echo "error: rustup cargo not found at $(CARGO) — https://rustup.rs" >&2 && exit 1)
