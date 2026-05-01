@@ -16,3 +16,29 @@ pattern = "^total \\d+$"
 type = "collapse_common_prefix"
 prefix_len = 16
 keep_first = 4
+
+# Compress `ls -l` / `ls -la` long-form metadata.
+#
+# A typical line looks like:
+#   -rw-rw-r--  1 alessio alessio 142511 May  1 14:56 Cargo.lock
+#    └─mode──┘ └nl┘ └─owner──┘ └─group─┘ └size─┘ └───date────┘ └name┘
+#
+# nlink + owner + group are boilerplate the LLM rarely needs.
+# TODO(you): write a `truncate_match` rule that drops them.
+#
+# Decide which columns to keep — see the table in chat. Recommended: keep
+# mode + size + date + name; drop nlink + owner + group.
+#
+# Hints:
+#   - mode is 10 chars from [dlcbps-rwxsStT]
+#   - nlink is one or more digits
+#   - owner / group are non-whitespace tokens
+#   - size is digits
+#   - date is `<Mon> <D> <HH:MM-or-YYYY>` — three whitespace-separated tokens
+#   - use `\s+` between fields, capture groups for what you keep,
+#     and reference them in `replace` as `$1`, `$2`, ...
+#
+[[rules]]
+type = "truncate_match"
+pattern = '^([dlcbps-][rwxsStT-]{9})\s+\d+\s+\S+\s+\S+\s+(\d+)\s+(\S+\s+\S+\s+\S+)\s+(.+)$'
+replace = "$1 $2 $3 $4"
