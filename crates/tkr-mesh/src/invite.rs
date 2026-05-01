@@ -2,6 +2,8 @@
 //! human-readably in any wallet that supports `eth_signTypedData_v4`.
 
 use crate::{identity::recover_address, Address, Error, Identity, Result};
+use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64URL;
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
 
@@ -88,6 +90,49 @@ impl Invite {
         Ok(())
     }
 
+    /// Encode the invite as a base64url token. Used inside `to_url()` and
+    /// also accepted on its own by `parse_url()` for paste-friendly invites.
+    pub fn to_token(&self) -> Result<String> {
+        let json = serde_json::to_vec(self)
+            .map_err(|e| Error::Encoding(format!("invite serialize: {e}")))?;
+        Ok(B64URL.encode(json))
+    }
+
+    /// Wrap the invite into a URL. `host_url` is anything containing a
+    /// host the join page is served from — typically the broker URL with
+    /// `wss://` swapped for `https://`. The path `/join/<token>` is appended.
+    pub fn to_url(&self, host_url: &str) -> Result<String> {
+        let host = host_url
+            .trim_end_matches('/')
+            .trim_start_matches("ws://")
+            .trim_start_matches("wss://")
+            .trim_start_matches("http://")
+            .trim_start_matches("https://");
+        let host = host.split('/').next().unwrap_or(host);
+        if host.is_empty() {
+            return Err(Error::Encoding("empty host_url".to_string()));
+        }
+        Ok(format!("https://{host}/join/{}", self.to_token()?))
+    }
+
+    /// Parse an invite from any of the accepted URL shapes:
+    /// - `https://<host>/join/<token>`
+    /// - `https://<host>/<locale>/join/<token>` (two-letter locale prefix)
+    /// - `tkrmesh://join/<token>`
+    /// - bare base64url token (≥ 20 chars, alphabet `[A-Za-z0-9_-]`)
+    ///
+    /// This *parses* the structure but does **not** verify the signature
+    /// or expiry — callers must subsequently call [`Invite::verify`].
+    pub fn parse_url(s: &str) -> Result<Self> {
+        let token = extract_token(s.trim())?;
+        let json = B64URL
+            .decode(&token)
+            .map_err(|e| Error::InvalidInvite(format!("base64url decode: {e}")))?;
+        let invite: Invite = serde_json::from_slice(&json)
+            .map_err(|e| Error::InvalidInvite(format!("json parse: {e}")))?;
+        Ok(invite)
+    }
+
     /// EIP-712 digest: keccak256("\x19\x01" || domainSeparator || hashStruct(Invite)).
     fn eip712_digest(&self) -> [u8; 32] {
         let mut buf = Vec::with_capacity(2 + 32 + 32);
@@ -142,6 +187,45 @@ fn address_padded(addr: &Address) -> [u8; 32] {
     let mut out = [0u8; 32];
     out[12..].copy_from_slice(addr.as_bytes());
     out
+}
+
+fn extract_token(s: &str) -> Result<String> {
+    // tkrmesh://join/<token>
+    if let Some(rest) = s.strip_prefix("tkrmesh://join/") {
+        return validate_bare_token(rest);
+    }
+
+    // https?://<host>[/locale]/join/<token>
+    let after_scheme = s
+        .strip_prefix("https://")
+        .or_else(|| s.strip_prefix("http://"))
+        .unwrap_or(s);
+    if let Some(idx) = after_scheme.find("/join/") {
+        let token = &after_scheme[idx + "/join/".len()..];
+        return validate_bare_token(token);
+    }
+
+    // bare token
+    validate_bare_token(s)
+}
+
+fn validate_bare_token(s: &str) -> Result<String> {
+    let token = s.split(|c: char| c == '?' || c == '#' || c == '/').next().unwrap_or(s);
+    if token.len() < 20 {
+        return Err(Error::InvalidInvite(format!(
+            "token too short ({} chars)",
+            token.len()
+        )));
+    }
+    if !token
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        return Err(Error::InvalidInvite(
+            "token contains non-base64url chars".to_string(),
+        ));
+    }
+    Ok(token.to_string())
 }
 
 fn parse_signature(s: &str) -> Result<[u8; 65]> {
@@ -233,6 +317,90 @@ mod tests {
         let m = Invite::issue(&owner, "mid", "s", "wss://b/", 2_000_000_000, Role::Member);
         let a = Invite::issue(&owner, "mid", "s", "wss://b/", 2_000_000_000, Role::Admin);
         assert_ne!(m.signature, a.signature);
+    }
+
+    fn sample_invite() -> Invite {
+        Invite::issue(
+            &Identity::generate(),
+            "mesh_01HX",
+            "acme",
+            "wss://broker.example/ws",
+            2_000_000_000,
+            Role::Member,
+        )
+    }
+
+    #[test]
+    fn url_round_trip_https() {
+        let invite = sample_invite();
+        let url = invite.to_url("wss://broker.example/ws").unwrap();
+        assert!(url.starts_with("https://broker.example/join/"));
+        let back = Invite::parse_url(&url).unwrap();
+        back.verify(1_700_000_000).unwrap();
+        assert_eq!(back.signature, invite.signature);
+    }
+
+    #[test]
+    fn url_round_trip_with_locale_prefix() {
+        let invite = sample_invite();
+        let token = invite.to_token().unwrap();
+        let url = format!("https://broker.example/en/join/{token}");
+        let back = Invite::parse_url(&url).unwrap();
+        assert_eq!(back.signature, invite.signature);
+    }
+
+    #[test]
+    fn url_round_trip_custom_scheme() {
+        let invite = sample_invite();
+        let token = invite.to_token().unwrap();
+        let url = format!("tkrmesh://join/{token}");
+        let back = Invite::parse_url(&url).unwrap();
+        assert_eq!(back.signature, invite.signature);
+    }
+
+    #[test]
+    fn bare_token_accepted() {
+        let invite = sample_invite();
+        let token = invite.to_token().unwrap();
+        let back = Invite::parse_url(&token).unwrap();
+        assert_eq!(back.signature, invite.signature);
+    }
+
+    #[test]
+    fn token_with_query_string_stripped() {
+        let invite = sample_invite();
+        let token = invite.to_token().unwrap();
+        let url = format!("https://broker.example/join/{token}?utm_source=x");
+        let back = Invite::parse_url(&url).unwrap();
+        assert_eq!(back.signature, invite.signature);
+    }
+
+    #[test]
+    fn short_token_rejected() {
+        assert!(Invite::parse_url("short").is_err());
+    }
+
+    #[test]
+    fn invalid_base64_rejected() {
+        // 20+ chars, valid url alphabet, but not actually valid base64url JSON.
+        let url = "https://broker.example/join/____invalid_token____";
+        assert!(Invite::parse_url(url).is_err());
+    }
+
+    #[test]
+    fn to_url_strips_wss_prefix() {
+        let invite = sample_invite();
+        let url = invite.to_url("wss://broker.example/ws").unwrap();
+        assert!(url.starts_with("https://broker.example/join/"));
+    }
+
+    #[test]
+    fn parsed_invite_then_tampered_fails_verify() {
+        let invite = sample_invite();
+        let url = invite.to_url("wss://broker.example/ws").unwrap();
+        let mut back = Invite::parse_url(&url).unwrap();
+        back.mesh_slug = "evil".to_string();
+        assert!(back.verify(1_700_000_000).is_err());
     }
 
     #[test]
