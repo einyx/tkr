@@ -137,6 +137,46 @@ pub enum Commands {
         #[command(subcommand)]
         cmd: AdminCmd,
     },
+    /// tkr-mesh agent payments (Base / EVM). On-chain settlement runs
+    /// against MeshEscrow.sol; off-chain receipts are EIP-712 signatures.
+    Pay {
+        #[command(subcommand)]
+        cmd: PayCmd,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum PayCmd {
+    /// Sign a payment receipt authorizing `cumulative` units for a
+    /// session. Output is a JSON object the recipient submits to
+    /// MeshEscrow.claim().
+    ReceiptIssue {
+        /// 32-byte session id, hex 0x... (must match the on-chain channel)
+        #[arg(long)]
+        session_id: String,
+        /// Cumulative paid amount, in token base units (wei for ETH,
+        /// 6-dp microUSDC for USDC). Decimal string.
+        #[arg(long)]
+        cumulative: String,
+        /// EVM chain id (8453 = Base mainnet, 84532 = Base sepolia, 31337 = anvil)
+        #[arg(long)]
+        chain_id: u64,
+        /// Address of the deployed MeshEscrow contract
+        #[arg(long)]
+        contract: String,
+        /// Path to a 32-byte hex private key file (no 0x prefix needed)
+        #[arg(long)]
+        key_file: std::path::PathBuf,
+    },
+    /// Verify a receipt's signature recovers to the expected payer address.
+    ReceiptVerify {
+        /// Path to the JSON receipt file (or `-` for stdin)
+        #[arg(long)]
+        receipt: String,
+        /// Expected payer address, EIP-55 0x...
+        #[arg(long)]
+        payer: String,
+    },
 }
 
 /// Subcommands for `tkr vault`. When omitted, defaults to `status`.

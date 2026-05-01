@@ -4,6 +4,7 @@ pub mod explain;
 pub mod gain;
 pub mod hook;
 pub mod install;
+pub mod pay;
 pub mod rewrite;
 pub mod suggest;
 pub mod update;

@@ -4654,6 +4654,7 @@ dependencies = [
  "tkr-analytics",
  "tkr-api",
  "tkr-filter",
+ "tkr-mesh",
  "tkr-providers",
  "tkr-session-recorder",
  "toml 0.8.23",

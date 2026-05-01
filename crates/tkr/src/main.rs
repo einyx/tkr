@@ -16,7 +16,7 @@ mod stream;
 mod util;
 
 use clap::Parser;
-use cli::{AdminCmd, AgentCmd, Cli, Commands, HookTarget, VaultCmd};
+use cli::{AdminCmd, AgentCmd, Cli, Commands, HookTarget, PayCmd, VaultCmd};
 use std::io::IsTerminal;
 
 fn vault_main(cmd: Option<VaultCmd>) -> ! {
@@ -169,6 +169,24 @@ fn main() -> anyhow::Result<()> {
     match cli.command {
         Some(Commands::Vault { cmd }) => vault_main(cmd),
         Some(Commands::Admin { cmd }) => admin_main(cmd),
+        Some(Commands::Pay { cmd }) => match cmd {
+            PayCmd::ReceiptIssue {
+                session_id,
+                cumulative,
+                chain_id,
+                contract,
+                key_file,
+            } => cmds::pay::receipt_issue(
+                &session_id,
+                &cumulative,
+                chain_id,
+                &contract,
+                &key_file,
+            ),
+            PayCmd::ReceiptVerify { receipt, payer } => {
+                cmds::pay::receipt_verify(&receipt, &payer)
+            }
+        },
         Some(Commands::Watch) => cmds::watch::run(),
         Some(Commands::Gain {
             breakdown,
