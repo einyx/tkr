@@ -1,9 +1,10 @@
 [package]
 name = "tkr"
-version = "0.2.11"
+version = "0.2.14"
 edition = "2021"
 rust-version.workspace = true
 description = "Token-optimized CLI proxy for LLM development workflows"
+repository = "https://github.com/einyx/tkr"
 license = "Apache-2.0"
 keywords = ["cli", "llm", "token", "filter", "productivity"]
 categories = ["command-line-utilities", "development-tools"]

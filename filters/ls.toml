@@ -4,6 +4,11 @@ command = "ls"
 type = "suppress_regex"
 pattern = "^\\s*$"
 
+# `ls -l` / `ls -la` emit a `total N` header — pure noise.
+[[rules]]
+type = "suppress_regex"
+pattern = "^total \\d+$"
+
 # Long `ls` listings often emit large runs of structurally similar entries
 # (cache dirs, numbered build artifacts, dependency trees). Keep the first few
 # rows of a repeated shape and suppress the rest.

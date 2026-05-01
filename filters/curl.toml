@@ -1,6 +1,6 @@
 command = "curl"
 
-# Progress meter rows (the "% Total ... Average Speed" bar)
+# Progress meter header rows
 [[rules]]
 type = "suppress_regex"
 pattern = "^\\s*% Total\\s+% Received"
@@ -9,15 +9,17 @@ pattern = "^\\s*% Total\\s+% Received"
 type = "suppress_regex"
 pattern = "^\\s*Dload\\s+Upload"
 
+# Progress meter data rows: percentage followed by mixed size/time columns.
+# Matches lines like "  0  4454k    0 11015 ... --:--:-- 10.9M".
 [[rules]]
 type = "suppress_regex"
-pattern = "^\\s*\\d+\\s+\\d+\\s+\\d+\\s+\\d+\\s+\\d+\\s+\\d+\\s+\\d+"
+pattern = "^\\s*\\d{1,3}\\s+\\d+[kMG]?\\s+\\d{1,3}\\s+\\d"
+
+# Repeated all-zero / all-dashes initial progress rows
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*0\\s+0\\s+0\\s+0\\s+0\\s+0\\s+0"
 
 [[rules]]
 type = "suppress_regex"
 pattern = "^\\s*--:--:--"
-
-# Repeated progress lines that just update bytes counter
-[[rules]]
-type = "suppress_regex"
-pattern = "^\\s*\\d+\\s+--\\s+\\d"

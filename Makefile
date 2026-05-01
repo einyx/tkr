@@ -5,7 +5,7 @@ RUSTUP  := $(HOME)/.rustup/toolchains/1.88.0-aarch64-apple-darwin/bin
 VERSION := $(shell grep -m1 '^version' crates/tkr/Cargo.toml | sed 's/.*= "\(.*\)"/\1/')
 TAP     := /opt/homebrew/Library/Taps/einyx/homebrew-tap/Formula/tkr.rb
 
-.PHONY: install build publish _bump-tap
+.PHONY: install build publish publish-cargo _bump-tap
 
 install:
 	@test -x "$(CARGO)" || (echo "error: rustup cargo not found at $(CARGO) — https://rustup.rs" >&2 && exit 1)
@@ -15,7 +15,7 @@ build:
 	@test -x "$(CARGO)" || (echo "error: rustup cargo not found at $(CARGO) — https://rustup.rs" >&2 && exit 1)
 	"$(CARGO)" build --release -p tkr
 
-# Build all 4 release targets, create a GitHub release, and bump the Homebrew tap.
+# Build all 4 release targets, create a GitHub release, bump the Homebrew tap, and publish to crates.io.
 # Usage: make publish   (uses version from crates/tkr/Cargo.toml)
 publish:
 	@echo "==> Publishing tkr v$(VERSION)"
@@ -30,17 +30,17 @@ publish:
 	PATH="$(RUSTUP):$$PATH" $(CARGO) build --release -p tkr --target x86_64-apple-darwin
 
 	@echo "--> Building x86_64-unknown-linux-gnu (Docker)"
-	docker run --rm \
+	docker run --rm --platform linux/amd64 \
 	  -v "$(CURDIR)":/usr/src/tkr \
 	  -v /tmp/tkr-publish-x86-linux:/usr/src/tkr/target \
 	  -w /usr/src/tkr rust:1.88 \
 	  bash -c "apt-get update -qq && apt-get install -y libdbus-1-dev pkg-config 2>/dev/null && cargo build --release -p tkr"
 
 	@echo "--> Building aarch64-unknown-linux-gnu (Docker)"
-	docker run --rm \
+	docker run --rm --platform linux/arm64 \
 	  -v "$(CURDIR)":/usr/src/tkr \
 	  -v /tmp/tkr-publish-arm-linux:/usr/src/tkr/target \
-	  -w /usr/src/tkr --platform linux/arm64 rust:1.88 \
+	  -w /usr/src/tkr rust:1.88 \
 	  bash -c "apt-get update -qq && apt-get install -y libdbus-1-dev pkg-config 2>/dev/null && cargo build --release -p tkr"
 
 	@echo "--> Packaging"
@@ -58,7 +58,22 @@ publish:
 	@echo "--> Bumping Homebrew tap"
 	$(MAKE) _bump-tap VERSION=$(VERSION)
 
-	@echo "==> Done. Run: brew upgrade tkr"
+	@echo "--> Publishing to crates.io"
+	$(MAKE) publish-cargo
+
+	@echo "==> Done. Run: brew upgrade tkr   or   cargo install tkr"
+
+# Publish all workspace crates to crates.io in dependency order.
+# Each step is non-fatal — if a version already exists, skip it. The main
+# `tkr` crate name is owned by someone else on crates.io, so it never publishes.
+publish-cargo:
+	-$(CARGO) publish -p tkr-api       --no-verify
+	-$(CARGO) publish -p tkr-sandbox   --no-verify
+	-$(CARGO) publish -p tkr-filter    --no-verify
+	-$(CARGO) publish -p tkr-analytics --no-verify
+	-$(CARGO) publish -p tkr-agent     --no-verify
+	-$(CARGO) publish -p tkr-providers --no-verify
+	-$(CARGO) publish -p tkr           --no-verify
 
 _bump-tap:
 	$(eval SHA_ARM_MAC := $(shell cat /tmp/tkr-release-$(VERSION)/tkr-aarch64-apple-darwin.tar.gz.sha256))
