@@ -93,15 +93,32 @@ fn install_claude(home: &std::path::Path, bin: &str) -> Result<()> {
         .as_array_mut()
         .context("Bash.hooks must be an array")?;
 
-    let already = bash_hooks.iter().any(|h| {
+    let existing_idx = bash_hooks.iter().position(|h| {
         h.get("command").and_then(|c| c.as_str())
             .map(|s| s.contains("tkr") && s.contains("hook claude"))
             .unwrap_or(false)
     });
 
-    if already {
-        println!("✓ Claude Code: already installed at {}", settings_path.display());
-        return Ok(());
+    match existing_idx {
+        Some(i) => {
+            let current = bash_hooks[i].get("command").and_then(|c| c.as_str()).unwrap_or("");
+            if current == hook_command {
+                println!("✓ Claude Code: already installed at {}", settings_path.display());
+                return Ok(());
+            }
+            // Path changed (e.g. user upgraded brew → /opt/homebrew/bin/tkr).
+            // Update in place so the hook always points at the live binary.
+            bash_hooks[i] = json!({ "type": "command", "command": hook_command.clone() });
+            let serialized = serde_json::to_string_pretty(&settings)?;
+            std::fs::write(&settings_path, serialized + "\n")
+                .with_context(|| format!("writing {}", settings_path.display()))?;
+            println!(
+                "✓ Claude Code: updated hook path → {}\n  Restart Claude Code to pick up the new binary.",
+                hook_command
+            );
+            return Ok(());
+        }
+        None => {}
     }
 
     bash_hooks.push(json!({ "type": "command", "command": hook_command }));
