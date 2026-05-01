@@ -119,7 +119,6 @@ mod tests {
 
     #[test]
     fn seal_open_round_trip() {
-        let alice = Identity::generate();
         let bob = Identity::generate();
         let plaintext = b"hello bob, this is alice";
         let env = Envelope::seal(plaintext, &pubkey_of(&bob), bob.address()).unwrap();

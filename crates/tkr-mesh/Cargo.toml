@@ -20,7 +20,11 @@ sha2 = { workspace = true }
 sha3 = "0.10"
 thiserror = { workspace = true }
 ureq = { workspace = true }
+tokio = { workspace = true }
+tokio-tungstenite = "0.21"
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 
 [dev-dependencies]
 hex-literal = "0.4"
 mockito = { workspace = true }
+tokio = { workspace = true, features = ["macros"] }

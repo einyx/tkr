@@ -7,3 +7,8 @@
 docs/superpowers/
 .claude/
 /tmp/
+
+# Runtime secrets — never commit. The example template is checked in
+# at deploy/tkr-server.env.example.
+/tkr-server.env
+.env
