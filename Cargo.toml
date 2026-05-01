@@ -9,6 +9,7 @@ members = [
     "crates/tkr-providers",
     "crates/tkr-sandbox",
     "crates/tkr-server",
+    "crates/tkr-mesh",
     "crates/tkr",
 ]
 
