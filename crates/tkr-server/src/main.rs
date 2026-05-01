@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -22,7 +22,7 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::upgrade::Upgraded;
 use hyper_util::rt::TokioIo;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
@@ -41,6 +41,55 @@ struct StateInner {
     needs_setup: bool,
     ai_provider: String,
     db_configured: bool,
+    vault: Mutex<BTreeMap<String, StoredSession>>,
+}
+
+// Wire types mirror crates/tkr-session-recorder/src/storage.rs. Kept inline
+// rather than depending on the recorder so the server doesn't pull in the
+// wasm-host trait surface.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct VaultEvent {
+    ts: String,
+    session_id: String,
+    seq: u64,
+    tool: String,
+    input: serde_json::Value,
+    output_preview: String,
+    #[serde(default)]
+    output_full_ref: Option<String>,
+    tokens_in: u32,
+    tokens_out: u32,
+    filter_savings_tokens: u32,
+    #[serde(default)]
+    cache_hit: Option<bool>,
+    duration_ms: u32,
+    #[serde(default)]
+    exit_code: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct VaultMeta {
+    session_id: String,
+    started_at: String,
+    #[serde(default)]
+    ended_at: Option<String>,
+    agent: String,
+    #[serde(default)]
+    project_root: Option<String>,
+    tkr_version: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct IngestPayload {
+    meta: VaultMeta,
+    #[serde(default)]
+    events: Vec<VaultEvent>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct StoredSession {
+    meta: VaultMeta,
+    events: Vec<VaultEvent>,
 }
 
 #[derive(Clone)]
@@ -97,6 +146,7 @@ async fn async_main() -> anyhow::Result<()> {
                 .unwrap_or(false),
             ai_provider: std::env::var("AI_PROVIDER").unwrap_or_else(|_| "openai".to_string()),
             db_configured: std::env::var("DATABASE_URL").map(|v| !v.is_empty()).unwrap_or(false),
+            vault: Mutex::new(BTreeMap::new()),
         }),
     };
 
@@ -148,6 +198,17 @@ async fn route(req: Request<Incoming>, state: AppState) -> Result<Response<Body>
         (&Method::POST, "/api/auth/setup") => handle_setup(req, state).await,
         (&Method::POST, "/api/auth/switch-tenant") => handle_switch_tenant(req, state).await,
         (&Method::GET, "/api/v1/stream") => handle_stream(req, state).await,
+        (&Method::POST, "/api/v1/ingest") => handle_ingest(req, state).await,
+        (&Method::GET, "/api/v1/sessions") => handle_list_sessions(&req, state),
+        (&Method::GET, path)
+            if path.starts_with("/api/v1/sessions/") && path.ends_with("/events") =>
+        {
+            let id = path
+                .strip_prefix("/api/v1/sessions/")
+                .and_then(|s| s.strip_suffix("/events"))
+                .unwrap_or("");
+            handle_get_events(&req, state, id)
+        }
         _ => json_response(
             req.headers(),
             StatusCode::NOT_FOUND,
@@ -352,6 +413,148 @@ async fn handle_stream(req: Request<Incoming>, state: AppState) -> Response<Body
     );
     apply_cors_headers(headers, &HeaderMap::new());
     builder.body(Full::new(Bytes::new())).expect("response")
+}
+
+async fn handle_ingest(req: Request<Incoming>, state: AppState) -> Response<Body> {
+    let origin_headers = req.headers().clone();
+    if session_cookie(&origin_headers)
+        .and_then(|sid| {
+            state
+                .inner
+                .sessions
+                .lock()
+                .expect("sessions lock")
+                .get(&sid)
+                .cloned()
+        })
+        .is_none()
+    {
+        return unauth(&req);
+    }
+
+    let payload = match read_json(req).await {
+        Ok(value) => value,
+        Err(_) => {
+            return json_error(
+                StatusCode::BAD_REQUEST,
+                "invalid_json",
+                "request body must be valid json",
+                &origin_headers,
+            )
+        }
+    };
+    let ingest: IngestPayload = match serde_json::from_value(payload) {
+        Ok(v) => v,
+        Err(e) => {
+            return json_error(
+                StatusCode::BAD_REQUEST,
+                "invalid_payload",
+                &format!("expected {{meta, events}}: {e}"),
+                &origin_headers,
+            )
+        }
+    };
+
+    if ingest.meta.session_id.is_empty() {
+        return json_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_session_id",
+            "meta.session_id is required",
+            &origin_headers,
+        );
+    }
+    if let Some(bad) = ingest
+        .events
+        .iter()
+        .find(|e| e.session_id != ingest.meta.session_id)
+    {
+        return json_error(
+            StatusCode::BAD_REQUEST,
+            "session_id_mismatch",
+            &format!(
+                "event session_id {:?} does not match meta {:?}",
+                bad.session_id, ingest.meta.session_id
+            ),
+            &origin_headers,
+        );
+    }
+
+    let session_id = ingest.meta.session_id.clone();
+    let event_count = ingest.events.len();
+    let mut events = ingest.events;
+    events.sort_by_key(|e| e.seq);
+
+    let mut vault = state.inner.vault.lock().expect("vault lock");
+    vault.insert(
+        session_id.clone(),
+        StoredSession {
+            meta: ingest.meta,
+            events,
+        },
+    );
+
+    json_response(
+        &origin_headers,
+        StatusCode::OK,
+        json!({
+            "ok": true,
+            "sessionId": session_id,
+            "events": event_count,
+        }),
+    )
+}
+
+fn handle_list_sessions(req: &Request<Incoming>, state: AppState) -> Response<Body> {
+    if session_cookie(req.headers())
+        .and_then(|sid| {
+            state
+                .inner
+                .sessions
+                .lock()
+                .expect("sessions lock")
+                .get(&sid)
+                .cloned()
+        })
+        .is_none()
+    {
+        return unauth(req);
+    }
+
+    let vault = state.inner.vault.lock().expect("vault lock");
+    let metas: Vec<&VaultMeta> = vault.values().map(|s| &s.meta).collect();
+    json_response(req.headers(), StatusCode::OK, json!({ "sessions": metas }))
+}
+
+fn handle_get_events(req: &Request<Incoming>, state: AppState, id: &str) -> Response<Body> {
+    if session_cookie(req.headers())
+        .and_then(|sid| {
+            state
+                .inner
+                .sessions
+                .lock()
+                .expect("sessions lock")
+                .get(&sid)
+                .cloned()
+        })
+        .is_none()
+    {
+        return unauth(req);
+    }
+
+    let vault = state.inner.vault.lock().expect("vault lock");
+    match vault.get(id) {
+        Some(stored) => json_response(
+            req.headers(),
+            StatusCode::OK,
+            json!({ "meta": &stored.meta, "events": &stored.events }),
+        ),
+        None => json_error(
+            StatusCode::NOT_FOUND,
+            "session_not_found",
+            "no session with that id",
+            req.headers(),
+        ),
+    }
 }
 
 async fn websocket_writer(upgraded: Upgraded, state: AppState) -> anyhow::Result<()> {
