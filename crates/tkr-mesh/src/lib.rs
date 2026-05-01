@@ -12,8 +12,10 @@ pub mod envelope;
 pub mod frames;
 pub mod identity;
 pub mod invite;
+pub mod payment;
 
 pub use client::Client;
+pub use payment::{EscrowDomain, PaidMessage, Receipt};
 
 pub use address::Address;
 pub use enrollment::{enroll, JoinedMesh};
