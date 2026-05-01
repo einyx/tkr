@@ -228,19 +228,36 @@ pub fn filter_for_command(cmd_name: &str) -> Arc<Mutex<FilterPlugin>> {
     let mut inner = FilterPlugin::new();
     let file_name = format!("{base}.toml");
 
-    if let Some(bundled) = crate::config::bundled_filters_dir() {
-        let toml_path = bundled.join(&file_name);
-        if toml_path.exists() {
-            let _ = inner.load_file(&toml_path);
+    let load_for = |inner: &mut FilterPlugin, dir: &std::path::Path| {
+        let main = dir.join(&file_name);
+        if main.exists() {
+            let _ = inner.load_file(&main);
         }
-        // git-diff.toml, git-log.toml etc. are handled by the main `git.toml`
-        // via the `subcommands` TOML selector.
+        // Also pick up subcommand-specific files: `<base>-*.toml`
+        // (e.g. git-log.toml, git-diff.toml, cargo-tree.toml). Each file's own
+        // `subcommands` selector restricts when its rules fire.
+        let prefix = format!("{base}-");
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+                    continue;
+                };
+                if path.extension().is_some_and(|e| e == "toml") && stem.starts_with(&prefix) {
+                    let _ = inner.load_file(&path);
+                }
+            }
+        }
+    };
+
+    if let Some(bundled) = crate::config::bundled_filters_dir() {
+        load_for(&mut inner, &bundled);
     }
 
     let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-    let user_toml = home.join(".tkr").join("filters").join(&file_name);
-    if user_toml.exists() {
-        let _ = inner.load_file(&user_toml);
+    let user_dir = home.join(".tkr").join("filters");
+    if user_dir.exists() {
+        load_for(&mut inner, &user_dir);
     }
 
     let fp = Arc::new(Mutex::new(inner));

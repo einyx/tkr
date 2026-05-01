@@ -392,7 +392,7 @@ async fn write_event_triplet(io: &mut TokioIo<Upgraded>, state: &AppState) -> an
         "type": "command_end",
         "cmd": cmd,
         "tokensIn": 1800,
-        "tokensSaved": 800 + ((next_event_id(state) % 3200) as u64),
+        "tokensSaved": 800 + (next_event_id(state) % 3200),
     });
 
     for event in [start, line, end] {

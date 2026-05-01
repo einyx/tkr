@@ -33,13 +33,9 @@ pattern = "^\\s*Fresh "
 type = "suppress_regex"
 pattern = "^\\s*Checking "
 
-[[rules]]
-type = "suppress_regex"
-pattern = "^\\s*Finished "
-
-[[rules]]
-type = "suppress_regex"
-pattern = "^\\s*Building "
+# Keep `Finished` and `Building` — they're terminal status confirmations.
+# Without them, a no-op build produces zero output and the user can't tell
+# whether the command actually ran.
 
 # Drop the trailing `(/path/to/repo/crates/foo)` from cargo's lines that
 # survive — saves ~30-60 chars per surviving line.
