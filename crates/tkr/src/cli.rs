@@ -87,6 +87,11 @@ pub enum Commands {
         /// Install only into Cursor (~/.cursor/rules/tkr.mdc)
         #[arg(long)]
         cursor: bool,
+        /// Also install the foundry toolchain (forge/anvil/cast) needed for
+        /// tkr-mesh smart-contract development. Idempotent — skips if forge
+        /// is already on PATH.
+        #[arg(long)]
+        with_foundry: bool,
     },
     /// Remove the tkr hook from AI coding tools.
     /// Auto-detects installed tools when no flag is given.

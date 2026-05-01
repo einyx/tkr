@@ -6,7 +6,12 @@
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
 
-pub fn run(only_claude: bool, only_codex: bool, only_cursor: bool) -> Result<()> {
+pub fn run(
+    only_claude: bool,
+    only_codex: bool,
+    only_cursor: bool,
+    with_foundry: bool,
+) -> Result<()> {
     let home = dirs::home_dir().context("could not determine $HOME")?;
 
     let bin = std::env::current_exe()
@@ -15,16 +20,17 @@ pub fn run(only_claude: bool, only_codex: bool, only_cursor: bool) -> Result<()>
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|| "tkr".into());
 
-    // When no flag is given, auto-detect installed tools.
+    // When no AI-tool flag is given, auto-detect installed tools.
     let auto = !only_claude && !only_codex && !only_cursor;
 
     let do_claude = only_claude || (auto && home.join(".claude").exists());
     let do_codex  = only_codex  || (auto && home.join(".codex").exists());
     let do_cursor = only_cursor || (auto && home.join(".cursor").exists());
 
-    if !do_claude && !do_codex && !do_cursor {
+    if !do_claude && !do_codex && !do_cursor && !with_foundry {
         println!("No supported AI tools detected. Supported: Claude Code, Codex CLI, Cursor.");
         println!("Run with --claude, --codex, or --cursor to install anyway.");
+        println!("Run with --with-foundry to install the smart-contract toolchain.");
         return Ok(());
     }
 
@@ -37,8 +43,97 @@ pub fn run(only_claude: bool, only_codex: bool, only_cursor: bool) -> Result<()>
     if do_cursor {
         install_cursor(&home)?;
     }
+    if with_foundry {
+        install_foundry(&home)?;
+    }
 
     Ok(())
+}
+
+/// Install foundry (forge/anvil/cast) via the official foundryup script.
+/// Skips if `forge` is already discoverable on PATH.
+fn install_foundry(home: &std::path::Path) -> Result<()> {
+    if which("forge").is_some() {
+        let version = std::process::Command::new("forge")
+            .arg("--version")
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|s| s.lines().next().unwrap_or("forge").to_string())
+            .unwrap_or_else(|| "forge".to_string());
+        println!("✓ foundry: already installed ({})", version.trim());
+        return Ok(());
+    }
+
+    let os = std::env::consts::OS;
+    if os == "windows" {
+        anyhow::bail!(
+            "automatic foundry install not supported on Windows. \
+             See https://book.getfoundry.sh/getting-started/installation"
+        );
+    }
+
+    println!("→ foundry: installing via official foundryup script");
+    println!("  source: https://foundry.paradigm.xyz");
+    println!("  target: {}/.foundry/bin", home.display());
+    println!();
+
+    // Stage 1: download + run the foundryup installer (writes to ~/.foundry/bin/foundryup).
+    let installer = std::process::Command::new("sh")
+        .arg("-c")
+        .arg("curl -L --silent --show-error https://foundry.paradigm.xyz | bash")
+        .status()
+        .context("invoking foundry installer")?;
+    if !installer.success() {
+        anyhow::bail!("foundry installer exited non-zero — check network / shell rc");
+    }
+
+    // Stage 2: run foundryup to fetch forge/anvil/cast/chisel binaries.
+    let foundryup = home.join(".foundry/bin/foundryup");
+    if !foundryup.exists() {
+        anyhow::bail!(
+            "foundryup not found at {} after installer ran",
+            foundryup.display()
+        );
+    }
+    let status = std::process::Command::new(&foundryup)
+        .status()
+        .with_context(|| format!("running {}", foundryup.display()))?;
+    if !status.success() {
+        anyhow::bail!("foundryup exited non-zero");
+    }
+
+    // Verify by trying to run forge from the expected location (PATH may not
+    // include ~/.foundry/bin in this process — installer rewrites shell rc
+    // for future sessions).
+    let forge = home.join(".foundry/bin/forge");
+    let version = std::process::Command::new(&forge)
+        .arg("--version")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.lines().next().unwrap_or("").trim().to_string())
+        .unwrap_or_default();
+
+    println!();
+    println!("✓ foundry installed: {version}");
+    println!("  binaries: {}", forge.parent().unwrap().display());
+    if which("forge").is_none() {
+        println!();
+        println!("  Note: ~/.foundry/bin is not on the current shell's PATH.");
+        println!("  Open a new terminal, or run: export PATH=\"$HOME/.foundry/bin:$PATH\"");
+    }
+    println!();
+    println!("Next: cd contracts && forge install foundry-rs/forge-std openzeppelin/openzeppelin-contracts");
+    Ok(())
+}
+
+fn which(cmd: &str) -> Option<std::path::PathBuf> {
+    std::env::var_os("PATH").and_then(|paths| {
+        std::env::split_paths(&paths)
+            .map(|dir| dir.join(cmd))
+            .find(|p| p.is_file())
+    })
 }
 
 pub fn uninstall(only_claude: bool, only_codex: bool, only_cursor: bool) -> Result<()> {
