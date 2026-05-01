@@ -3,6 +3,8 @@ name = "tkr-api"
 version = "0.1.0"
 edition = "2021"
 rust-version.workspace = true
+description = "Plugin API types for the tkr token-optimized CLI proxy"
+repository = "https://github.com/einyx/tkr"
 license = "Apache-2.0"
 
 [lib]
