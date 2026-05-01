@@ -4704,12 +4704,14 @@ dependencies = [
  "hex-literal",
  "hkdf",
  "k256",
+ "mockito",
  "rand 0.8.6",
  "serde",
  "serde_json",
  "sha2",
  "sha3",
  "thiserror 1.0.69",
+ "ureq 2.12.1",
 ]
 
 [[package]]

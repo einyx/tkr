@@ -1,0 +1,272 @@
+//! HTTP enrollment: turn a verified invite + fresh identity into a
+//! `JoinedMesh` record by calling the broker's `POST /join` endpoint.
+//!
+//! The broker's HTTP base URL is derived from the invite's `broker_url`
+//! by swapping `wss://` → `https://` (and `ws://` → `http://` for dev).
+
+use crate::{Error, Identity, Invite, Result};
+use serde::{Deserialize, Serialize};
+use std::time::Duration;
+
+const JOIN_TIMEOUT_SECS: u64 = 10;
+
+/// Local record persisted after a successful enrollment. Caller serialises
+/// this to disk (e.g. `~/.tkr/mesh/<slug>.json`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct JoinedMesh {
+    pub mesh_id: String,
+    pub mesh_slug: String,
+    pub broker_url: String,
+    pub member_id: String,
+    /// 0x-prefixed EIP-55 mesh address (== ethereum address of identity).
+    pub address: String,
+    /// 32-byte private key, hex. Treat as a secret.
+    pub secret_hex: String,
+}
+
+/// Wire body for `POST /join`. The broker re-verifies the invite signature
+/// against `invite_payload.owner` before accepting.
+#[derive(Debug, Serialize)]
+struct JoinRequest<'a> {
+    invite_token: &'a str,
+    invite_payload: &'a Invite,
+    address: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    display_name: Option<&'a str>,
+}
+
+#[derive(Debug, Deserialize)]
+struct JoinResponse {
+    ok: bool,
+    #[serde(default)]
+    member_id: Option<String>,
+    #[serde(default, rename = "memberId")]
+    member_id_camel: Option<String>,
+    #[serde(default)]
+    error: Option<String>,
+}
+
+impl JoinResponse {
+    fn member_id(&self) -> Option<&str> {
+        self.member_id
+            .as_deref()
+            .or(self.member_id_camel.as_deref())
+    }
+}
+
+/// Run the full enrollment flow:
+/// 1. Verify the invite (signature + expiry) against `now`.
+/// 2. POST `{ invite_token, invite_payload, address, display_name }` to the
+///    broker's `/join`.
+/// 3. Return a `JoinedMesh` record on 200 OK + `ok: true`.
+///
+/// `invite_token` should be the original base64url token the user pasted
+/// (use `Invite::to_token()` to recover it after verifying parsed input —
+/// the broker matches on the exact bytes it signed).
+pub fn enroll(
+    invite: &Invite,
+    invite_token: &str,
+    identity: &Identity,
+    display_name: Option<&str>,
+    now: u64,
+) -> Result<JoinedMesh> {
+    invite.verify(now)?;
+
+    let join_url = http_join_url(&invite.broker_url)?;
+    let body = JoinRequest {
+        invite_token,
+        invite_payload: invite,
+        address: identity.address().to_checksum(),
+        display_name,
+    };
+
+    let agent = ureq::AgentBuilder::new()
+        .timeout(Duration::from_secs(JOIN_TIMEOUT_SECS))
+        .build();
+
+    let response = agent
+        .post(&join_url)
+        .set("content-type", "application/json")
+        .send_json(serde_json::to_value(&body).map_err(|e| Error::Encoding(e.to_string()))?);
+
+    let resp = match response {
+        Ok(r) => r,
+        Err(ureq::Error::Status(_, r)) => r, // we still want to read the body
+        Err(e) => return Err(Error::Encoding(format!("broker unreachable: {e}"))),
+    };
+
+    let parsed: JoinResponse = resp
+        .into_json()
+        .map_err(|e| Error::Encoding(format!("broker response not JSON: {e}")))?;
+    if !parsed.ok {
+        return Err(Error::InvalidInvite(
+            parsed.error.unwrap_or_else(|| "broker rejected join".into()),
+        ));
+    }
+    let member_id = parsed
+        .member_id()
+        .ok_or_else(|| Error::Encoding("broker omitted member_id".into()))?
+        .to_string();
+
+    Ok(JoinedMesh {
+        mesh_id: invite.mesh_id.clone(),
+        mesh_slug: invite.mesh_slug.clone(),
+        broker_url: invite.broker_url.clone(),
+        member_id,
+        address: identity.address().to_checksum(),
+        secret_hex: hex::encode(identity.secret_bytes()),
+    })
+}
+
+/// Map a `wss://host[:port]/path` broker URL to the HTTP base used for
+/// `POST /join` — the path is replaced with `/join`. Schemes `wss://` and
+/// `ws://` flip to `https://` and `http://` respectively.
+fn http_join_url(broker_url: &str) -> Result<String> {
+    let (scheme_out, rest) = if let Some(r) = broker_url.strip_prefix("wss://") {
+        ("https", r)
+    } else if let Some(r) = broker_url.strip_prefix("ws://") {
+        ("http", r)
+    } else if let Some(r) = broker_url.strip_prefix("https://") {
+        ("https", r)
+    } else if let Some(r) = broker_url.strip_prefix("http://") {
+        ("http", r)
+    } else {
+        return Err(Error::Encoding(format!(
+            "broker_url must use ws/wss/http/https scheme: {broker_url}"
+        )));
+    };
+
+    // Strip path/query — keep host[:port] only.
+    let host = rest
+        .split(|c| c == '/' || c == '?' || c == '#')
+        .next()
+        .unwrap_or(rest);
+    if host.is_empty() {
+        return Err(Error::Encoding("broker_url missing host".into()));
+    }
+    Ok(format!("{scheme_out}://{host}/join"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Role;
+
+    fn fixture_invite(broker_url: &str) -> (Invite, String, Identity) {
+        let owner = Identity::generate();
+        let invite = Invite::issue(
+            &owner,
+            "mesh_test",
+            "test",
+            broker_url,
+            2_000_000_000,
+            Role::Member,
+        );
+        let token = invite.to_token().unwrap();
+        let joiner = Identity::generate();
+        (invite, token, joiner)
+    }
+
+    #[test]
+    fn http_join_url_swaps_wss_to_https() {
+        assert_eq!(
+            http_join_url("wss://broker.example.com/ws").unwrap(),
+            "https://broker.example.com/join"
+        );
+        assert_eq!(
+            http_join_url("ws://localhost:8080/ws").unwrap(),
+            "http://localhost:8080/join"
+        );
+        assert_eq!(
+            http_join_url("https://broker.example.com").unwrap(),
+            "https://broker.example.com/join"
+        );
+    }
+
+    #[test]
+    fn http_join_url_rejects_bad_scheme() {
+        assert!(http_join_url("ftp://broker/").is_err());
+        assert!(http_join_url("broker.example/ws").is_err());
+    }
+
+    #[test]
+    fn enroll_happy_path() {
+        let mut server = mockito::Server::new();
+        let broker_url = format!("http://{}/ws", server.host_with_port());
+        let (invite, token, joiner) = fixture_invite(&broker_url);
+
+        let mock = server
+            .mock("POST", "/join")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"ok":true,"memberId":"member_abc"}"#)
+            .create();
+
+        let joined = enroll(&invite, &token, &joiner, Some("alice"), 1_700_000_000).unwrap();
+        mock.assert();
+        assert_eq!(joined.member_id, "member_abc");
+        assert_eq!(joined.mesh_id, "mesh_test");
+        assert_eq!(joined.address, joiner.address().to_checksum());
+        assert_eq!(joined.secret_hex.len(), 64);
+    }
+
+    #[test]
+    fn enroll_accepts_snake_case_member_id() {
+        // Some broker impls may use snake_case; we accept both.
+        let mut server = mockito::Server::new();
+        let broker_url = format!("http://{}/ws", server.host_with_port());
+        let (invite, token, joiner) = fixture_invite(&broker_url);
+
+        server
+            .mock("POST", "/join")
+            .with_status(200)
+            .with_body(r#"{"ok":true,"member_id":"snake_case_id"}"#)
+            .create();
+
+        let joined = enroll(&invite, &token, &joiner, None, 1_700_000_000).unwrap();
+        assert_eq!(joined.member_id, "snake_case_id");
+    }
+
+    #[test]
+    fn enroll_rejects_expired_invite_before_network() {
+        let (invite, token, joiner) = fixture_invite("http://127.0.0.1:1/ws");
+        // `now` past the invite's expiry.
+        let err = enroll(&invite, &token, &joiner, None, 3_000_000_000).unwrap_err();
+        assert!(matches!(err, Error::Expired { .. }));
+    }
+
+    #[test]
+    fn enroll_propagates_broker_error_body() {
+        let mut server = mockito::Server::new();
+        let broker_url = format!("http://{}/ws", server.host_with_port());
+        let (invite, token, joiner) = fixture_invite(&broker_url);
+
+        server
+            .mock("POST", "/join")
+            .with_status(403)
+            .with_body(r#"{"ok":false,"error":"invite revoked"}"#)
+            .create();
+
+        let err = enroll(&invite, &token, &joiner, None, 1_700_000_000).unwrap_err();
+        match err {
+            Error::InvalidInvite(msg) => assert!(msg.contains("invite revoked"), "msg: {msg}"),
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn enroll_rejects_response_without_member_id() {
+        let mut server = mockito::Server::new();
+        let broker_url = format!("http://{}/ws", server.host_with_port());
+        let (invite, token, joiner) = fixture_invite(&broker_url);
+
+        server
+            .mock("POST", "/join")
+            .with_status(200)
+            .with_body(r#"{"ok":true}"#)
+            .create();
+
+        let err = enroll(&invite, &token, &joiner, None, 1_700_000_000).unwrap_err();
+        assert!(matches!(err, Error::Encoding(_)));
+    }
+}

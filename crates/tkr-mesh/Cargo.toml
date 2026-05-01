@@ -19,6 +19,8 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 sha3 = "0.10"
 thiserror = { workspace = true }
+ureq = { workspace = true }
 
 [dev-dependencies]
 hex-literal = "0.4"
+mockito = { workspace = true }

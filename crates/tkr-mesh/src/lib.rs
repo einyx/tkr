@@ -6,12 +6,14 @@
 //! are identical — no binding attestations needed for payments.
 
 pub mod address;
+pub mod enrollment;
 pub mod envelope;
 pub mod frames;
 pub mod identity;
 pub mod invite;
 
 pub use address::Address;
+pub use enrollment::{enroll, JoinedMesh};
 pub use envelope::Envelope;
 pub use identity::Identity;
 pub use invite::{Invite, Role};
