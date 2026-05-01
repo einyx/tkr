@@ -4767,13 +4767,20 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "bytes",
+ "futures-util",
+ "hex",
  "http",
  "http-body-util",
  "hyper",
  "hyper-util",
+ "k256",
+ "rand 0.8.6",
  "serde",
  "serde_json",
+ "tkr-mesh",
  "tokio",
+ "tokio-tungstenite",
+ "ureq 2.12.1",
 ]
 
 [[package]]

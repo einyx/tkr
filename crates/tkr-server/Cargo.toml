@@ -13,6 +13,7 @@ path = "src/main.rs"
 anyhow = { workspace = true }
 base64 = { workspace = true }
 bytes = { workspace = true }
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 http = { workspace = true }
 http-body-util = { workspace = true }
 hyper = { workspace = true }
@@ -20,3 +21,12 @@ hyper-util = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
+tokio-tungstenite = "0.21"
+tkr-mesh = { path = "../tkr-mesh" }
+rand = { workspace = true }
+hex = { workspace = true }
+
+[dev-dependencies]
+k256 = { version = "0.13", features = ["ecdsa", "ecdh", "sha256"] }
+tokio = { workspace = true, features = ["macros"] }
+ureq = { workspace = true }

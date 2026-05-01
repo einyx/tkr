@@ -1,3 +1,5 @@
+mod broker;
+
 use std::collections::{BTreeMap, HashMap};
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -43,6 +45,7 @@ struct StateInner {
     db_configured: bool,
     vault: Mutex<BTreeMap<String, StoredSession>>,
     admin_password: String,
+    broker: Arc<broker::BrokerState>,
 }
 
 const INDEX_HTML: &str = include_str!("../static/index.html");
@@ -173,6 +176,7 @@ async fn async_main() -> anyhow::Result<()> {
             db_configured: std::env::var("DATABASE_URL").map(|v| !v.is_empty()).unwrap_or(false),
             vault: Mutex::new(BTreeMap::new()),
             admin_password,
+            broker: broker::BrokerState::new(),
         }),
     };
 
@@ -225,6 +229,8 @@ async fn route(req: Request<Incoming>, state: AppState) -> Result<Response<Body>
         (&Method::POST, "/api/auth/setup") => handle_setup(req, state).await,
         (&Method::POST, "/api/auth/switch-tenant") => handle_switch_tenant(req, state).await,
         (&Method::GET, "/api/v1/stream") => handle_stream(req, state).await,
+        (&Method::POST, "/api/v1/mesh/join") => handle_mesh_join(req, state).await,
+        (&Method::GET, "/api/v1/mesh/ws") => handle_mesh_ws(req, state).await,
         (&Method::POST, "/api/v1/ingest") => handle_ingest(req, state).await,
         (&Method::GET, "/api/v1/sessions") => handle_list_sessions(&req, state),
         (&Method::GET, path)
@@ -451,6 +457,84 @@ async fn handle_stream(req: Request<Incoming>, state: AppState) -> Response<Body
                 }
             }
             Err(err) => eprintln!("tkr-server upgrade error: {err}"),
+        }
+    });
+
+    let mut builder = Response::builder().status(StatusCode::SWITCHING_PROTOCOLS);
+    let headers = builder.headers_mut().expect("headers");
+    headers.insert(CONNECTION, HeaderValue::from_static("Upgrade"));
+    headers.insert(UPGRADE, HeaderValue::from_static("websocket"));
+    headers.insert(
+        SEC_WEBSOCKET_ACCEPT,
+        HeaderValue::from_str(&accept).expect("websocket accept"),
+    );
+    apply_cors_headers(headers, &HeaderMap::new());
+    builder.body(Full::new(Bytes::new())).expect("response")
+}
+
+async fn handle_mesh_join(req: Request<Incoming>, state: AppState) -> Response<Body> {
+    let origin_headers = req.headers().clone();
+    let payload: serde_json::Value = match read_json(req).await {
+        Ok(v) => v,
+        Err(_) => {
+            return json_error(
+                StatusCode::BAD_REQUEST,
+                "invalid_json",
+                "request body must be valid json",
+                &origin_headers,
+            )
+        }
+    };
+    let body: broker::JoinRequest = match serde_json::from_value(payload) {
+        Ok(v) => v,
+        Err(e) => {
+            return json_error(
+                StatusCode::BAD_REQUEST,
+                "invalid_payload",
+                &format!("expected {{invite_token, invite_payload, address, display_name?}}: {e}"),
+                &origin_headers,
+            )
+        }
+    };
+    match broker::handle_join(&state.inner.broker, body, unix_ts()) {
+        Ok(resp) => json_response(&origin_headers, StatusCode::OK, resp),
+        Err((status, err)) => json_response(
+            &origin_headers,
+            StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_REQUEST),
+            err,
+        ),
+    }
+}
+
+async fn handle_mesh_ws(req: Request<Incoming>, state: AppState) -> Response<Body> {
+    // Reuse the same SHA-1 / base64 handshake we already do for /api/v1/stream.
+    let key = match req.headers().get(SEC_WEBSOCKET_KEY) {
+        Some(k) => k.clone(),
+        None => {
+            return json_error(
+                StatusCode::BAD_REQUEST,
+                "missing_websocket_key",
+                "missing websocket key",
+                req.headers(),
+            )
+        }
+    };
+    let accept = websocket_accept(key.as_bytes());
+    let broker = state.inner.broker.clone();
+
+    tokio::spawn(async move {
+        match hyper::upgrade::on(req).await {
+            Ok(upgraded) => {
+                let io = TokioIo::new(upgraded);
+                let ws = tokio_tungstenite::WebSocketStream::from_raw_socket(
+                    io,
+                    tokio_tungstenite::tungstenite::protocol::Role::Server,
+                    None,
+                )
+                .await;
+                broker::run_ws_session(broker, ws).await;
+            }
+            Err(err) => eprintln!("tkr-server mesh upgrade error: {err}"),
         }
     });
 
