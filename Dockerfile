@@ -1,31 +1,49 @@
 # syntax=docker/dockerfile:1.6
 # Multistage build for tkr-server.
-# Stage 1: build the release binary against the workspace.
-# Stage 2: copy into a minimal runtime image.
+#   Stage 1 (web):     compile the React/Vite dashboard to a single HTML file.
+#   Stage 2 (builder): cargo build the Rust server, embedding the HTML via include_str!.
+#   Stage 3 (runtime): copy the binary into a minimal runtime image.
 
 ARG RUST_VERSION=1.88
+ARG NODE_VERSION=20
 
+# ---------- Stage 1: web bundle ----------
+FROM node:${NODE_VERSION}-bookworm-slim AS web
+WORKDIR /web
+
+# Install deps separately so the lockfile change invalidates cache cleanly.
+COPY crates/tkr-server/web/package.json crates/tkr-server/web/package-lock.json* ./
+RUN npm install --no-audit --no-fund
+
+# Build. Output goes to crates/tkr-server/static/index.html (one file,
+# JS + CSS inlined via vite-plugin-singlefile). We mirror the source layout
+# inside the stage so vite's outDir of `../static` lands in /static.
+COPY crates/tkr-server/web ./
+RUN npm run build
+
+# ---------- Stage 2: cargo ----------
 FROM rust:${RUST_VERSION}-slim-bookworm AS builder
 WORKDIR /src
 
-# Install build deps (k256 → uses pure Rust; aes-gcm → pure Rust;
-# rusqlite is bundled — none of these need extra C libs in this set).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends pkg-config ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
-# Copy the workspace.
+# Workspace files (everything except the web sources, which are stage 1's job).
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates ./crates
 COPY filters ./filters
 
-# Cache cargo deps layer-by-layer with BuildKit's --mount=type=cache.
+# Drop in the freshly-built dashboard so include_str!("../static/index.html")
+# picks it up.
+COPY --from=web /static/index.html ./crates/tkr-server/static/index.html
+
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
     cargo build --release -p tkr-server \
  && cp /src/target/release/tkr-server /usr/local/bin/tkr-server
 
-# Stage 2: small runtime image.
+# ---------- Stage 3: runtime ----------
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl \

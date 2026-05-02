@@ -7,7 +7,8 @@ TAP     := /opt/homebrew/Library/Taps/einyx/homebrew-tap/Formula/tkr.rb
 
 .PHONY: install build publish publish-cargo _bump-tap \
         contracts-bootstrap contracts-test contracts-build anvil-fork deploy-local \
-        demo-payment
+        demo-payment \
+        web-install web-dev web-build
 
 # ---------- Smart contracts (foundry) ----------
 # One-time bootstrap installs forge-std + openzeppelin into contracts/lib.
@@ -38,6 +39,19 @@ deploy-local:
 # build of tkr (cargo build --release -p tkr).
 demo-payment:
 	@scripts/demo-payment.sh
+
+# ---------- Web dashboard (React + Vite) ----------
+# Lives at crates/tkr-server/web/. Build output is a single inlined HTML
+# at crates/tkr-server/static/index.html, embedded into tkr-server via
+# include_str!. Docker rebuilds it on every image build.
+web-install:
+	cd crates/tkr-server/web && npm install --no-audit --no-fund
+
+web-dev:
+	cd crates/tkr-server/web && npm run dev
+
+web-build:
+	cd crates/tkr-server/web && npm run build
 
 
 install:
