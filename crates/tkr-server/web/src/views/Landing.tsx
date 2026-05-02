@@ -5,11 +5,53 @@ interface Props {
   onSignIn: () => void;
 }
 
+interface ChainStats {
+  chainId: number | null;
+  blockNumber: number | null;
+  gasPriceGwei: number | null;
+}
+
+async function rpc<T = unknown>(method: string, params: unknown[] = []): Promise<T> {
+  const res = await fetch("/api/v1/chain/rpc", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+  });
+  if (!res.ok) throw new Error(`rpc ${method}: ${res.status}`);
+  const j = await res.json();
+  if (j.error) throw new Error(`rpc ${method}: ${j.error.message ?? "error"}`);
+  return j.result as T;
+}
+
+async function fetchChainStats(): Promise<ChainStats> {
+  // Hit the three RPCs in parallel; tolerate failures (devnet unreachable).
+  const [chainId, blockNumber, gasPrice] = await Promise.allSettled([
+    rpc<string>("eth_chainId"),
+    rpc<string>("eth_blockNumber"),
+    rpc<string>("eth_gasPrice"),
+  ]);
+  const fromHex = (s: string) => parseInt(s, 16);
+  return {
+    chainId: chainId.status === "fulfilled" ? fromHex(chainId.value) : null,
+    blockNumber: blockNumber.status === "fulfilled" ? fromHex(blockNumber.value) : null,
+    gasPriceGwei:
+      gasPrice.status === "fulfilled"
+        ? Math.round(fromHex(gasPrice.value) / 1e9)
+        : null,
+  };
+}
+
 export function LandingView({ onSignIn }: Props) {
   const { data: status } = useQuery<MeshStatus>({
     queryKey: ["mesh-status"],
     queryFn: () => api<MeshStatus>("/api/v1/mesh/status"),
     refetchInterval: 5_000,
+  });
+
+  const { data: chain } = useQuery<ChainStats>({
+    queryKey: ["chain-stats"],
+    queryFn: fetchChainStats,
+    refetchInterval: 4_000,
   });
 
   const total_connected = status?.total_connected ?? 0;
@@ -19,6 +61,7 @@ export function LandingView({ onSignIn }: Props) {
     0,
   );
   const brokerWss = `wss://${location.host}/api/v1/mesh/ws`;
+  const chainRpc = `https://${location.host}/api/v1/chain/rpc`;
 
   return (
     <main className="lp">
@@ -35,7 +78,14 @@ export function LandingView({ onSignIn }: Props) {
           <Stat value={String(total_connected)} label="peers online" />
           <Stat value={String(total_meshes)} label="meshes" />
           <Stat value={String(enrolled)} label="members enrolled" />
-          <Stat value="E2E" label="ECDH + AES-GCM" />
+          <Stat
+            value={chain?.blockNumber != null ? `#${chain.blockNumber}` : "—"}
+            label={
+              chain?.chainId != null
+                ? `chain ${chain.chainId} · ${chain.gasPriceGwei ?? "?"} gwei`
+                : "tkr devnet"
+            }
+          />
         </div>
         <div className="lp-ctas">
           <a
@@ -74,6 +124,8 @@ tkr mesh tail demo                   # listen
 tkr mesh send demo --to <addr> --recipient-pubkey <pub> 'hi'`}</pre>
           <div className="lp-broker-line">
             broker: <code>{brokerWss}</code>
+            <br />
+            chain rpc: <code>{chainRpc}</code>
           </div>
         </div>
       </section>
