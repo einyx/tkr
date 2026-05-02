@@ -16,7 +16,7 @@ tkr-api = { path = "../tkr-api", version = "0.1.0" }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite = { version = "0.39", features = ["bundled"] }
 dirs = { workspace = true }
 chrono = { workspace = true }
 
