@@ -28,6 +28,18 @@ pub fn render_outline(path: &Path) -> Result<String> {
 
     let symbols = match path.extension().and_then(|s| s.to_str()) {
         Some("rs") => rust_outline(&bytes)?,
+        Some("py") => language_outline(&bytes, tree_sitter_python::language(), PYTHON_QUERY)?,
+        Some("go") => language_outline(&bytes, tree_sitter_go::language(), GO_QUERY)?,
+        Some("ts" | "tsx") => language_outline(
+            &bytes,
+            tree_sitter_typescript::language_typescript(),
+            TS_QUERY,
+        )?,
+        Some("js" | "jsx" | "mjs" | "cjs") => language_outline(
+            &bytes,
+            tree_sitter_javascript::language(),
+            JS_QUERY,
+        )?,
         _ => Vec::new(),
     };
 
@@ -122,6 +134,84 @@ fn rust_outline(source: &[u8]) -> Result<Vec<Symbol>> {
     Ok(out)
 }
 
+/// Generic dispatch: pick a language + query, run the same capture-name
+/// scheme as `rust_outline`. Capture names without a `.` are treated as
+/// kind labels; `.name` captures provide the symbol name.
+fn language_outline(
+    source: &[u8],
+    language: tree_sitter::Language,
+    query_str: &str,
+) -> Result<Vec<Symbol>> {
+    let mut parser = Parser::new();
+    parser
+        .set_language(language)
+        .map_err(|e| anyhow!("set_language: {e}"))?;
+    let tree = parser
+        .parse(source, None)
+        .ok_or_else(|| anyhow!("parse failed"))?;
+    let query = Query::new(language, query_str)
+        .map_err(|e| anyhow!("compile query: {e}"))?;
+    let mut cursor = QueryCursor::new();
+    let mut out = Vec::new();
+    let capture_names = query.capture_names();
+    for m in cursor.matches(&query, tree.root_node(), source) {
+        let mut kind: Option<&'static str> = None;
+        let mut start_line = 0usize;
+        let mut end_line = 0usize;
+        let mut name: Option<String> = None;
+        for cap in m.captures {
+            let cap_name = capture_names[cap.index as usize].as_str();
+            if cap_name.contains('.') {
+                if let Ok(s) = std::str::from_utf8(&source[cap.node.byte_range()]) {
+                    name = Some(s.to_string());
+                }
+            } else {
+                kind = Some(static_kind(cap_name));
+                start_line = cap.node.start_position().row + 1;
+                end_line = cap.node.end_position().row + 1;
+            }
+        }
+        if let (Some(kind), Some(name)) = (kind, name) {
+            out.push(Symbol {
+                kind,
+                name,
+                start_line,
+                end_line,
+            });
+        }
+    }
+    out.sort_by_key(|s| s.start_line);
+    Ok(out)
+}
+
+const PYTHON_QUERY: &str = r#"
+    (function_definition name: (identifier) @fn.name) @fn
+    (class_definition name: (identifier) @class.name) @class
+"#;
+
+const GO_QUERY: &str = r#"
+    (function_declaration name: (identifier) @fn.name) @fn
+    (method_declaration name: (field_identifier) @fn.name) @fn
+    (type_declaration (type_spec name: (type_identifier) @type.name)) @type
+"#;
+
+// TypeScript and JavaScript share most of their structure; the
+// typescript grammar adds interfaces/types over the JS query.
+const TS_QUERY: &str = r#"
+    (function_declaration name: (identifier) @fn.name) @fn
+    (method_definition name: (property_identifier) @fn.name) @fn
+    (class_declaration name: (type_identifier) @class.name) @class
+    (interface_declaration name: (type_identifier) @interface.name) @interface
+    (type_alias_declaration name: (type_identifier) @type.name) @type
+    (enum_declaration name: (identifier) @enum.name) @enum
+"#;
+
+const JS_QUERY: &str = r#"
+    (function_declaration name: (identifier) @fn.name) @fn
+    (method_definition name: (property_identifier) @fn.name) @fn
+    (class_declaration name: (identifier) @class.name) @class
+"#;
+
 fn static_kind(s: &str) -> &'static str {
     match s {
         "fn" => "fn",
@@ -133,6 +223,8 @@ fn static_kind(s: &str) -> &'static str {
         "const" => "const",
         "static" => "static",
         "type" => "type",
+        "class" => "class",
+        "interface" => "iface",
         _ => "?",
     }
 }
@@ -179,6 +271,51 @@ pub struct Beta { x: u32 }
         assert!(out.contains("Beta"));
         assert!(out.contains("L"));
         tmp.cleanup();
+    }
+
+    #[test]
+    fn python_outline_extracts_functions_and_classes() {
+        let tmp = tempfile_write(
+            "test_python.py",
+            "def alpha():\n    pass\n\nclass Beta:\n    def gamma(self):\n        pass\n",
+        );
+        let out = render_outline(&tmp.path).unwrap();
+        assert!(out.contains("alpha"), "{out}");
+        assert!(out.contains("Beta"), "{out}");
+        assert!(out.contains("class") || out.contains("fn"));
+    }
+
+    #[test]
+    fn go_outline_extracts_funcs_and_types() {
+        let tmp = tempfile_write(
+            "test_go.go",
+            "package x\n\ntype Foo struct{}\n\nfunc bar() int { return 1 }\n",
+        );
+        let out = render_outline(&tmp.path).unwrap();
+        assert!(out.contains("bar"), "{out}");
+        assert!(out.contains("Foo"), "{out}");
+    }
+
+    #[test]
+    fn typescript_outline_extracts_class_and_iface() {
+        let tmp = tempfile_write(
+            "test_ts.ts",
+            "interface Shape { area(): number; }\nclass Circle implements Shape { area() { return 0; } }\n",
+        );
+        let out = render_outline(&tmp.path).unwrap();
+        assert!(out.contains("Shape"), "{out}");
+        assert!(out.contains("Circle"), "{out}");
+    }
+
+    #[test]
+    fn javascript_outline_extracts_funcs_and_classes() {
+        let tmp = tempfile_write(
+            "test_js.js",
+            "function foo() { return 1; }\nclass Bar { baz() { return 2; } }\n",
+        );
+        let out = render_outline(&tmp.path).unwrap();
+        assert!(out.contains("foo"), "{out}");
+        assert!(out.contains("Bar"), "{out}");
     }
 
     #[test]
