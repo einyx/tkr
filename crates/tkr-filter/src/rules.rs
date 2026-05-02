@@ -45,6 +45,14 @@ pub enum Rule {
         #[serde(default = "default_keep_first")]
         keep_first: u32,
     },
+    /// Replace lines longer than `max_len` chars with their first
+    /// (max_len - ellipsis_chars) chars followed by `ellipsis`.
+    /// Operates on Unicode chars, not bytes.
+    TruncateLong {
+        max_len: usize,
+        #[serde(default = "default_ellipsis")]
+        ellipsis: String,
+    },
     /// Substitute words in the line according to a `pairs` dictionary.
     /// Each pair is `[word, abbreviation]`. Match is case-insensitive
     /// at word boundaries; the original case is preserved (lowercase
@@ -63,6 +71,10 @@ fn default_prefix_len() -> usize {
 
 fn default_keep_first() -> u32 {
     3
+}
+
+fn default_ellipsis() -> String {
+    "…".to_string()
 }
 
 /// Compiled rule with state inlined per variant. `apply` takes &mut self so
@@ -101,6 +113,10 @@ pub enum CompiledRule {
     SubstituteWords {
         re: Regex,
         dict: HashMap<String, String>,
+    },
+    TruncateLong {
+        max_len: usize,
+        ellipsis: String,
     },
 }
 
@@ -145,6 +161,9 @@ impl Rule {
                 last_prefix: None,
                 count: 0,
             },
+            Rule::TruncateLong { max_len, ellipsis } => {
+                CompiledRule::TruncateLong { max_len, ellipsis }
+            }
             Rule::SubstituteWords { pairs } => {
                 if pairs.is_empty() {
                     anyhow::bail!("substitute_words: pairs cannot be empty");
@@ -273,6 +292,17 @@ impl CompiledRule {
                     *last_capture = None;
                     None
                 }
+            }
+            CompiledRule::TruncateLong { max_len, ellipsis } => {
+                let char_count = line.chars().count();
+                if char_count <= *max_len {
+                    return None;
+                }
+                let ellipsis_chars = ellipsis.chars().count();
+                let keep = max_len.saturating_sub(ellipsis_chars);
+                let mut out: String = line.chars().take(keep).collect();
+                out.push_str(ellipsis);
+                Some(FilterResult::Replace(out))
             }
             CompiledRule::SubstituteWords { re, dict } => {
                 let new = re.replace_all(line, |caps: &Captures| {
@@ -414,5 +444,43 @@ mod tests {
         compiled.apply("Author: alice");
         compiled.apply("commit abc123");
         assert_eq!(compiled.apply("Author: alice"), None);
+    }
+
+    #[test]
+    fn truncate_long_caps_oversize_lines() {
+        let rule = Rule::TruncateLong {
+            max_len: 10,
+            ellipsis: "…".to_string(),
+        };
+        let mut compiled = rule.compile().unwrap();
+        let result = compiled.apply("abcdefghijklmnop");
+        match result {
+            Some(FilterResult::Replace(s)) => {
+                assert!(s.chars().count() <= 10, "got {s:?}");
+                assert!(s.ends_with('…'), "got {s:?}");
+            }
+            other => panic!("expected Replace, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn truncate_long_passes_short_lines() {
+        let rule = Rule::TruncateLong {
+            max_len: 10,
+            ellipsis: "…".to_string(),
+        };
+        let mut compiled = rule.compile().unwrap();
+        assert_eq!(compiled.apply("short"), None);
+    }
+
+    #[test]
+    fn truncate_long_handles_multibyte_boundary() {
+        let rule = Rule::TruncateLong {
+            max_len: 5,
+            ellipsis: "…".to_string(),
+        };
+        let mut compiled = rule.compile().unwrap();
+        let result = compiled.apply("héllo wörld");
+        assert!(matches!(result, Some(FilterResult::Replace(_))));
     }
 }
