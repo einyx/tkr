@@ -66,6 +66,40 @@ cmd_start() {
   mkdir -p "$WORK" "$LOGDIR"
   : > "$PIDFILE"
 
+  # 0. authenticate. tkr-server now gates POST /join and GET /ws behind
+  # an authenticated session; tkr-mesh's enrollment + Client::connect
+  # both honor TKR_MESH_WS_COOKIE which is sent as `tkr_session=<v>`.
+  # Login once, extract the cookie value, export for subsequent calls.
+  if [ -z "${TKR_MESH_WS_COOKIE:-}" ]; then
+    PW=""
+    if [ -n "${TKR_ADMIN_PASSWORD:-}" ]; then
+      PW="$TKR_ADMIN_PASSWORD"
+    elif [ -f tkr-server.env ]; then
+      PW=$(grep '^TKR_ADMIN_PASSWORD=' tkr-server.env | cut -d= -f2- || true)
+    fi
+    if [ -z "$PW" ]; then
+      echo "error: no password — set TKR_ADMIN_PASSWORD or place it in tkr-server.env" >&2
+      exit 1
+    fi
+    LOGIN_HOST=${TKR_MESH_LOGIN_HOST:-https://tkr.prysm.sh}
+    JAR=$(mktemp); trap "rm -f $JAR" EXIT
+    HTTP=$(curl -sS -o /dev/null -w '%{http_code}' -c "$JAR" \
+      -X POST "$LOGIN_HOST/api/auth/login" \
+      -H 'content-type: application/json' \
+      -d "{\"password\":\"$PW\"}")
+    if [ "$HTTP" != "200" ]; then
+      echo "error: login to $LOGIN_HOST returned HTTP $HTTP — wrong password?" >&2
+      exit 1
+    fi
+    TKR_MESH_WS_COOKIE=$(awk '/tkr_session/ {print $7}' "$JAR" | head -1)
+    if [ -z "$TKR_MESH_WS_COOKIE" ]; then
+      echo "error: login succeeded but no tkr_session cookie in jar" >&2
+      exit 1
+    fi
+    export TKR_MESH_WS_COOKIE
+    echo "authenticated against $LOGIN_HOST"
+  fi
+
   # 1. owner key (re-used across runs unless wiped).
   if [ ! -f "$OWNERFILE" ]; then
     echo "minting owner key..."
@@ -125,6 +159,7 @@ SLUG=$SLUG
 PEERS=$PEERS
 HEARTBEAT_SECS=$HEARTBEAT_SECS
 LOGDIR=$LOGDIR
+export TKR_MESH_WS_COOKIE='$TKR_MESH_WS_COOKIE'
 trap 'exit 0' TERM INT
 while sleep "\$HEARTBEAT_SECS"; do
   for i in \$(seq 1 \$PEERS); do
