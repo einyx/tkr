@@ -18,5 +18,7 @@
     "grep",
     "rust",
     "tkr"
-  ]
+  ],
+  "commands": ["./commands/"],
+  "skills": ["./skills/"]
 }

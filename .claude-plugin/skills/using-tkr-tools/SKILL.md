@@ -41,3 +41,31 @@ contents or symbol locations. Skip the skill for:
 - `tkr` binary on PATH (install via `cargo install --path crates/tkr`
   from a clone, or `curl -fsSL https://tkr.prysm.sh/install.sh | sh`).
 - Restart Claude Code after `/plugin install` so the MCP server boots.
+
+## Slash commands shipped with the plugin
+
+- `/tkr-plugin:jobs [board?]` — list current JobBoard jobs
+- `/tkr-plugin:stats [full?]` — today's token savings (uses `tkr gain`)
+- `/tkr-plugin:mesh [slug?]` — live mesh peer count + escrow balance
+- `/tkr-plugin:outline <path>` — file outline via `tkr_outline_file`
+
+## Optional: status line
+
+The plugin ships `statusline.sh` that emits e.g.
+`tkr · saved 8,432 / 28,673 (29.4%) · 36 cmds today`.
+
+To enable it, add to your `~/.claude/settings.json`:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "${CLAUDE_PLUGIN_ROOT}/statusline.sh",
+    "padding": 1,
+    "refreshInterval": 5
+  }
+}
+```
+
+(`${CLAUDE_PLUGIN_ROOT}` resolves to the plugin's install location at
+runtime.) Skip if you don't want extra prompt-line noise.
