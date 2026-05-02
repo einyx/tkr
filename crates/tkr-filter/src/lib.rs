@@ -321,4 +321,31 @@ message = "0 matches"
         p.filter("noisy line 2", "grep", "", 1);
         assert_eq!(p.flush(), "0 matches");
     }
+
+    #[test]
+    fn grep_filter_pack_loads_and_groups() {
+        let toml = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../filters/grep.toml"),
+        )
+        .expect("read grep.toml");
+        let mut p = FilterPlugin::from_toml(&toml).expect("parse");
+        p.filter("src/lib.rs:42:fn foo()", "grep", "", 0);
+        p.filter("src/lib.rs:99:fn bar()", "grep", "", 1);
+        let flushed = p.flush();
+        assert!(flushed.contains("grep matches by file:"), "got {flushed:?}");
+        assert!(flushed.contains("src/lib.rs"), "got {flushed:?}");
+    }
+
+    #[test]
+    fn grep_filter_pack_emits_empty_marker() {
+        let toml = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../filters/grep.toml"),
+        )
+        .expect("read grep.toml");
+        let mut p = FilterPlugin::from_toml(&toml).expect("parse");
+        let flushed = p.flush();
+        assert!(flushed.contains("0 grep matches"), "got {flushed:?}");
+    }
 }

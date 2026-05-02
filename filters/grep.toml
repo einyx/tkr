@@ -29,3 +29,20 @@ pattern = "^grep: .*: No such file or directory"
 [[rules]]
 type = "suppress_regex"
 pattern = "^grep: .*: Is a directory"
+
+# Group remaining matches by file (the "path:" prefix grep emits).
+# Caps at 2 lines per file, 50 total — beyond which we emit "(+N more)"
+# rather than streaming everything. This is the single biggest win on
+# repos with thousands of hits.
+[[rules]]
+type = "group_by_capture"
+pattern = "^([^:]+):"
+key_capture = 1
+cap_per_key = 2
+total_cap = 50
+header = "grep matches by file:"
+
+# Empty-result marker. Must be the final rule in this group.
+[[rules]]
+type = "empty_result_substitute"
+message = "0 grep matches"
