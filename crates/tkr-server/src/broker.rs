@@ -118,6 +118,46 @@ impl BrokerState {
             .get(address)
             .cloned()
     }
+
+    /// Per-mesh status snapshot: enrolled member count + currently-connected
+    /// peer count. Used by the dashboard's mesh panel.
+    pub fn status(&self) -> BrokerStatus {
+        let inner = self.inner.lock().expect("broker lock");
+        let connected_addrs: std::collections::HashSet<&Address> = inner.peers.keys().collect();
+        let mut meshes: Vec<MeshStatus> = inner
+            .members
+            .iter()
+            .map(|(mesh_id, members)| MeshStatus {
+                mesh_id: mesh_id.clone(),
+                enrolled: members.len() as u64,
+                connected: members
+                    .keys()
+                    .filter(|a| connected_addrs.contains(a))
+                    .count() as u64,
+            })
+            .collect();
+        meshes.sort_by(|a, b| a.mesh_id.cmp(&b.mesh_id));
+        BrokerStatus {
+            total_meshes: meshes.len() as u64,
+            total_connected: inner.peers.len() as u64,
+            meshes,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BrokerStatus {
+    pub total_meshes: u64,
+    pub total_connected: u64,
+    pub meshes: Vec<MeshStatus>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MeshStatus {
+    #[serde(rename = "meshId")]
+    pub mesh_id: String,
+    pub enrolled: u64,
+    pub connected: u64,
 }
 
 // ---------- HTTP /join handler ----------

@@ -231,6 +231,11 @@ async fn route(req: Request<Incoming>, state: AppState) -> Result<Response<Body>
         (&Method::GET, "/api/v1/stream") => handle_stream(req, state).await,
         (&Method::POST, "/api/v1/mesh/join") => handle_mesh_join(req, state).await,
         (&Method::GET, "/api/v1/mesh/ws") => handle_mesh_ws(req, state).await,
+        (&Method::GET, "/api/v1/mesh/status") => json_response(
+            req.headers(),
+            StatusCode::OK,
+            state.inner.broker.status(),
+        ),
         (&Method::POST, "/api/v1/ingest") => handle_ingest(req, state).await,
         (&Method::GET, "/api/v1/sessions") => handle_list_sessions(&req, state),
         (&Method::GET, path)

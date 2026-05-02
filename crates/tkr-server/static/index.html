@@ -255,11 +255,19 @@ function dashboardView(me) {
   ]);
   const header = el("header", null, [el("div", { class: "brand", text: "tkr" }), who]);
 
+  const meshBody = el("div", { id: "mesh-body", class: "empty", text: "loading…" });
+  const meshCount = el("span", { class: "count", id: "mesh-count", text: "…" });
+  const meshHead = el("span", null, [el("span", { class: "status-dot live" }), "mesh"]);
+
   const sessionsBody = el("div", { id: "sessions-body", class: "empty", text: "loading…" });
   const sessionsCount = el("span", { class: "count", id: "sessions-count", text: "…" });
   const headLeft = el("span", null, [el("span", { class: "status-dot live" }), "sessions"]);
 
   const main = el("main", null, [
+    el("div", { class: "panel", id: "mesh-panel" }, [
+      el("div", { class: "panel-head" }, [meshHead, meshCount]),
+      meshBody,
+    ]),
     el("div", { class: "panel", id: "sessions-panel" }, [
       el("div", { class: "panel-head" }, [headLeft, sessionsCount]),
       sessionsBody,
@@ -269,7 +277,51 @@ function dashboardView(me) {
   clear();
   app.appendChild(header);
   app.appendChild(main);
+  loadMesh(meshBody, meshCount);
   loadSessions(sessionsBody, sessionsCount);
+  // Refresh mesh status every 3s while the dashboard is open.
+  if (window.__meshTimer) clearInterval(window.__meshTimer);
+  window.__meshTimer = setInterval(() => loadMesh(meshBody, meshCount), 3000);
+}
+
+async function loadMesh(bodyNode, countNode) {
+  let status;
+  try {
+    status = await api("/api/v1/mesh/status");
+  } catch (err) {
+    bodyNode.className = "err";
+    bodyNode.style.padding = "24px";
+    bodyNode.textContent = err.message;
+    return;
+  }
+  const { total_meshes, total_connected, meshes } = status;
+  countNode.textContent = `${total_connected} online · ${total_meshes} mesh${total_meshes === 1 ? "" : "es"}`;
+
+  if (!meshes || meshes.length === 0) {
+    bodyNode.className = "empty";
+    bodyNode.textContent = "no meshes yet — mint an invite with `tkr mesh invite-mint`.";
+    return;
+  }
+
+  const tbody = el("tbody");
+  for (const m of meshes) {
+    tbody.appendChild(el("tr", null, [
+      el("td", { text: m.meshId || "" }),
+      el("td", { class: "num", text: String(m.enrolled || 0) }),
+      el("td", { class: "num ok", text: String(m.connected || 0) }),
+    ]));
+  }
+  const thead = el("thead", null, [
+    el("tr", null, [
+      el("th", { text: "mesh id" }),
+      el("th", { class: "num", text: "enrolled" }),
+      el("th", { class: "num", text: "connected" }),
+    ]),
+  ]);
+  bodyNode.className = "";
+  bodyNode.removeAttribute("style");
+  bodyNode.textContent = "";
+  bodyNode.appendChild(el("table", null, [thead, tbody]));
 }
 
 async function loadSessions(bodyNode, countNode) {
