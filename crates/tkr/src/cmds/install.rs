@@ -224,6 +224,25 @@ fn uninstall_claude(home: &std::path::Path) -> Result<()> {
         removed += 1;
     }
 
+    // Also strip the CLAUDE.md include line + the tkr.md fragment.
+    let fragment = home.join(TKR_FRAGMENT_PATH);
+    if fragment.exists() {
+        let _ = std::fs::remove_file(&fragment);
+        removed += 1;
+    }
+    let main_md = home.join(".claude").join("CLAUDE.md");
+    if let Ok(existing) = std::fs::read_to_string(&main_md) {
+        let cleaned: String = existing
+            .lines()
+            .filter(|l| l.trim() != "@tkr.md")
+            .collect::<Vec<_>>()
+            .join("\n");
+        if cleaned != existing {
+            let _ = std::fs::write(&main_md, cleaned + "\n");
+            removed += 1;
+        }
+    }
+
     if removed == 0 {
         println!("✓ Claude Code: tkr hook not present in {}", settings_path.display());
         return Ok(());
@@ -360,29 +379,21 @@ fn install_claude(home: &std::path::Path, bin: &str) -> Result<()> {
             .unwrap_or(false)
     });
 
-    match existing_idx {
+    let already_present = match existing_idx {
         Some(i) => {
             let current = bash_hooks[i].get("command").and_then(|c| c.as_str()).unwrap_or("");
-            if current == hook_command {
-                println!("✓ Claude Code: already installed at {}", settings_path.display());
-                return Ok(());
+            if current != hook_command {
+                // Path changed (e.g. user upgraded brew → /opt/homebrew/bin/tkr).
+                // Update in place so the hook always points at the live binary.
+                bash_hooks[i] = json!({ "type": "command", "command": hook_command.clone() });
             }
-            // Path changed (e.g. user upgraded brew → /opt/homebrew/bin/tkr).
-            // Update in place so the hook always points at the live binary.
-            bash_hooks[i] = json!({ "type": "command", "command": hook_command.clone() });
-            let serialized = serde_json::to_string_pretty(&settings)?;
-            std::fs::write(&settings_path, serialized + "\n")
-                .with_context(|| format!("writing {}", settings_path.display()))?;
-            println!(
-                "✓ Claude Code: updated hook path → {}\n  Restart Claude Code to pick up the new binary.",
-                hook_command
-            );
-            return Ok(());
+            true
         }
-        None => {}
-    }
-
-    bash_hooks.push(json!({ "type": "command", "command": hook_command }));
+        None => {
+            bash_hooks.push(json!({ "type": "command", "command": hook_command.clone() }));
+            false
+        }
+    };
 
     // PostToolUse hook for Read/Grep/Glob — adds steering notes for
     // oversized tool results (Phase 1 of MCP migration).
@@ -392,14 +403,26 @@ fn install_claude(home: &std::path::Path, bin: &str) -> Result<()> {
     // tkr_grep_summary so the model can opt into structured summaries.
     ensure_mcp_server(root, bin)?;
 
+    // CLAUDE.md fragment nudging the model to prefer tkr's MCP tools for
+    // large files / wide patterns. Writes a separate file so the user's
+    // top-level CLAUDE.md stays untouched.
+    write_claude_md_fragment(home)?;
+
     let serialized = serde_json::to_string_pretty(&settings)?;
     std::fs::write(&settings_path, serialized + "\n")
         .with_context(|| format!("writing {}", settings_path.display()))?;
 
-    println!(
-        "✓ Claude Code: installed into {}\n  Restart Claude Code to activate.",
-        settings_path.display()
-    );
+    if already_present {
+        println!(
+            "✓ Claude Code: refreshed at {} (PreToolUse + PostToolUse + MCP + CLAUDE.md fragment)",
+            settings_path.display()
+        );
+    } else {
+        println!(
+            "✓ Claude Code: installed into {}\n  Restart Claude Code to activate.",
+            settings_path.display()
+        );
+    }
     Ok(())
 }
 
@@ -463,6 +486,63 @@ fn ensure_post_hook(
             block_hooks.push(json!({ "type": "command", "command": hook_command }));
         }
     }
+    Ok(())
+}
+
+/// CLAUDE.md fragment dropped into `~/.claude/tkr.md` and referenced
+/// from the user's main `~/.claude/CLAUDE.md` (only if not already
+/// referenced). Steers the model toward tkr's MCP tools for the cases
+/// where they meaningfully reduce token cost.
+const TKR_FRAGMENT_PATH: &str = ".claude/tkr.md";
+const TKR_FRAGMENT_CONTENT: &str = r#"# tkr — token-saving tool selection
+
+When the `tkr` MCP server is available, prefer its tools over native
+`Read` / `Grep` / `Glob` in these cases:
+
+| Situation                                              | Use                              |
+|--------------------------------------------------------|----------------------------------|
+| Need to know what's in a file > ~200 lines             | `tkr_outline_file`               |
+| Looking for a specific symbol's definition             | `tkr_find_symbol`                |
+| Recursive grep that may match across many files        | `tkr_grep_summary`               |
+| Need actual line ranges of a function before editing   | `tkr_outline_file` then native `Read` with `offset`/`limit` |
+
+Native `Read` is fine for small files (< 200 lines) and for the exact
+ranges you've already pinpointed.
+
+Native `Grep` is fine for narrow searches with `path` / `type` /
+`head_limit` already constraining the result set.
+
+These are guidelines, not hard rules — pick the tool that lets you
+answer the actual question with the fewest tokens.
+"#;
+
+fn write_claude_md_fragment(home: &std::path::Path) -> Result<()> {
+    let fragment = home.join(TKR_FRAGMENT_PATH);
+    if let Some(parent) = fragment.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
+    std::fs::write(&fragment, TKR_FRAGMENT_CONTENT)
+        .with_context(|| format!("writing {}", fragment.display()))?;
+
+    // Reference it from the user's main CLAUDE.md if there is one. We
+    // only ADD a one-line "@tkr.md" include; we don't modify any existing
+    // content. Skip if the line is already present, or if there is no
+    // CLAUDE.md to extend.
+    let main_md = home.join(".claude").join("CLAUDE.md");
+    let include_line = "@tkr.md";
+    let existing = std::fs::read_to_string(&main_md).unwrap_or_default();
+    if existing.contains(include_line) {
+        return Ok(());
+    }
+    let mut new_contents = existing;
+    if !new_contents.is_empty() && !new_contents.ends_with('\n') {
+        new_contents.push('\n');
+    }
+    new_contents.push_str("\n");
+    new_contents.push_str(include_line);
+    new_contents.push('\n');
+    std::fs::write(&main_md, new_contents)
+        .with_context(|| format!("writing {}", main_md.display()))?;
     Ok(())
 }
 
