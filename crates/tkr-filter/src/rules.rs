@@ -1,5 +1,6 @@
-use regex::Regex;
+use regex::{Captures, Regex, RegexBuilder};
 use serde::Deserialize;
+use std::collections::HashMap;
 use tkr_api::FilterResult;
 
 #[derive(Debug, Deserialize)]
@@ -44,6 +45,16 @@ pub enum Rule {
         #[serde(default = "default_keep_first")]
         keep_first: u32,
     },
+    /// Substitute words in the line according to a `pairs` dictionary.
+    /// Each pair is `[word, abbreviation]`. Match is case-insensitive
+    /// at word boundaries; the original case is preserved (lowercase
+    /// stays lowercase, Capitalized stays Capitalized, ALL-CAPS stays
+    /// ALL-CAPS). The whole line passes through with replacements
+    /// applied; this rule never suppresses or short-circuits the
+    /// pipeline (returns `None` if the line was unchanged after substitution).
+    SubstituteWords {
+        pairs: Vec<(String, String)>,
+    },
 }
 
 fn default_prefix_len() -> usize {
@@ -86,6 +97,10 @@ pub enum CompiledRule {
         keep_first: u32,
         last_prefix: Option<String>,
         count: u32,
+    },
+    SubstituteWords {
+        re: Regex,
+        dict: HashMap<String, String>,
     },
 }
 
@@ -130,6 +145,28 @@ impl Rule {
                 last_prefix: None,
                 count: 0,
             },
+            Rule::SubstituteWords { pairs } => {
+                if pairs.is_empty() {
+                    anyhow::bail!("substitute_words: pairs cannot be empty");
+                }
+                // Build a single regex with alternation: \b(word1|word2|...)\b.
+                // Words are sorted longest-first so multi-word forms (if any)
+                // win over their prefixes. Each word is regex-escaped.
+                let mut sorted: Vec<&(String, String)> = pairs.iter().collect();
+                sorted.sort_by_key(|(w, _)| std::cmp::Reverse(w.len()));
+                let alternation = sorted
+                    .iter()
+                    .map(|(w, _)| regex::escape(w))
+                    .collect::<Vec<_>>()
+                    .join("|");
+                let pattern = format!(r"\b(?:{alternation})\b");
+                let re = RegexBuilder::new(&pattern).case_insensitive(true).build()?;
+                let dict: HashMap<String, String> = pairs
+                    .into_iter()
+                    .map(|(w, a)| (w.to_lowercase(), a))
+                    .collect();
+                CompiledRule::SubstituteWords { re, dict }
+            }
         })
     }
 }
@@ -237,8 +274,49 @@ impl CompiledRule {
                     None
                 }
             }
+            CompiledRule::SubstituteWords { re, dict } => {
+                let new = re.replace_all(line, |caps: &Captures| {
+                    let matched = &caps[0];
+                    match dict.get(&matched.to_lowercase()) {
+                        Some(abbrev) => preserve_case(matched, abbrev),
+                        None => matched.to_string(),
+                    }
+                });
+                if new == line {
+                    None
+                } else {
+                    Some(FilterResult::Replace(new.into_owned()))
+                }
+            }
         }
     }
+}
+
+/// Replicate the case shape of `original` onto `abbrev`. Three cases:
+/// - ALL-UPPERCASE original (≥ 2 chars) → uppercase abbrev
+/// - Capitalized (first upper, rest lower) → capitalize abbrev
+/// - everything else → abbrev unchanged
+fn preserve_case(original: &str, abbrev: &str) -> String {
+    let alpha_chars: Vec<char> = original.chars().filter(|c| c.is_alphabetic()).collect();
+    if alpha_chars.len() >= 2 && alpha_chars.iter().all(|c| c.is_uppercase()) {
+        return abbrev.to_uppercase();
+    }
+    let mut chars = original.chars();
+    if let Some(first) = chars.next() {
+        let tail_has_upper = chars.any(|c| c.is_uppercase());
+        if first.is_uppercase() && !tail_has_upper {
+            let mut out = String::with_capacity(abbrev.len());
+            let mut ac = abbrev.chars();
+            if let Some(a0) = ac.next() {
+                for u in a0.to_uppercase() {
+                    out.push(u);
+                }
+            }
+            out.extend(ac);
+            return out;
+        }
+    }
+    abbrev.to_string()
 }
 
 #[cfg(test)]

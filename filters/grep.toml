@@ -1,0 +1,31 @@
+command = "grep"
+
+# Drop matches whose path is inside a noisy directory. `grep -r` is a
+# common LLM tool call; without this filter, results are dominated by
+# matches in target/ / node_modules/ / .git/ blobs.
+[[rules]]
+type = "suppress_regex"
+pattern = "(^|/)(node_modules|target|dist|build|coverage|vendor|venv|htmlcov|__pycache__|buck-out)(/|:)"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "(^|/)\\.(git|next|cache|venv|tox|nyc_output|pytest_cache|mypy_cache|ruff_cache|gradle|idea|vscode|eggs)(/|:)"
+
+# Drop "Binary file ... matches" noise — `grep` reports binary hits but
+# the LLM almost never wants that thread to continue.
+[[rules]]
+type = "suppress_regex"
+pattern = "^Binary file .* matches$"
+
+# Drop the `grep: <path>: Permission denied` and "No such file" warnings.
+[[rules]]
+type = "suppress_regex"
+pattern = "^grep: .*: Permission denied"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^grep: .*: No such file or directory"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^grep: .*: Is a directory"
