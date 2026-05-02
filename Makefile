@@ -40,6 +40,12 @@ deploy-local:
 demo-payment:
 	@scripts/demo-payment.sh
 
+# Deploy MeshEscrow to any EVM chain (Base, your own Conduit/Caldera
+# rollup, anvil, ...). Set RPC_URL + PRIVATE_KEY_FILE in the env.
+# See deploy/conduit.md for the Conduit-specific walkthrough.
+deploy-mesh:
+	@scripts/deploy-mesh.sh
+
 # ---------- Web dashboard (React + Vite) ----------
 # Lives at crates/tkr-server/web/. Build output is a single inlined HTML
 # at crates/tkr-server/static/index.html, embedded into tkr-server via
