@@ -5,3 +5,15 @@ subcommands = ["logs", "get", "describe"]
 [[rules]]
 type = "suppress_regex"
 pattern = "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+Z?\\s+stderr\\s+F\\s"
+
+# Aggregate repeated log lines (same message, different timestamps) by
+# their leading 80-char signature.
+[[rules]]
+type = "dedup_with_count"
+pattern = "^(.{1,80})"
+key_capture = 1
+
+# Defensive line cap for verbose `describe` output.
+[[rules]]
+type = "truncate_long"
+max_len = 240

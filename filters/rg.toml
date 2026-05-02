@@ -24,3 +24,22 @@ pattern = "^[\\d.]+ seconds spent searching"
 [[rules]]
 type = "suppress_regex"
 pattern = "^[\\d.]+ seconds$"
+
+# Cap long match lines (minified JS, JSON blobs).
+[[rules]]
+type = "truncate_long"
+max_len = 200
+
+# Group remaining matches by file. rg emits "path:line:content".
+[[rules]]
+type = "group_by_capture"
+pattern = "^([^:]+):"
+key_capture = 1
+cap_per_key = 2
+total_cap = 50
+header = "rg matches by file:"
+
+# Empty-result marker. Must be final.
+[[rules]]
+type = "empty_result_substitute"
+message = "0 rg matches"

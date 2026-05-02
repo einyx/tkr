@@ -69,3 +69,8 @@ pattern = "^\\s*Doc-tests "
 [[rules]]
 type = "suppress_regex"
 pattern = "\\(\\*\\)$"
+
+# Defensive cap for long error messages, type errors with full paths.
+[[rules]]
+type = "truncate_long"
+max_len = 240

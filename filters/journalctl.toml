@@ -12,3 +12,16 @@ pattern = "^-- Reboot --"
 [[rules]]
 type = "suppress_regex"
 pattern = "^-- No entries --"
+
+# Aggregate repeated service messages — journalctl is dominated by
+# noisy daemons retrying. Key by the message text past the timestamp
+# and PID (first 100 non-prefix chars).
+[[rules]]
+type = "dedup_with_count"
+pattern = "^\\S+\\s+\\d{2}:\\d{2}:\\d{2}\\s+\\S+\\s+\\S+:\\s+(.{1,100})"
+key_capture = 1
+
+# Defensive cap for stack traces / verbose dumps.
+[[rules]]
+type = "truncate_long"
+max_len = 240

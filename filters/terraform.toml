@@ -33,3 +33,8 @@ pattern = "^- Finding "
 [[rules]]
 type = "suppress_regex"
 pattern = "^- Using previously-installed "
+
+# Defensive cap for long resource attribute lines in plan output.
+[[rules]]
+type = "truncate_long"
+max_len = 240
