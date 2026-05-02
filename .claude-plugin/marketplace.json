@@ -1,0 +1,14 @@
+{
+  "name": "einyx-tkr",
+  "owner": {
+    "name": "einyx",
+    "url": "https://github.com/einyx"
+  },
+  "plugins": [
+    {
+      "name": "tkr",
+      "source": ".",
+      "description": "Token-saving code-navigation MCP tools + Bash output filter hooks"
+    }
+  ]
+}
