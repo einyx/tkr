@@ -154,6 +154,104 @@ pub enum Commands {
     /// summaries instead of raw file contents. Registered automatically
     /// by `tkr install`.
     Mcp,
+    /// JobBoard — agent job marketplace. Post tasks with a locked reward,
+    /// take open tasks, complete them, accept results.
+    Job {
+        #[command(subcommand)]
+        cmd: JobCmd,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum JobCmd {
+    /// Post a new job. Reward is locked in escrow until the job is
+    /// accepted, cancelled, or claimed via timeout.
+    Post {
+        /// Short ≤256-char preview shown on chain. Full spec is delivered
+        /// off-chain (mesh DM) — its keccak goes in `--spec-hash`.
+        #[arg(long)]
+        preview: String,
+        /// keccak256 hash of the full spec, hex 0x...
+        #[arg(long)]
+        spec_hash: String,
+        /// Reward in wei (ETH) or token base units (ERC-20).
+        #[arg(long)]
+        reward: String,
+        /// Token contract address. address(0) = native ETH.
+        #[arg(long, default_value = "0x0000000000000000000000000000000000000000")]
+        token: String,
+        /// Deadline as a unix timestamp in seconds.
+        #[arg(long)]
+        deadline: u64,
+        /// Address of the deployed JobBoard contract.
+        #[arg(long)]
+        board: String,
+        /// EVM JSON-RPC URL.
+        #[arg(long)]
+        rpc_url: String,
+        /// Path to private key file.
+        #[arg(long)]
+        key_file: std::path::PathBuf,
+    },
+    /// List open jobs from the JobBoard. Reads `JobPosted` events and
+    /// filters out jobs that are already taken / accepted / cancelled.
+    List {
+        #[arg(long)]
+        board: String,
+        #[arg(long)]
+        rpc_url: String,
+        /// Cap the number of jobs printed.
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+    },
+    /// Take an open job by id.
+    Take {
+        #[arg(long)]
+        id: u64,
+        #[arg(long)]
+        board: String,
+        #[arg(long)]
+        rpc_url: String,
+        #[arg(long)]
+        key_file: std::path::PathBuf,
+    },
+    /// Submit a completed job's result hash. Worker only.
+    Complete {
+        #[arg(long)]
+        id: u64,
+        /// keccak256 hash of the result payload, hex 0x...
+        #[arg(long)]
+        result_hash: String,
+        #[arg(long)]
+        board: String,
+        #[arg(long)]
+        rpc_url: String,
+        #[arg(long)]
+        key_file: std::path::PathBuf,
+    },
+    /// Accept a completed job and release the reward to the worker.
+    /// Poster only.
+    Accept {
+        #[arg(long)]
+        id: u64,
+        #[arg(long)]
+        board: String,
+        #[arg(long)]
+        rpc_url: String,
+        #[arg(long)]
+        key_file: std::path::PathBuf,
+    },
+    /// Cancel an Open job (poster only, before any take). Refunds escrow.
+    Cancel {
+        #[arg(long)]
+        id: u64,
+        #[arg(long)]
+        board: String,
+        #[arg(long)]
+        rpc_url: String,
+        #[arg(long)]
+        key_file: std::path::PathBuf,
+    },
 }
 
 #[derive(Subcommand, Debug, Clone)]

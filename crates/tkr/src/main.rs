@@ -16,7 +16,7 @@ mod stream;
 mod util;
 
 use clap::Parser;
-use cli::{AdminCmd, AgentCmd, Cli, Commands, HookTarget, MeshCmd, PayCmd, VaultCmd};
+use cli::{AdminCmd, AgentCmd, Cli, Commands, HookTarget, JobCmd, MeshCmd, PayCmd, VaultCmd};
 use std::io::IsTerminal;
 
 fn vault_main(cmd: Option<VaultCmd>) -> ! {
@@ -217,6 +217,18 @@ fn main() -> anyhow::Result<()> {
             }
         },
         Some(Commands::Mcp) => tkr_mcp::Server::run(),
+        Some(Commands::Job { cmd }) => match cmd {
+            JobCmd::Post { preview, spec_hash, reward, token, deadline, board, rpc_url, key_file } => {
+                cmds::jobs::post(&preview, &spec_hash, &reward, &token, deadline, &board, &rpc_url, &key_file)
+            }
+            JobCmd::List { board, rpc_url, limit } => cmds::jobs::list(&board, &rpc_url, limit),
+            JobCmd::Take { id, board, rpc_url, key_file } => cmds::jobs::take(id, &board, &rpc_url, &key_file),
+            JobCmd::Complete { id, result_hash, board, rpc_url, key_file } => {
+                cmds::jobs::complete(id, &result_hash, &board, &rpc_url, &key_file)
+            }
+            JobCmd::Accept { id, board, rpc_url, key_file } => cmds::jobs::accept(id, &board, &rpc_url, &key_file),
+            JobCmd::Cancel { id, board, rpc_url, key_file } => cmds::jobs::cancel(id, &board, &rpc_url, &key_file),
+        },
         Some(Commands::Watch) => cmds::watch::run(),
         Some(Commands::Gain {
             breakdown,
