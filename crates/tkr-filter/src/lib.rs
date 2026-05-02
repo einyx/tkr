@@ -363,4 +363,20 @@ message = "0 matches"
         assert!(flushed.contains("find results by directory:"), "got {flushed:?}");
         assert!(flushed.contains("./src"), "got {flushed:?}");
     }
+
+    #[test]
+    fn docker_filter_pack_dedups_repeats() {
+        let toml = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../filters/docker.toml"),
+        )
+        .expect("read docker.toml");
+        let mut p = FilterPlugin::from_toml(&toml).expect("parse");
+        let line = "container web restarted unexpectedly with exit code 137";
+        for i in 0..3 {
+            p.filter(line, "docker", "logs", i);
+        }
+        let flushed = p.flush();
+        assert!(flushed.contains("×3"), "got {flushed:?}");
+    }
 }
