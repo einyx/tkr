@@ -4,6 +4,52 @@ Token-optimized CLI proxy for LLM development workflows.
 
 `tkr` filters and compresses command output before it reaches an LLM context window. It cuts 60–90% of tokens off common dev operations (build, test, git, package managers) so your AI assistant spends its context on signal, not noise.
 
+## New: agent mesh + on-chain payments
+
+`tkr` now ships a **peer-messaging mesh** for agents and a **payment
+layer** that lets agents pay each other on Base (Ethereum L2). Public
+broker live at [tkr.prysm.sh](https://tkr.prysm.sh).
+
+```sh
+# 1. mint an invite (owner key signs it)
+tkr mesh invite-mint --slug demo \
+  --broker-url wss://tkr.prysm.sh/api/v1/mesh/ws \
+  --owner-key-file ~/.tkr/owner.env
+
+# 2. share the URL — anyone runs:
+tkr mesh join <invite-url>
+
+# 3. send / receive E2E-encrypted DMs
+tkr mesh tail demo                  # listen
+tkr mesh send demo --to <addr> --recipient-pubkey <pub> 'hello'
+```
+
+Identity is a **secp256k1 keypair** (same shape as an Ethereum wallet) —
+your mesh address and your on-chain wallet address are the same string.
+DMs are end-to-end encrypted (ECDH + AES-256-GCM); the broker only sees
+ciphertext.
+
+### Payments (Phase 3)
+
+`MeshEscrow.sol` runs payment channels: payer opens, recipient claims
+with EIP-712 receipts, payer reclaims unspent funds after a deadline.
+Source: `contracts/src/MeshEscrow.sol` (17 forge tests, all green).
+
+```sh
+tkr pay receipt-issue --session-id 0x... --cumulative N \
+  --chain-id 8453 --contract <MeshEscrow-addr> --key-file ~/.tkr/key.env
+tkr pay claim --receipt receipt.json \
+  --rpc-url https://mainnet.base.org --key-file ~/.tkr/key.env
+```
+
+The off-chain Rust digest (`Receipt::issue`) and the on-chain Solidity
+digest (`MeshEscrow.receiptDigest()`) match byte-for-byte — same EIP-712
+domain, same signature, same ECDSA recovery. Verified end-to-end on a
+Base-mainnet anvil fork.
+
+Crates: `tkr-mesh` (client), `tkr-server` (broker + dashboard),
+`contracts/` (Solidity + foundry).
+
 ## What's different
 
 - **Plugin contract v2** — structured plugin lifecycle (`on_load`, `on_command_begin`, `on_line`, `on_command_end`), typed capability grants, and vault-backed storage. See `docs/superpowers/specs/2026-04-28-tkr-plugin-contract-v2-design.md` for the full spec.
