@@ -30,6 +30,14 @@ pattern = "^grep: .*: No such file or directory"
 type = "suppress_regex"
 pattern = "^grep: .*: Is a directory"
 
+# Truncate over-long match lines (minified JS, JSON blobs, generated
+# code) before grouping. ContextWindow would be ideal but needs the
+# user's search pattern — which filter rules can't see — so a hard cap
+# is the practical equivalent of rtk's max_line_len.
+[[rules]]
+type = "truncate_long"
+max_len = 200
+
 # Group remaining matches by file (the "path:" prefix grep emits).
 # Caps at 2 lines per file, 50 total — beyond which we emit "(+N more)"
 # rather than streaming everything. This is the single biggest win on
