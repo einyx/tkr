@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, type MeshStatus } from "../api";
+import { JobsPanel } from "./JobsPanel";
 
 interface Props {
   onSignIn: () => void;
@@ -356,6 +357,8 @@ tkr mesh send demo --to <addr> --recipient-pubkey <pub> 'hi'`}</pre>
           </div>
         </div>
       </section>
+
+      <JobsPanel />
 
       <section className="lp-features-section">
         <h2 className="lp-section-title">what's inside</h2>

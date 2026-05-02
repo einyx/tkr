@@ -313,3 +313,56 @@ pre {
   color: var(--muted);
 }
 .lp-footer a { color: var(--accent-2); }
+
+/* jobs panel */
+.lp-jobs {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  margin-top: 8px;
+  overflow-x: auto;
+}
+.lp-jobs-row {
+  display: grid;
+  grid-template-columns: 36px 90px 100px 80px 80px 60px 1fr;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  align-items: center;
+}
+.lp-jobs-row:last-child { border-bottom: none; }
+.lp-jobs-head {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: var(--bg);
+}
+.lp-job-status {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  text-align: center;
+  width: fit-content;
+}
+.lp-job-open       { color: var(--accent);   border-color: var(--accent); }
+.lp-job-taken      { color: var(--accent-2); border-color: var(--accent-2); }
+.lp-job-completed  { color: #f3b562;         border-color: #f3b562; }
+.lp-job-accepted   { color: var(--muted);    border-color: var(--muted); }
+.lp-job-cancelled  { color: var(--muted);    border-color: var(--muted); opacity: 0.6; }
+.lp-job-timedout   { color: var(--error);    border-color: var(--error); }
+.lp-job-preview {
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 720px) {
+  .lp-jobs-row { grid-template-columns: 36px 90px 100px 1fr; font-size: 11px; }
+  .lp-jobs-row > :nth-child(4),
+  .lp-jobs-row > :nth-child(5),
+  .lp-jobs-row > :nth-child(6) { display: none; }
+}

@@ -162,6 +162,12 @@ pub enum Commands {
     },
 }
 
+/// Public tkr devnet defaults — used when --rpc-url / --board aren't
+/// passed and the corresponding env var isn't set. These point at the
+/// live devnet at tkr.prysm.sh; override for any other chain.
+pub const DEFAULT_RPC_URL: &str = "https://tkr.prysm.sh/api/v1/chain/rpc";
+pub const DEFAULT_JOB_BOARD: &str = "0x9A676e781A523b5d0C0e43731313A708CB607508";
+
 #[derive(Subcommand, Debug, Clone)]
 pub enum JobCmd {
     /// Post a new job. Reward is locked in escrow until the job is
@@ -183,22 +189,21 @@ pub enum JobCmd {
         /// Deadline as a unix timestamp in seconds.
         #[arg(long)]
         deadline: u64,
-        /// Address of the deployed JobBoard contract.
-        #[arg(long)]
+        /// JobBoard contract address. Env: TKR_JOB_BOARD. Default: tkr devnet.
+        #[arg(long, env = "TKR_JOB_BOARD", default_value = DEFAULT_JOB_BOARD)]
         board: String,
-        /// EVM JSON-RPC URL.
-        #[arg(long)]
+        /// EVM JSON-RPC URL. Env: TKR_RPC_URL. Default: tkr devnet.
+        #[arg(long, env = "TKR_RPC_URL", default_value = DEFAULT_RPC_URL)]
         rpc_url: String,
         /// Path to private key file.
         #[arg(long)]
         key_file: std::path::PathBuf,
     },
-    /// List open jobs from the JobBoard. Reads `JobPosted` events and
-    /// filters out jobs that are already taken / accepted / cancelled.
+    /// List open jobs from the JobBoard.
     List {
-        #[arg(long)]
+        #[arg(long, env = "TKR_JOB_BOARD", default_value = DEFAULT_JOB_BOARD)]
         board: String,
-        #[arg(long)]
+        #[arg(long, env = "TKR_RPC_URL", default_value = DEFAULT_RPC_URL)]
         rpc_url: String,
         /// Cap the number of jobs printed.
         #[arg(long, default_value_t = 50)]
@@ -208,9 +213,9 @@ pub enum JobCmd {
     Take {
         #[arg(long)]
         id: u64,
-        #[arg(long)]
+        #[arg(long, env = "TKR_JOB_BOARD", default_value = DEFAULT_JOB_BOARD)]
         board: String,
-        #[arg(long)]
+        #[arg(long, env = "TKR_RPC_URL", default_value = DEFAULT_RPC_URL)]
         rpc_url: String,
         #[arg(long)]
         key_file: std::path::PathBuf,
@@ -222,9 +227,9 @@ pub enum JobCmd {
         /// keccak256 hash of the result payload, hex 0x...
         #[arg(long)]
         result_hash: String,
-        #[arg(long)]
+        #[arg(long, env = "TKR_JOB_BOARD", default_value = DEFAULT_JOB_BOARD)]
         board: String,
-        #[arg(long)]
+        #[arg(long, env = "TKR_RPC_URL", default_value = DEFAULT_RPC_URL)]
         rpc_url: String,
         #[arg(long)]
         key_file: std::path::PathBuf,
@@ -234,9 +239,9 @@ pub enum JobCmd {
     Accept {
         #[arg(long)]
         id: u64,
-        #[arg(long)]
+        #[arg(long, env = "TKR_JOB_BOARD", default_value = DEFAULT_JOB_BOARD)]
         board: String,
-        #[arg(long)]
+        #[arg(long, env = "TKR_RPC_URL", default_value = DEFAULT_RPC_URL)]
         rpc_url: String,
         #[arg(long)]
         key_file: std::path::PathBuf,
@@ -245,9 +250,9 @@ pub enum JobCmd {
     Cancel {
         #[arg(long)]
         id: u64,
-        #[arg(long)]
+        #[arg(long, env = "TKR_JOB_BOARD", default_value = DEFAULT_JOB_BOARD)]
         board: String,
-        #[arg(long)]
+        #[arg(long, env = "TKR_RPC_URL", default_value = DEFAULT_RPC_URL)]
         rpc_url: String,
         #[arg(long)]
         key_file: std::path::PathBuf,
