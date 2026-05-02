@@ -141,12 +141,16 @@ contract MeshEscrowTest is Test {
         vm.prank(payer);
         escrow.open{value: 1 ether}(sid, recipient, address(0), 1 ether, uint64(block.timestamp + 1 days));
 
+        bytes memory firstSig = _signReceipt(sid, 0.5 ether, payerKey);
         vm.prank(recipient);
-        escrow.claim(sid, 0.5 ether, _signReceipt(sid, 0.5 ether, payerKey));
+        escrow.claim(sid, 0.5 ether, firstSig);
 
+        // Pre-compute the signature so the receiptDigest() view call doesn't
+        // consume vm.expectRevert before the actual claim() runs.
+        bytes memory secondSig = _signReceipt(sid, 0.3 ether, payerKey);
         vm.prank(recipient);
         vm.expectRevert(MeshEscrow.AmountNotIncreasing.selector);
-        escrow.claim(sid, 0.3 ether, _signReceipt(sid, 0.3 ether, payerKey));
+        escrow.claim(sid, 0.3 ether, secondSig);
     }
 
     function test_claim_revert_exceeds_deposit() public {
@@ -154,9 +158,10 @@ contract MeshEscrowTest is Test {
         vm.prank(payer);
         escrow.open{value: 1 ether}(sid, recipient, address(0), 1 ether, uint64(block.timestamp + 1 days));
 
+        bytes memory sig = _signReceipt(sid, 2 ether, payerKey);
         vm.prank(recipient);
         vm.expectRevert(MeshEscrow.ExceedsDeposit.selector);
-        escrow.claim(sid, 2 ether, _signReceipt(sid, 2 ether, payerKey));
+        escrow.claim(sid, 2 ether, sig);
     }
 
     function test_claim_revert_wrong_signer() public {
@@ -164,17 +169,19 @@ contract MeshEscrowTest is Test {
         vm.prank(payer);
         escrow.open{value: 1 ether}(sid, recipient, address(0), 1 ether, uint64(block.timestamp + 1 days));
 
-        // Recipient signs their own receipt (forgery attempt)
+        // Recipient signs their own receipt (forgery attempt).
+        bytes memory sig = _signReceipt(sid, 1 ether, recipientKey);
         vm.prank(recipient);
         vm.expectRevert(MeshEscrow.BadSignature.selector);
-        escrow.claim(sid, 1 ether, _signReceipt(sid, 1 ether, recipientKey));
+        escrow.claim(sid, 1 ether, sig);
     }
 
     function test_claim_revert_missing_channel() public {
         bytes32 sid = bytes32(uint256(15));
+        bytes memory sig = _signReceipt(sid, 1 ether, payerKey);
         vm.prank(recipient);
         vm.expectRevert(MeshEscrow.ChannelMissing.selector);
-        escrow.claim(sid, 1 ether, _signReceipt(sid, 1 ether, payerKey));
+        escrow.claim(sid, 1 ether, sig);
     }
 
     // ---------- Close ----------
