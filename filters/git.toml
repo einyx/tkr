@@ -119,3 +119,9 @@ replace = " $1f +$2"
 type = "truncate_match"
 pattern = "^ (\\d+) files? changed, (\\d+) deletions?\\(-\\)"
 replace = " $1f -$2"
+
+# Defensive line cap. Generated diffs and merge-conflict markers can
+# produce arbitrarily long lines that survive earlier rules.
+[[rules]]
+type = "truncate_long"
+max_len = 200
