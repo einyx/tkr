@@ -166,7 +166,7 @@ pub enum Commands {
 /// passed and the corresponding env var isn't set. These point at the
 /// live devnet at tkr.prysm.sh; override for any other chain.
 pub const DEFAULT_RPC_URL: &str = "https://tkr.prysm.sh/api/v1/chain/rpc";
-pub const DEFAULT_JOB_BOARD: &str = "0x9A676e781A523b5d0C0e43731313A708CB607508";
+pub const DEFAULT_JOB_BOARD: &str = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum JobCmd {

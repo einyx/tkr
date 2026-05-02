@@ -6,7 +6,7 @@ import { useWallet, pad32 } from "../wallet";
 // override via window.__TKR_JOB_BOARD or change this constant.
 const JOB_BOARD =
   (typeof window !== "undefined" && (window as { __TKR_JOB_BOARD?: string }).__TKR_JOB_BOARD) ||
-  "0x9A676e781A523b5d0C0e43731313A708CB607508";
+  "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
 
 // Function selectors (4-byte keccak prefixes), precomputed via `cast sig`:
 //   jobCount()                         → 0x4c5d8a0f
