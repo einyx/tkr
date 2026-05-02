@@ -71,6 +71,7 @@ contract MeshEscrow is EIP712, ReentrancyGuard {
     error BadSignature();
     error AmountNotIncreasing();
     error ExceedsDeposit();
+    error LengthMismatch();
 
     constructor() EIP712("tkr-mesh", "1") {}
 
@@ -136,6 +137,42 @@ contract MeshEscrow is EIP712, ReentrancyGuard {
 
         _payOut(ch.token, ch.recipient, payout);
         emit Claimed(sessionId, cumulative, payout);
+    }
+
+    // ---------- Batched claim ----------
+
+    /// @notice Settle multiple receipts in one transaction. Each receipt
+    ///         must (a) name a channel whose recipient is `msg.sender`, and
+    ///         (b) carry a valid payer signature for the cumulative amount.
+    ///         Reverts if any element fails — the batch is all-or-nothing
+    ///         so a malformed entry can't strand partial payouts. Designed
+    ///         for an off-chain aggregator that collects N receipts (same
+    ///         recipient across many sessions) and amortizes the per-tx
+    ///         overhead. ETH and ERC-20 channels can mix in one batch.
+    function claimBatch(
+        bytes32[] calldata sessionIds,
+        uint256[] calldata cumulatives,
+        bytes[] calldata signatures
+    ) external nonReentrant {
+        uint256 n = sessionIds.length;
+        if (n != cumulatives.length || n != signatures.length) revert LengthMismatch();
+        for (uint256 i = 0; i < n; i++) {
+            Channel storage ch = channels[sessionIds[i]];
+            if (ch.payer == address(0)) revert ChannelMissing();
+            if (msg.sender != ch.recipient) revert NotRecipient();
+            if (cumulatives[i] <= ch.paid) revert AmountNotIncreasing();
+            if (cumulatives[i] > ch.deposit) revert ExceedsDeposit();
+
+            bytes32 digest = _hashTypedDataV4(
+                keccak256(abi.encode(RECEIPT_TYPEHASH, sessionIds[i], cumulatives[i]))
+            );
+            if (ECDSA.recover(digest, signatures[i]) != ch.payer) revert BadSignature();
+
+            uint256 payout = cumulatives[i] - ch.paid;
+            ch.paid = cumulatives[i];
+            _payOut(ch.token, ch.recipient, payout);
+            emit Claimed(sessionIds[i], cumulatives[i], payout);
+        }
     }
 
     // ---------- Close ----------

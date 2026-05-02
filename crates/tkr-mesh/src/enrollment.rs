@@ -167,9 +167,16 @@ pub fn enroll(
         .timeout(Duration::from_secs(JOIN_TIMEOUT_SECS))
         .build();
 
-    let response = agent
+    let mut request = agent
         .post(&join_url)
-        .set("content-type", "application/json")
+        .set("content-type", "application/json");
+    // Brokers that gate /join behind a session cookie (e.g. tkr-server
+    // post-hardening) accept the same TKR_MESH_WS_COOKIE used for the WS
+    // upgrade. Forward it on enrollment too.
+    if let Ok(cookie) = std::env::var("TKR_MESH_WS_COOKIE") {
+        request = request.set("cookie", &format!("tkr_session={cookie}"));
+    }
+    let response = request
         .send_json(serde_json::to_value(&body).map_err(|e| Error::Encoding(e.to_string()))?);
 
     let resp = match response {

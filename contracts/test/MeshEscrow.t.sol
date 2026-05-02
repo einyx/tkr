@@ -270,6 +270,73 @@ contract MeshEscrowTest is Test {
         assertEq(payer.balance - before, 1 ether);
     }
 
+    // ---------- Batched claim ----------
+
+    function test_claim_batch_settles_n_in_one_tx() public {
+        // Open 3 ETH channels, all funded by `payer`, all to `recipient`.
+        bytes32 sidA = bytes32(uint256(40));
+        bytes32 sidB = bytes32(uint256(41));
+        bytes32 sidC = bytes32(uint256(42));
+        uint64 deadline = uint64(block.timestamp + 1 days);
+        vm.startPrank(payer);
+        escrow.open{value: 1 ether}(sidA, recipient, address(0), 1 ether, deadline);
+        escrow.open{value: 1 ether}(sidB, recipient, address(0), 1 ether, deadline);
+        escrow.open{value: 1 ether}(sidC, recipient, address(0), 1 ether, deadline);
+        vm.stopPrank();
+
+        bytes32[] memory ids = new bytes32[](3);
+        uint256[] memory cums = new uint256[](3);
+        bytes[] memory sigs = new bytes[](3);
+        ids[0] = sidA; cums[0] = 0.3 ether;
+        ids[1] = sidB; cums[1] = 0.4 ether;
+        ids[2] = sidC; cums[2] = 0.5 ether;
+        sigs[0] = _signReceipt(sidA, 0.3 ether, payerKey);
+        sigs[1] = _signReceipt(sidB, 0.4 ether, payerKey);
+        sigs[2] = _signReceipt(sidC, 0.5 ether, payerKey);
+
+        uint256 before = recipient.balance;
+        vm.prank(recipient);
+        escrow.claimBatch(ids, cums, sigs);
+        assertEq(recipient.balance - before, 1.2 ether);
+    }
+
+    function test_claim_batch_revert_on_bad_signature_rolls_back_all() public {
+        bytes32 sidA = bytes32(uint256(50));
+        bytes32 sidB = bytes32(uint256(51));
+        uint64 deadline = uint64(block.timestamp + 1 days);
+        vm.startPrank(payer);
+        escrow.open{value: 1 ether}(sidA, recipient, address(0), 1 ether, deadline);
+        escrow.open{value: 1 ether}(sidB, recipient, address(0), 1 ether, deadline);
+        vm.stopPrank();
+
+        bytes32[] memory ids = new bytes32[](2);
+        uint256[] memory cums = new uint256[](2);
+        bytes[] memory sigs = new bytes[](2);
+        ids[0] = sidA; cums[0] = 0.3 ether;
+        ids[1] = sidB; cums[1] = 0.4 ether;
+        sigs[0] = _signReceipt(sidA, 0.3 ether, payerKey);
+        // Second sig is forged with the recipient's key — must abort the whole batch.
+        sigs[1] = _signReceipt(sidB, 0.4 ether, recipientKey);
+
+        uint256 before = recipient.balance;
+        vm.prank(recipient);
+        vm.expectRevert(MeshEscrow.BadSignature.selector);
+        escrow.claimBatch(ids, cums, sigs);
+        assertEq(recipient.balance, before, "no partial payout on revert");
+        // Channel A's `paid` must still be 0 — atomic batch, not best-effort.
+        (,,,, uint256 paidA,) = escrow.getChannel(sidA);
+        assertEq(paidA, 0);
+    }
+
+    function test_claim_batch_length_mismatch_reverts() public {
+        bytes32[] memory ids = new bytes32[](2);
+        uint256[] memory cums = new uint256[](1);
+        bytes[] memory sigs = new bytes[](2);
+        vm.prank(recipient);
+        vm.expectRevert(MeshEscrow.LengthMismatch.selector);
+        escrow.claimBatch(ids, cums, sigs);
+    }
+
     // ---------- Replay safety: a signed receipt for one session cannot be
     // reused on a different session ----------
 

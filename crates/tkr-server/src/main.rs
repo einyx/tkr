@@ -46,6 +46,12 @@ struct StateInner {
     vault: Mutex<BTreeMap<String, StoredSession>>,
     admin_password: String,
     broker: Arc<broker::BrokerState>,
+    /// Pending receipts queued for batched on-chain settlement. Keyed by
+    /// recipient address (lowercase 0x…). The aggregator service drains
+    /// each bucket into a single MeshEscrow.claimBatch() call when either
+    /// (a) the bucket reaches `AGGREGATOR_BATCH_SIZE`, or (b) the oldest
+    /// receipt in the bucket is older than `AGGREGATOR_MAX_AGE_SECS`.
+    aggregator: Mutex<BTreeMap<String, Vec<QueuedReceipt>>>,
     /// Upstream EVM JSON-RPC URL. When set, /api/v1/chain/rpc proxies POST
     /// bodies here. Configure via TKR_CHAIN_RPC_URL; defaults to none
     /// (the route returns 503 unless configured).
@@ -181,6 +187,7 @@ async fn async_main() -> anyhow::Result<()> {
             vault: Mutex::new(BTreeMap::new()),
             admin_password,
             broker: broker::BrokerState::new(),
+            aggregator: Mutex::new(BTreeMap::new()),
             chain_rpc_url: std::env::var("TKR_CHAIN_RPC_URL").ok().filter(|s| !s.is_empty()),
         }),
     };
@@ -242,6 +249,8 @@ async fn route(req: Request<Incoming>, state: AppState) -> Result<Response<Body>
             state.inner.broker.status(),
         ),
         (&Method::POST, "/api/v1/chain/rpc") => handle_chain_rpc(req, state).await,
+        (&Method::POST, "/api/v1/aggregator/queue") => handle_aggregator_queue(req, state).await,
+        (&Method::GET, "/api/v1/aggregator/pending") => handle_aggregator_pending(&req, state),
         (&Method::POST, "/api/v1/ingest") => handle_ingest(req, state).await,
         (&Method::GET, "/api/v1/sessions") => handle_list_sessions(&req, state),
         (&Method::GET, path)
@@ -587,6 +596,148 @@ async fn handle_mesh_ws(req: Request<Incoming>, state: AppState) -> Response<Bod
     );
     apply_cors_headers(headers, &HeaderMap::new());
     builder.body(Full::new(Bytes::new())).expect("response")
+}
+
+// ---------- Aggregator (batched receipt settlement) ----------
+
+/// Maximum receipts per recipient bucket before the aggregator service
+/// should flush via MeshEscrow.claimBatch(). At ~30k gas saved per claim
+/// vs a single tx, batches of 4-8 hit the gas/latency sweet spot.
+const AGGREGATOR_BATCH_SIZE: usize = 8;
+
+/// Maximum age of the oldest queued receipt before the aggregator should
+/// flush even if the bucket isn't full. Keeps p99 latency bounded.
+const AGGREGATOR_MAX_AGE_SECS: u64 = 60;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct QueuedReceipt {
+    /// 0x-prefixed bytes32 hex.
+    #[serde(rename = "sessionId")]
+    session_id: String,
+    /// Decimal string (uint256-safe).
+    cumulative: String,
+    /// 0x-prefixed 65-byte signature.
+    signature: String,
+    /// 0x-prefixed lowercase recipient address (== msg.sender on claim).
+    recipient: String,
+    /// EVM chain id the receipt was signed for.
+    #[serde(rename = "chainId")]
+    chain_id: u64,
+    /// MeshEscrow contract address the receipt is valid against.
+    contract: String,
+    /// Server-assigned unix-secs queue entry time. Used by the flush
+    /// daemon to honor AGGREGATOR_MAX_AGE_SECS. Filled in by the handler;
+    /// any client-supplied value is ignored.
+    #[serde(rename = "queuedAt", default)]
+    queued_at: u64,
+}
+
+async fn handle_aggregator_queue(req: Request<Incoming>, state: AppState) -> Response<Body> {
+    let origin_headers = req.headers().clone();
+    if session_cookie(&origin_headers)
+        .and_then(|sid| {
+            state
+                .inner
+                .sessions
+                .lock()
+                .expect("sessions lock")
+                .get(&sid)
+                .cloned()
+        })
+        .is_none()
+    {
+        return unauth(&req);
+    }
+    let payload: serde_json::Value = match read_json(req).await {
+        Ok(v) => v,
+        Err(_) => {
+            return json_error(
+                StatusCode::BAD_REQUEST,
+                "invalid_json",
+                "request body must be valid json",
+                &origin_headers,
+            )
+        }
+    };
+    let mut entry: QueuedReceipt = match serde_json::from_value(payload) {
+        Ok(v) => v,
+        Err(e) => {
+            return json_error(
+                StatusCode::BAD_REQUEST,
+                "invalid_payload",
+                &format!(
+                    "expected {{sessionId, cumulative, signature, recipient, chainId, contract}}: {e}"
+                ),
+                &origin_headers,
+            )
+        }
+    };
+    entry.queued_at = unix_ts();
+    entry.recipient = entry.recipient.to_ascii_lowercase();
+
+    let bucket_key = entry.recipient.clone();
+    let (bucket_size, ready_to_flush) = {
+        let mut agg = state.inner.aggregator.lock().expect("aggregator lock");
+        let bucket = agg.entry(bucket_key.clone()).or_default();
+        bucket.push(entry);
+        let size = bucket.len();
+        let oldest = bucket.first().map(|r| r.queued_at).unwrap_or(unix_ts());
+        let ready = size >= AGGREGATOR_BATCH_SIZE
+            || unix_ts().saturating_sub(oldest) >= AGGREGATOR_MAX_AGE_SECS;
+        (size, ready)
+    };
+
+    json_response(
+        &origin_headers,
+        StatusCode::OK,
+        json!({
+            "ok": true,
+            "recipient": bucket_key,
+            "bucketSize": bucket_size,
+            "readyToFlush": ready_to_flush,
+            "batchSize": AGGREGATOR_BATCH_SIZE,
+            "maxAgeSecs": AGGREGATOR_MAX_AGE_SECS,
+        }),
+    )
+}
+
+fn handle_aggregator_pending(req: &Request<Incoming>, state: AppState) -> Response<Body> {
+    if session_cookie(req.headers())
+        .and_then(|sid| {
+            state
+                .inner
+                .sessions
+                .lock()
+                .expect("sessions lock")
+                .get(&sid)
+                .cloned()
+        })
+        .is_none()
+    {
+        return unauth(req);
+    }
+    let agg = state.inner.aggregator.lock().expect("aggregator lock");
+    let buckets: Vec<serde_json::Value> = agg
+        .iter()
+        .map(|(recipient, receipts)| {
+            json!({
+                "recipient": recipient,
+                "count": receipts.len(),
+                "oldestQueuedAt": receipts.first().map(|r| r.queued_at),
+            })
+        })
+        .collect();
+    let total: usize = agg.values().map(|v| v.len()).sum();
+    json_response(
+        req.headers(),
+        StatusCode::OK,
+        json!({
+            "totalPending": total,
+            "buckets": buckets,
+            "batchSize": AGGREGATOR_BATCH_SIZE,
+            "maxAgeSecs": AGGREGATOR_MAX_AGE_SECS,
+        }),
+    )
 }
 
 async fn handle_chain_rpc(req: Request<Incoming>, state: AppState) -> Response<Body> {
