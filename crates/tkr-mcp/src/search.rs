@@ -189,8 +189,9 @@ struct OutlineSymbol {
 fn outline_internal(bytes: &[u8]) -> Result<Vec<OutlineSymbol>> {
     use tree_sitter::{Parser, Query, QueryCursor};
     let mut parser = Parser::new();
+    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
     parser
-        .set_language(tree_sitter_rust::language())
+        .set_language(&language)
         .map_err(|e| anyhow!("set tree-sitter-rust: {e}"))?;
     let tree = parser
         .parse(bytes, None)
@@ -202,7 +203,7 @@ fn outline_internal(bytes: &[u8]) -> Result<Vec<OutlineSymbol>> {
         (trait_item name: (type_identifier) @trait.name) @trait
         (mod_item name: (identifier) @mod.name) @mod
     "#;
-    let query = Query::new(tree_sitter_rust::language(), query_str)
+    let query = Query::new(&language, query_str)
         .map_err(|e| anyhow!("compile query: {e}"))?;
     let mut cursor = QueryCursor::new();
     let mut out = Vec::new();
@@ -213,7 +214,7 @@ fn outline_internal(bytes: &[u8]) -> Result<Vec<OutlineSymbol>> {
         let mut end_line = 0usize;
         let mut name: Option<String> = None;
         for cap in m.captures {
-            let cap_name = capture_names[cap.index as usize].as_str();
+            let cap_name = capture_names[cap.index as usize];
             if cap_name.contains('.') {
                 if let Ok(s) = std::str::from_utf8(&bytes[cap.node.byte_range()]) {
                     name = Some(s.to_string());

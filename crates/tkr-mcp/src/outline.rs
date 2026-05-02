@@ -28,16 +28,16 @@ pub fn render_outline(path: &Path) -> Result<String> {
 
     let symbols = match path.extension().and_then(|s| s.to_str()) {
         Some("rs") => rust_outline(&bytes)?,
-        Some("py") => language_outline(&bytes, tree_sitter_python::language(), PYTHON_QUERY)?,
-        Some("go") => language_outline(&bytes, tree_sitter_go::language(), GO_QUERY)?,
+        Some("py") => language_outline(&bytes, tree_sitter_python::LANGUAGE.into(), PYTHON_QUERY)?,
+        Some("go") => language_outline(&bytes, tree_sitter_go::LANGUAGE.into(), GO_QUERY)?,
         Some("ts" | "tsx") => language_outline(
             &bytes,
-            tree_sitter_typescript::language_typescript(),
+            tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
             TS_QUERY,
         )?,
         Some("js" | "jsx" | "mjs" | "cjs") => language_outline(
             &bytes,
-            tree_sitter_javascript::language(),
+            tree_sitter_javascript::LANGUAGE.into(),
             JS_QUERY,
         )?,
         _ => Vec::new(),
@@ -73,9 +73,10 @@ pub fn render_outline(path: &Path) -> Result<String> {
 }
 
 fn rust_outline(source: &[u8]) -> Result<Vec<Symbol>> {
+    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
     let mut parser = Parser::new();
     parser
-        .set_language(tree_sitter_rust::language())
+        .set_language(&language)
         .map_err(|e| anyhow!("set tree-sitter-rust: {e}"))?;
     let tree = parser
         .parse(source, None)
@@ -93,7 +94,7 @@ fn rust_outline(source: &[u8]) -> Result<Vec<Symbol>> {
         (static_item name: (identifier) @static.name) @static
         (type_item name: (type_identifier) @type.name) @type
     "#;
-    let query = Query::new(tree_sitter_rust::language(), query_str)
+    let query = Query::new(&language, query_str)
         .map_err(|e| anyhow!("compile query: {e}"))?;
 
     let mut cursor = QueryCursor::new();
@@ -107,7 +108,7 @@ fn rust_outline(source: &[u8]) -> Result<Vec<Symbol>> {
         let mut end_line = 0usize;
         let mut name: Option<String> = None;
         for cap in m.captures {
-            let cap_name = capture_names[cap.index as usize].as_str();
+            let cap_name = capture_names[cap.index as usize];
             if cap_name.contains('.') {
                 // It's a `.name` sub-capture.
                 let bytes = &source[cap.node.byte_range()];
@@ -144,12 +145,12 @@ fn language_outline(
 ) -> Result<Vec<Symbol>> {
     let mut parser = Parser::new();
     parser
-        .set_language(language)
+        .set_language(&language)
         .map_err(|e| anyhow!("set_language: {e}"))?;
     let tree = parser
         .parse(source, None)
         .ok_or_else(|| anyhow!("parse failed"))?;
-    let query = Query::new(language, query_str)
+    let query = Query::new(&language, query_str)
         .map_err(|e| anyhow!("compile query: {e}"))?;
     let mut cursor = QueryCursor::new();
     let mut out = Vec::new();
@@ -160,7 +161,7 @@ fn language_outline(
         let mut end_line = 0usize;
         let mut name: Option<String> = None;
         for cap in m.captures {
-            let cap_name = capture_names[cap.index as usize].as_str();
+            let cap_name = capture_names[cap.index as usize];
             if cap_name.contains('.') {
                 if let Ok(s) = std::str::from_utf8(&source[cap.node.byte_range()]) {
                     name = Some(s.to_string());
