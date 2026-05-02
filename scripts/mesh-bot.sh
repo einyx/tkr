@@ -142,7 +142,9 @@ cmd_start() {
 
     # 4. tail in background — this is what keeps the WSS connection open
     # and ticks "peers online" up by one per tail.
-    nohup env HOME=$pdir "$TKR" mesh tail "$SLUG" \
+    # --reconnect keeps the WSS link up across broker restarts; without it
+    # a single blip drops the bot to "enrolled but not connected" forever.
+    nohup env HOME=$pdir "$TKR" mesh tail "$SLUG" --reconnect \
         >> "$LOGDIR/peer-$i-tail.log" 2>&1 &
     echo $! >> "$PIDFILE"
   done

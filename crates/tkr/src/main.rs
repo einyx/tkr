@@ -208,7 +208,7 @@ fn main() -> anyhow::Result<()> {
             }
             MeshCmd::List => cmds::mesh::list(),
             MeshCmd::Whoami { slug } => cmds::mesh::whoami(&slug),
-            MeshCmd::Tail { slug } => cmds::mesh::tail(&slug),
+            MeshCmd::Tail { slug, reconnect } => cmds::mesh::tail(&slug, reconnect),
             MeshCmd::Send { slug, to, recipient_pubkey, message } => {
                 cmds::mesh::send(&slug, &to, &recipient_pubkey, &message)
             }

@@ -131,7 +131,7 @@ pub fn whoami(slug: &str) -> Result<()> {
 
 // ---------- subcommand: tail ----------
 
-pub fn tail(slug: &str) -> Result<()> {
+pub fn tail(slug: &str, reconnect: bool) -> Result<()> {
     let record = load_record(slug)?;
     let identity = identity_of(&record)?;
     let my_addr = identity.address();
@@ -139,6 +139,9 @@ pub fn tail(slug: &str) -> Result<()> {
     eprintln!("→ tailing mesh {:?}", slug);
     eprintln!("  address {my_addr}");
     eprintln!("  broker  {}", record.broker_url);
+    if reconnect {
+        eprintln!("  reconnect on (1s→60s backoff with jitter)");
+    }
     eprintln!("  press ctrl-c to exit");
     eprintln!();
 
@@ -148,24 +151,49 @@ pub fn tail(slug: &str) -> Result<()> {
         .context("tokio runtime")?;
 
     rt.block_on(async move {
-        let mut client = Client::connect(&record, identity.clone())
-            .await
-            .map_err(|e| anyhow!("connect: {e:?}"))?;
-        eprintln!("✓ connected\n");
+        // Backoff state lives across reconnect attempts. A successful drain
+        // resets it so a long-lived peer that drops once doesn't carry a
+        // 60s penalty into its next blip.
+        let mut backoff_secs: u64 = 1;
         loop {
-            match client.next().await {
-                None => {
-                    eprintln!("(connection closed)");
-                    return Ok::<(), anyhow::Error>(());
+            match Client::connect(&record, identity.clone()).await {
+                Ok(mut client) => {
+                    eprintln!("✓ connected\n");
+                    backoff_secs = 1;
+                    loop {
+                        match client.next().await {
+                            None => {
+                                eprintln!("(connection closed)");
+                                break;
+                            }
+                            Some(Frame::Push(p)) => print_push(&p, &identity),
+                            Some(Frame::Error(e)) => {
+                                eprintln!("[broker error] {} ({})", e.message, e.code);
+                            }
+                            // Ack/Hello/Send shouldn't arrive at the client; ignore.
+                            Some(_) => {}
+                        }
+                    }
                 }
-                Some(Frame::Push(p)) => {
-                    print_push(&p, &identity);
+                Err(e) => {
+                    if !reconnect {
+                        return Err(anyhow!("connect: {e:?}"));
+                    }
+                    eprintln!("[connect failed] {e:?}");
                 }
-                Some(Frame::Error(e)) => {
-                    eprintln!("[broker error] {} ({})", e.message, e.code);
-                }
-                Some(_) => {} // Ack/Hello/Send shouldn't arrive at the client; ignore.
             }
+
+            if !reconnect {
+                return Ok(());
+            }
+
+            // Jitter ±25% to avoid thundering-herd reconnect when N peers all
+            // drop together (e.g. broker restart). rand 0..1 mapped to 0.75..1.25.
+            let jitter: f64 = 0.75 + rand::random::<f64>() * 0.5;
+            let sleep_ms = ((backoff_secs as f64) * 1000.0 * jitter) as u64;
+            eprintln!("  reconnecting in {:.1}s…", sleep_ms as f64 / 1000.0);
+            tokio::time::sleep(std::time::Duration::from_millis(sleep_ms)).await;
+            backoff_secs = (backoff_secs * 2).min(60);
         }
     })
 }

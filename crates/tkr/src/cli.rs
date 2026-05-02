@@ -279,6 +279,11 @@ pub enum MeshCmd {
     Tail {
         /// Mesh slug (from `tkr mesh list`)
         slug: String,
+        /// Reconnect with exponential backoff (1s → 60s, jittered) when the
+        /// broker disconnects, instead of exiting. Use this for long-running
+        /// daemons where you want the WSS link kept up across broker restarts.
+        #[arg(long)]
+        reconnect: bool,
     },
     /// Send a plaintext direct message to a peer in the mesh.
     Send {
