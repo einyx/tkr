@@ -133,6 +133,52 @@
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
   }
+
+  /* onboarding (empty state) */
+  .onboard { padding: 24px; }
+  .onboard-intro { color: var(--muted); margin: 0 0 18px 0; font-size: 12px; }
+  .onboard-steps { list-style: none; counter-reset: step; padding: 0; margin: 0; }
+  .onboard-steps li {
+    counter-increment: step;
+    margin-bottom: 16px;
+    padding-left: 28px;
+    position: relative;
+  }
+  .onboard-steps li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0; top: 0;
+    width: 20px; height: 20px;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    text-align: center; line-height: 19px;
+    font-size: 11px; color: var(--accent);
+  }
+  .onboard-step-title { font-size: 12px; margin-bottom: 6px; }
+  .onboard-cmd {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    padding: 10px 12px;
+    margin: 0;
+    font-size: 11px;
+    color: var(--fg);
+    overflow-x: auto;
+    border-radius: 2px;
+    user-select: all;
+  }
+  .onboard-hint {
+    color: var(--muted);
+    font-size: 11px;
+    margin: 18px 0 0 0;
+    padding-top: 12px;
+    border-top: 1px dashed var(--line);
+  }
+  .onboard-hint code {
+    color: var(--accent-2);
+    background: var(--bg);
+    padding: 1px 6px;
+    user-select: all;
+  }
 </style>
 </head>
 <body>
@@ -298,8 +344,10 @@ async function loadMesh(bodyNode, countNode) {
   countNode.textContent = `${total_connected} online · ${total_meshes} mesh${total_meshes === 1 ? "" : "es"}`;
 
   if (!meshes || meshes.length === 0) {
-    bodyNode.className = "empty";
-    bodyNode.textContent = "no meshes yet — mint an invite with `tkr mesh invite-mint`.";
+    bodyNode.className = "";
+    bodyNode.removeAttribute("style");
+    bodyNode.textContent = "";
+    bodyNode.appendChild(buildOnboarding());
     return;
   }
 
@@ -366,6 +414,62 @@ async function loadSessions(bodyNode, countNode) {
   bodyNode.removeAttribute("style");
   bodyNode.textContent = "";
   bodyNode.appendChild(el("table", null, [thead, tbody]));
+}
+
+function buildOnboarding() {
+  const brokerWss = `wss://${location.host}/api/v1/mesh/ws`;
+  const root = el("div", { class: "onboard" });
+
+  const intro = el("p", { class: "onboard-intro" }, [
+    "no peers connected yet. ",
+    "this broker accepts any peer with a signed invite. ",
+    "to bring up the mesh on your machine:",
+  ]);
+
+  const steps = [
+    {
+      n: 1,
+      title: "install tkr",
+      cmd: "curl -fsSL https://github.com/einyx/tkr/releases/latest/download/install.sh | bash",
+    },
+    {
+      n: 2,
+      title: "mint an invite (the owner key signs it)",
+      cmd: `tkr mesh invite-mint --slug demo \\
+  --broker-url ${brokerWss} \\
+  --owner-key-file ~/.tkr/owner.env`,
+    },
+    {
+      n: 3,
+      title: "share the invite URL — anyone runs:",
+      cmd: "tkr mesh join <invite-url>",
+    },
+    {
+      n: 4,
+      title: "tail messages in one terminal, send from another:",
+      cmd: "tkr mesh tail demo                 # listen\n" +
+           "tkr mesh send demo --to <addr> --recipient-pubkey <pub> 'hello'",
+    },
+  ];
+
+  const list = el("ol", { class: "onboard-steps" });
+  for (const s of steps) {
+    const li = el("li", null, [
+      el("div", { class: "onboard-step-title", text: s.title }),
+      el("pre", { class: "onboard-cmd", text: s.cmd }),
+    ]);
+    list.appendChild(li);
+  }
+  root.appendChild(intro);
+  root.appendChild(list);
+
+  const hint = el("p", { class: "onboard-hint" }, [
+    "broker websocket: ",
+    el("code", { text: brokerWss }),
+  ]);
+  root.appendChild(hint);
+
+  return root;
 }
 
 // ---------- Session detail ----------
