@@ -70,6 +70,13 @@ pub enum Rule {
     SubstituteWords {
         pairs: Vec<(String, String)>,
     },
+    /// Emits `message` at flush time if no line was ever observed by
+    /// this rule's `apply`. Combined with the dispatch loop's
+    /// short-circuit semantics, "observed" means "passed through every
+    /// previous rule unsuppressed". MUST be the final rule in a group.
+    EmptyResultSubstitute {
+        message: String,
+    },
 }
 
 fn default_prefix_len() -> usize {
@@ -128,6 +135,10 @@ pub enum CompiledRule {
     ContextWindow {
         re: Regex,
         around: usize,
+    },
+    EmptyResultSubstitute {
+        message: String,
+        observed_count: u64,
     },
 }
 
@@ -201,6 +212,10 @@ impl Rule {
                     .collect();
                 CompiledRule::SubstituteWords { re, dict }
             }
+            Rule::EmptyResultSubstitute { message } => CompiledRule::EmptyResultSubstitute {
+                message,
+                observed_count: 0,
+            },
         })
     }
 }
@@ -355,14 +370,31 @@ impl CompiledRule {
                     Some(FilterResult::Replace(new.into_owned()))
                 }
             }
+            CompiledRule::EmptyResultSubstitute {
+                observed_count, ..
+            } => {
+                *observed_count += 1;
+                None
+            }
         }
     }
 
     /// Emit any end-of-command summary text. Default: none. Aggregating
     /// rules (DedupWithCount, GroupByCapture, EmptyResultSubstitute) override.
     pub fn flush_summary(&mut self) -> Option<String> {
-        let _ = self;
-        None
+        match self {
+            CompiledRule::EmptyResultSubstitute {
+                message,
+                observed_count,
+            } => {
+                if *observed_count == 0 {
+                    Some(message.clone())
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
     }
 }
 
@@ -562,5 +594,24 @@ mod tests {
             None => {} // also acceptable
             other => panic!("unexpected {other:?}"),
         }
+    }
+
+    #[test]
+    fn empty_result_substitute_emits_message_when_no_lines_pass() {
+        let rule = Rule::EmptyResultSubstitute {
+            message: "0 matches".to_string(),
+        };
+        let mut compiled = rule.compile().unwrap();
+        assert_eq!(compiled.flush_summary(), Some("0 matches".to_string()));
+    }
+
+    #[test]
+    fn empty_result_substitute_silent_when_lines_passed() {
+        let rule = Rule::EmptyResultSubstitute {
+            message: "0 matches".to_string(),
+        };
+        let mut compiled = rule.compile().unwrap();
+        assert_eq!(compiled.apply("a real result line"), None);
+        assert_eq!(compiled.flush_summary(), None);
     }
 }

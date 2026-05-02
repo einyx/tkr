@@ -303,4 +303,22 @@ prefix = "warning:"
         p.filter("warning: x", "git", "", 0);
         assert_eq!(p.flush(), "");
     }
+
+    #[test]
+    fn empty_result_substitute_integrates_with_plugin_flush() {
+        let mut p = make(
+            r#"command = "grep"
+[[rules]]
+type = "suppress_regex"
+pattern = "noisy"
+
+[[rules]]
+type = "empty_result_substitute"
+message = "0 matches"
+"#,
+        );
+        p.filter("noisy line 1", "grep", "", 0);
+        p.filter("noisy line 2", "grep", "", 1);
+        assert_eq!(p.flush(), "0 matches");
+    }
 }
