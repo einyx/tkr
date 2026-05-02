@@ -348,4 +348,19 @@ message = "0 matches"
         let flushed = p.flush();
         assert!(flushed.contains("0 grep matches"), "got {flushed:?}");
     }
+
+    #[test]
+    fn find_filter_pack_groups_by_directory() {
+        let toml = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../filters/find.toml"),
+        )
+        .expect("read find.toml");
+        let mut p = FilterPlugin::from_toml(&toml).expect("parse");
+        p.filter("./src/foo.rs", "find", "", 0);
+        p.filter("./src/bar.rs", "find", "", 1);
+        let flushed = p.flush();
+        assert!(flushed.contains("find results by directory:"), "got {flushed:?}");
+        assert!(flushed.contains("./src"), "got {flushed:?}");
+    }
 }

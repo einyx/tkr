@@ -28,3 +28,24 @@ pattern = "^find: .* Permission denied"
 [[rules]]
 type = "suppress_regex"
 pattern = "^find: .* No such file or directory"
+
+# Truncate over-long paths defensively (deeply-nested monorepo paths,
+# generated artifacts that survived earlier filters).
+[[rules]]
+type = "truncate_long"
+max_len = 160
+
+# Group remaining results by parent directory. Captures everything
+# up to the last '/'.
+[[rules]]
+type = "group_by_capture"
+pattern = "^(.*)/[^/]+$"
+key_capture = 1
+cap_per_key = 4
+total_cap = 80
+header = "find results by directory:"
+
+# Empty-result marker. Must be final.
+[[rules]]
+type = "empty_result_substitute"
+message = "0 find results"
