@@ -38,6 +38,29 @@ keep_first = 4
 #   - use `\s+` between fields, capture groups for what you keep,
 #     and reference them in `replace` as `$1`, `$2`, ...
 #
+# Drop noisy entries (caches, build outputs, vendored deps) — the LLM almost
+# never needs to know they exist. Each pattern matches the entry at end of
+# line so it works for `ls -1`, `ls -la`, and `ls -l` rows. Multi-column `ls`
+# isn't covered — use `ls -1` or `ls -la` for LLM contexts.
+#
+# These run BEFORE the truncate_match below, since first-match-wins.
+[[rules]]
+type = "suppress_regex"
+pattern = "(^|\\s)(node_modules|target|dist|build|coverage|vendor|venv|htmlcov)/?$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "(^|\\s)\\.(git|next|cache|venv|tox|nyc_output|pytest_cache|mypy_cache|ruff_cache|gradle|idea|vscode|eggs)/?$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "(^|\\s)(__pycache__|buck-out)/?$"
+
+# Python egg-info packaging dirs (`mypkg.egg-info`).
+[[rules]]
+type = "suppress_regex"
+pattern = "(^|\\s)\\S+\\.egg-info/?$"
+
 [[rules]]
 type = "truncate_match"
 pattern = '^([dlcbps-][rwxsStT-]{9})\s+\d+\s+\S+\s+\S+\s+(\d+)\s+(\S+\s+\S+\s+\S+)\s+(.+)$'
