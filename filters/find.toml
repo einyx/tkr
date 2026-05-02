@@ -1,0 +1,30 @@
+command = "find"
+
+# Drop entries whose path contains a noisy directory as a component. This
+# is a common case: `find . -name '*.rs'` returns paths inside target/,
+# `find . -type f` returns thousands of node_modules entries, etc.
+#
+# The regex anchors the dir name between path separators (or start/end)
+# so we don't false-positive on names like `mytarget/` or `not_node_modules`.
+[[rules]]
+type = "suppress_regex"
+pattern = "(^|/)(node_modules|target|dist|build|coverage|vendor|venv|htmlcov|__pycache__|buck-out)(/|$)"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "(^|/)\\.(git|next|cache|venv|tox|nyc_output|pytest_cache|mypy_cache|ruff_cache|gradle|idea|vscode|eggs)(/|$)"
+
+# Python egg-info packaging dirs (`mypkg.egg-info/...`).
+[[rules]]
+type = "suppress_regex"
+pattern = "(^|/)\\S+\\.egg-info(/|$)"
+
+# `find: ‘<path>’: Permission denied` — drop EACL noise. Real errors
+# come back as exit code, so the LLM still knows something failed.
+[[rules]]
+type = "suppress_regex"
+pattern = "^find: .* Permission denied"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^find: .* No such file or directory"
