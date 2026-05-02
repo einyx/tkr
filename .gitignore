@@ -12,3 +12,5 @@ docs/superpowers/
 # at deploy/tkr-server.env.example.
 /tkr-server.env
 .env
+deploy/keys/*
+!deploy/keys/README.md
