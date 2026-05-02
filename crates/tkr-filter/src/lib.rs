@@ -156,7 +156,20 @@ impl Plugin for FilterPlugin {
     }
 
     fn flush(&mut self) -> String {
-        String::new()
+        let mut out = String::new();
+        for group in &mut self.groups {
+            for rule in &mut group.rules {
+                if let Some(s) = rule.flush_summary() {
+                    if !s.is_empty() {
+                        if !out.is_empty() {
+                            out.push('\n');
+                        }
+                        out.push_str(&s);
+                    }
+                }
+            }
+        }
+        out
     }
 }
 
@@ -276,5 +289,18 @@ pattern = "^Compiling"
             p.filter("Compiling x", "cargo", "anything", 0),
             FilterResult::Suppress
         );
+    }
+
+    #[test]
+    fn flush_returns_empty_string_when_no_rules_emit_summary() {
+        let mut p = make(
+            r#"command = "git"
+[[rules]]
+type = "suppress_prefix"
+prefix = "warning:"
+"#,
+        );
+        p.filter("warning: x", "git", "", 0);
+        assert_eq!(p.flush(), "");
     }
 }

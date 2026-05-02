@@ -290,6 +290,13 @@ impl CompiledRule {
             }
         }
     }
+
+    /// Emit any end-of-command summary text. Default: none. Aggregating
+    /// rules (DedupWithCount, GroupByCapture, EmptyResultSubstitute) override.
+    pub fn flush_summary(&mut self) -> Option<String> {
+        let _ = self;
+        None
+    }
 }
 
 /// Replicate the case shape of `original` onto `abbrev`. Three cases:
