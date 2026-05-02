@@ -56,9 +56,21 @@ fn vault_run(cmd: VaultCmd) -> anyhow::Result<i32> {
             if let Err(e) =
                 host::vault::keychain::set_master_key("tkr-vault", &vault_root_str, &new_master)
             {
-                eprintln!("tkr: warning: could not persist master key after rotate: {e}");
-                eprintln!("tkr: new master key (hex) — store manually:");
-                eprintln!("  {}", hex::encode(new_master));
+                // Never print the raw key — stderr is captured by terminal
+                // scrollback, tmux logs, and parent processes (e.g. CI,
+                // Claude Code). Direct the operator to back up the
+                // already-persisted master.key file by other means.
+                let _ = new_master;
+                eprintln!("tkr: error: could not persist master key after rotate: {e}");
+                eprintln!(
+                    "tkr: the new key was generated and the vault re-encrypted, but \
+                     the OS keyring write failed."
+                );
+                eprintln!(
+                    "tkr: copy {} to a safe location now (file is mode 0600).",
+                    vault_root.join("master.key").display()
+                );
+                return Ok(1);
             }
             Ok(0)
         }

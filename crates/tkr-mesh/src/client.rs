@@ -41,10 +41,45 @@ impl Client {
 
     /// Open a WebSocket to the broker, complete the Hello/Ack handshake,
     /// and spawn read/write tasks. Times out after 5s waiting for ack.
+    ///
+    /// If `TKR_MESH_WS_COOKIE` is set in the environment, its value is sent
+    /// as a `Cookie: tkr_session=<value>` header on the upgrade request.
+    /// This is required when connecting to brokers that gate the mesh WS
+    /// upgrade behind an authenticated session (e.g. tkr-server).
     pub async fn connect(joined: &JoinedMesh, identity: Identity) -> Result<Self> {
-        let (ws_stream, _resp) = tokio_tungstenite::connect_async(&joined.broker_url)
-            .await
-            .map_err(|e| Error::Encoding(format!("ws connect: {e}")))?;
+        use tokio_tungstenite::tungstenite::handshake::client::generate_key;
+        use tokio_tungstenite::tungstenite::http::Uri;
+
+        let ws_stream = if let Ok(cookie) = std::env::var("TKR_MESH_WS_COOKIE") {
+            let uri: Uri = joined
+                .broker_url
+                .parse()
+                .map_err(|e| Error::Encoding(format!("broker uri: {e}")))?;
+            let host = uri.host().ok_or_else(|| Error::Encoding("broker uri missing host".into()))?;
+            let host_hdr = match uri.port_u16() {
+                Some(p) => format!("{host}:{p}"),
+                None => host.to_string(),
+            };
+            let req = tokio_tungstenite::tungstenite::http::Request::builder()
+                .uri(&joined.broker_url)
+                .header("Host", host_hdr)
+                .header("Connection", "Upgrade")
+                .header("Upgrade", "websocket")
+                .header("Sec-WebSocket-Version", "13")
+                .header("Sec-WebSocket-Key", generate_key())
+                .header("Cookie", format!("tkr_session={cookie}"))
+                .body(())
+                .map_err(|e| Error::Encoding(format!("build ws request: {e}")))?;
+            let (s, _resp) = tokio_tungstenite::connect_async(req)
+                .await
+                .map_err(|e| Error::Encoding(format!("ws connect: {e}")))?;
+            s
+        } else {
+            let (s, _resp) = tokio_tungstenite::connect_async(&joined.broker_url)
+                .await
+                .map_err(|e| Error::Encoding(format!("ws connect: {e}")))?;
+            s
+        };
 
         let (mut sink, mut stream) = ws_stream.split();
 

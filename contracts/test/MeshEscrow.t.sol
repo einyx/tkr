@@ -120,19 +120,36 @@ contract MeshEscrowTest is Test {
         assertEq(recipient.balance - before, 1 ether);
     }
 
+    /// Defense-in-depth: a third party with a copy of a valid receipt cannot
+    /// trigger the payout — that would otherwise let an attacker grief a
+    /// recipient contract that reverts on receive.
+    function test_claim_only_recipient_can_call() public {
+        bytes32 sid = bytes32(uint256(99));
+        vm.prank(payer);
+        escrow.open{value: 1 ether}(sid, recipient, address(0), 1 ether, uint64(block.timestamp + 1 days));
+        bytes memory sig = _signReceipt(sid, 1 ether, payerKey);
+        address third = address(0xdeadbeef);
+        vm.prank(third);
+        vm.expectRevert(MeshEscrow.NotRecipient.selector);
+        escrow.claim(sid, 1 ether, sig);
+    }
+
     function test_claim_usdc_partial_then_partial() public {
         bytes32 sid = bytes32(uint256(11));
         vm.prank(payer);
         escrow.open(sid, recipient, address(usdc), 100e6, uint64(block.timestamp + 1 days));
 
-        // First receipt: 30 USDC
+        // Pre-compute sigs: _signReceipt calls escrow.receiptDigest which is
+        // an external view call — running it inside the claim() argument list
+        // consumes the vm.prank(recipient) before claim() executes.
+        bytes memory sig1 = _signReceipt(sid, 30e6, payerKey);
         vm.prank(recipient);
-        escrow.claim(sid, 30e6, _signReceipt(sid, 30e6, payerKey));
+        escrow.claim(sid, 30e6, sig1);
         assertEq(usdc.balanceOf(recipient), 30e6);
 
-        // Second receipt: cumulative 75 USDC (should pay out 45)
+        bytes memory sig2 = _signReceipt(sid, 75e6, payerKey);
         vm.prank(recipient);
-        escrow.claim(sid, 75e6, _signReceipt(sid, 75e6, payerKey));
+        escrow.claim(sid, 75e6, sig2);
         assertEq(usdc.balanceOf(recipient), 75e6);
     }
 
@@ -192,13 +209,15 @@ contract MeshEscrowTest is Test {
         vm.prank(payer);
         escrow.open{value: 1 ether}(sid, recipient, address(0), 1 ether, deadline);
 
-        // Recipient claims 0.4
+        // Recipient claims 0.4 (pre-compute sig — see test_claim_usdc note)
+        bytes memory sig = _signReceipt(sid, 0.4 ether, payerKey);
         vm.prank(recipient);
-        escrow.claim(sid, 0.4 ether, _signReceipt(sid, 0.4 ether, payerKey));
+        escrow.claim(sid, 0.4 ether, sig);
 
         // Warp past deadline, payer closes, gets remaining 0.6 back.
         vm.warp(deadline + 1);
         uint256 before = payer.balance;
+        vm.prank(payer);
         escrow.close(sid);
         assertEq(payer.balance - before, 0.6 ether);
         (address p,,,,, ) = escrow.getChannel(sid);
@@ -209,8 +228,33 @@ contract MeshEscrowTest is Test {
         bytes32 sid = bytes32(uint256(21));
         vm.prank(payer);
         escrow.open{value: 1 ether}(sid, recipient, address(0), 1 ether, uint64(block.timestamp + 1 days));
+        vm.prank(payer);
         vm.expectRevert(MeshEscrow.NotExpired.selector);
         escrow.close(sid);
+    }
+
+    function test_close_revert_not_payer() public {
+        bytes32 sid = bytes32(uint256(23));
+        uint64 deadline = uint64(block.timestamp + 1 days);
+        vm.prank(payer);
+        escrow.open{value: 1 ether}(sid, recipient, address(0), 1 ether, deadline);
+        vm.warp(deadline + 1);
+        vm.prank(recipient);
+        vm.expectRevert(MeshEscrow.NotPayer.selector);
+        escrow.close(sid);
+    }
+
+    function test_claim_revert_not_recipient() public {
+        bytes32 sid = bytes32(uint256(24));
+        vm.prank(payer);
+        escrow.open{value: 1 ether}(sid, recipient, address(0), 1 ether, uint64(block.timestamp + 1 days));
+        bytes memory sig = _signReceipt(sid, 1 ether, payerKey);
+        // Third party (payer themselves here, just as a non-recipient) cannot
+        // trigger the payout — would otherwise be a griefing vector against
+        // a recipient contract that reverts on receive.
+        vm.prank(payer);
+        vm.expectRevert(MeshEscrow.NotRecipient.selector);
+        escrow.claim(sid, 1 ether, sig);
     }
 
     function test_close_no_claim_full_refund() public {
@@ -221,6 +265,7 @@ contract MeshEscrowTest is Test {
 
         vm.warp(deadline + 1);
         uint256 before = payer.balance;
+        vm.prank(payer);
         escrow.close(sid);
         assertEq(payer.balance - before, 1 ether);
     }

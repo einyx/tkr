@@ -63,9 +63,32 @@ async fn start_server() -> ServerGuard {
     panic!("tkr-server failed to start on port {port}");
 }
 
+/// Log in to the loopback dev server and return the `tkr_session` cookie
+/// value. The broker now requires an authenticated session for both
+/// `/api/v1/mesh/join` and the WS upgrade.
+fn login_and_get_cookie(port: u16) -> String {
+    let resp = ureq::post(&format!("http://127.0.0.1:{port}/api/auth/login"))
+        .send_json(serde_json::json!({ "password": "correct" }))
+        .expect("login http");
+    let set_cookie = resp
+        .header("set-cookie")
+        .expect("set-cookie header on login");
+    set_cookie
+        .split(';')
+        .find_map(|p| {
+            let t = p.trim();
+            t.strip_prefix("tkr_session=").map(|v| v.to_string())
+        })
+        .expect("tkr_session cookie")
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn two_clients_exchange_dm_through_real_broker() {
     let server = start_server().await;
+    let cookie = login_and_get_cookie(server.port);
+    // Plumb the cookie into the mesh WS handshake via env so Client::connect
+    // (and the broker upgrade gate) accept the connection.
+    std::env::set_var("TKR_MESH_WS_COOKIE", &cookie);
 
     // Owner mints an invite.
     let owner = Identity::generate();
@@ -92,6 +115,7 @@ async fn two_clients_exchange_dm_through_real_broker() {
         &token,
         &alice,
         Some("alice"),
+        &cookie,
     )
     .await;
     let bob_joined = enroll_with_override(
@@ -100,6 +124,7 @@ async fn two_clients_exchange_dm_through_real_broker() {
         &token,
         &bob,
         Some("bob"),
+        &cookie,
     )
     .await;
 
@@ -168,6 +193,7 @@ async fn enroll_with_override(
     token: &str,
     identity: &Identity,
     display_name: Option<&str>,
+    cookie: &str,
 ) -> JoinedMesh {
     // Confirm the invite verifies — same precondition as the real enroll().
     invite.verify(now_secs()).expect("invite verify");
@@ -180,6 +206,7 @@ async fn enroll_with_override(
     });
 
     let resp = ureq::post(&format!("http://127.0.0.1:{port}/api/v1/mesh/join"))
+        .set("cookie", &format!("tkr_session={cookie}"))
         .send_json(body)
         .expect("join http");
     let body: serde_json::Value = resp.into_json().expect("join json");

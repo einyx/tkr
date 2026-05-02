@@ -29,24 +29,16 @@ fn record_path(slug: &str) -> Result<PathBuf> {
 
 fn save_record(record: &JoinedMesh) -> Result<PathBuf> {
     let path = record_path(&record.mesh_slug)?;
-    let json = serde_json::to_vec_pretty(record).context("serialize JoinedMesh")?;
-    fs::write(&path, &json).with_context(|| format!("write {}", path.display()))?;
-    // chmod 0600
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut p = fs::metadata(&path)?.permissions();
-        p.set_mode(0o600);
-        fs::set_permissions(&path, p)?;
-    }
+    record
+        .save(&path)
+        .map_err(|e| anyhow!("save JoinedMesh: {e:?}"))?;
     Ok(path)
 }
 
 fn load_record(slug: &str) -> Result<JoinedMesh> {
     let path = record_path(slug)?;
-    let raw = fs::read_to_string(&path)
-        .with_context(|| format!("read {} (run `tkr mesh join` first)", path.display()))?;
-    serde_json::from_str(&raw).context("parse JoinedMesh")
+    JoinedMesh::load(&path)
+        .map_err(|e| anyhow!("load {} (run `tkr mesh join` first): {e:?}", path.display()))
 }
 
 fn identity_of(record: &JoinedMesh) -> Result<Identity> {
@@ -107,13 +99,11 @@ pub fn list() -> Result<()> {
     println!("{:<20} {:<46} {}", "slug", "address", "broker");
     println!("{}", "─".repeat(20 + 1 + 46 + 1 + 30));
     for entry in entries {
-        if let Ok(raw) = fs::read_to_string(entry.path()) {
-            if let Ok(rec) = serde_json::from_str::<JoinedMesh>(&raw) {
-                println!(
-                    "{:<20} {:<46} {}",
-                    rec.mesh_slug, rec.address, rec.broker_url
-                );
-            }
+        if let Ok(rec) = JoinedMesh::load(&entry.path()) {
+            println!(
+                "{:<20} {:<46} {}",
+                rec.mesh_slug, rec.address, rec.broker_url
+            );
         }
     }
     Ok(())

@@ -67,6 +67,7 @@ contract MeshEscrow is EIP712, ReentrancyGuard {
     error PastDeadline();
     error NotExpired();
     error NotPayer();
+    error NotRecipient();
     error BadSignature();
     error AmountNotIncreasing();
     error ExceedsDeposit();
@@ -117,6 +118,10 @@ contract MeshEscrow is EIP712, ReentrancyGuard {
     {
         Channel storage ch = channels[sessionId];
         if (ch.payer == address(0)) revert ChannelMissing();
+        // Restrict to recipient: a third party with a copy of a valid receipt
+        // could otherwise force a payout to a contract that reverts on
+        // receive, locking the channel until expiry.
+        if (msg.sender != ch.recipient) revert NotRecipient();
         if (cumulative <= ch.paid) revert AmountNotIncreasing();
         if (cumulative > ch.deposit) revert ExceedsDeposit();
 
@@ -135,11 +140,14 @@ contract MeshEscrow is EIP712, ReentrancyGuard {
 
     // ---------- Close ----------
 
-    /// @notice Payer reclaims unsettled funds after the deadline. Anyone
-    ///         can call after expiry, but funds always return to the payer.
+    /// @notice Payer reclaims unsettled funds after the deadline. Restricted
+    ///         to the payer: a permissionless `close()` lets a MEV bot front-
+    ///         run a recipient's expiry-window claim and refund the payer for
+    ///         work already performed.
     function close(bytes32 sessionId) external nonReentrant {
         Channel storage ch = channels[sessionId];
         if (ch.payer == address(0)) revert ChannelMissing();
+        if (msg.sender != ch.payer) revert NotPayer();
         if (block.timestamp < ch.expiresAt) revert NotExpired();
 
         uint256 remaining = ch.deposit - ch.paid;

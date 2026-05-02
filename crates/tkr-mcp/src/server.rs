@@ -14,6 +14,44 @@ use crate::protocol::{
 };
 use crate::search;
 
+/// Configured project root. Tools refuse paths that don't resolve under
+/// this prefix. Defaults to the process CWD; override with TKR_MCP_ROOT.
+fn project_root() -> PathBuf {
+    if let Ok(v) = std::env::var("TKR_MCP_ROOT") {
+        let p = PathBuf::from(v);
+        if let Ok(c) = p.canonicalize() {
+            return c;
+        }
+        return p;
+    }
+    std::env::current_dir()
+        .and_then(|p| p.canonicalize().or(Ok(p)))
+        .unwrap_or_else(|_| PathBuf::from("."))
+}
+
+/// Resolve `user_path` against `root` and confirm it stays under `root`
+/// after symlink resolution. Returns the canonicalized absolute path.
+fn confine(user_path: &str) -> Result<PathBuf> {
+    let root = project_root();
+    let raw = PathBuf::from(user_path);
+    let absolute = if raw.is_absolute() {
+        raw
+    } else {
+        root.join(&raw)
+    };
+    let canon = absolute
+        .canonicalize()
+        .map_err(|e| anyhow::anyhow!("canonicalize {}: {e}", absolute.display()))?;
+    if !canon.starts_with(&root) {
+        return Err(anyhow::anyhow!(
+            "path {} is outside project root {}",
+            canon.display(),
+            root.display()
+        ));
+    }
+    Ok(canon)
+}
+
 pub struct Server;
 
 impl Server {
@@ -119,7 +157,15 @@ fn call_outline(args: &Value) -> Result<String> {
         .get("path")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("missing 'path'"))?;
-    outline::render_outline(&PathBuf::from(path))
+    let confined = confine(path)?;
+    outline::render_outline(&confined)
+}
+
+fn resolve_root(args: &Value) -> Result<PathBuf> {
+    match args.get("root").and_then(|v| v.as_str()) {
+        Some(r) => confine(r),
+        None => Ok(project_root()),
+    }
 }
 
 fn call_find_symbol(args: &Value) -> Result<String> {
@@ -127,11 +173,7 @@ fn call_find_symbol(args: &Value) -> Result<String> {
         .get("name")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("missing 'name'"))?;
-    let root = args
-        .get("root")
-        .and_then(|v| v.as_str())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let root = resolve_root(args)?;
     search::find_symbol(name, &root)
 }
 
@@ -140,11 +182,7 @@ fn call_grep_summary(args: &Value) -> Result<String> {
         .get("pattern")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("missing 'pattern'"))?;
-    let root = args
-        .get("root")
-        .and_then(|v| v.as_str())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let root = resolve_root(args)?;
     let max_per_file = args
         .get("max_per_file")
         .and_then(|v| v.as_u64())

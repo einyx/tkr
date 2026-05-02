@@ -2,6 +2,53 @@
 
 All notable changes to tkr are documented here.
 
+## [Unreleased] — security hardening
+
+Pre-deployment security review fixes. Issues identified in a four-agent
+deep review of the new mesh / broker / contract / MCP surfaces.
+
+### Critical
+
+- **tkr-server**: `POST /api/v1/mesh/join` and `GET /api/v1/mesh/ws` now
+  require an authenticated session — previously any internet caller with
+  a valid invite payload could enroll arbitrary addresses and connect
+  to the broker.
+- **tkr-mesh**: `JoinedMesh` no longer derives `Debug`/`Serialize`/
+  `Deserialize`. The on-chain signing key is redacted from `Debug` output;
+  callers persist via new `JoinedMesh::save()` / `JoinedMesh::load()`,
+  which writes the file mode 0o600 atomically on Unix.
+- **tkr-mcp**: `tkr_outline_file`, `tkr_find_symbol`, `tkr_grep_summary`
+  now confine all caller-supplied paths under a project root (defaults to
+  CWD; override with `TKR_MCP_ROOT`). Previously they could read any file
+  on the filesystem.
+
+### High
+
+- **tkr-server**: CORS no longer reflects arbitrary origins with
+  credentials. Origins are matched against an allowlist
+  (`localhost:3001/4000`, `tkr.prysm.sh`, `TKR_ALLOWED_ORIGIN`).
+- **tkr-server**: session cookie now sets `Secure`. Session ID is now a
+  256-bit `OsRng` value (was timestamp-derived).
+- **tkr-server**: `read_json` caps request bodies at 4 MiB
+  (`TKR_MAX_BODY_BYTES` to override) — prevents memory-exhaustion DoS.
+- **MeshEscrow.sol**: `claim()` is now restricted to `ch.recipient`
+  (otherwise a third party with a copy of a valid receipt could grief a
+  recipient contract that reverts on receive). `close()` is restricted
+  to `ch.payer` (otherwise an MEV bot could front-run a recipient's
+  expiry-window claim).
+- **tkr (vault)**: `vault rotate` no longer prints the new master key
+  to stderr on persist failure — the key would otherwise land in shell
+  scrollback / parent-process logs.
+
+### Tests
+
+- `tkr-server` mesh E2E test now logs in first and threads the session
+  cookie through join + WS upgrade. New `TKR_MESH_WS_COOKIE` env var on
+  `tkr_mesh::Client::connect` for authenticated brokers.
+- `MeshEscrow.t.sol`: +3 tests (`test_claim_only_recipient_can_call`,
+  `test_close_revert_not_payer`, `test_claim_revert_not_recipient`).
+  20/20 passing.
+
 ## [0.3.0] — 2026-05-02
 
 Major: tkr is no longer just a Bash filter. New surfaces extend it into

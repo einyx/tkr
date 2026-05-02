@@ -6,13 +6,16 @@
 
 use crate::{Error, Identity, Invite, Result};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use std::time::Duration;
 
 const JOIN_TIMEOUT_SECS: u64 = 10;
 
-/// Local record persisted after a successful enrollment. Caller serialises
-/// this to disk (e.g. `~/.tkr/mesh/<slug>.json`).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// Local record persisted after a successful enrollment. The `secret_hex`
+/// field carries the on-chain signing key — it is redacted from `Debug`
+/// output and `Serialize`/`Deserialize` are not derived. Use `save()` /
+/// `load()` to round-trip to disk; `save()` writes with mode 0o600 on Unix.
+#[derive(Clone, PartialEq, Eq)]
 pub struct JoinedMesh {
     pub mesh_id: String,
     pub mesh_slug: String,
@@ -22,6 +25,86 @@ pub struct JoinedMesh {
     pub address: String,
     /// 32-byte private key, hex. Treat as a secret.
     pub secret_hex: String,
+}
+
+impl std::fmt::Debug for JoinedMesh {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("JoinedMesh")
+            .field("mesh_id", &self.mesh_id)
+            .field("mesh_slug", &self.mesh_slug)
+            .field("broker_url", &self.broker_url)
+            .field("member_id", &self.member_id)
+            .field("address", &self.address)
+            .field("secret_hex", &"<redacted>")
+            .finish()
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct JoinedMeshFile {
+    mesh_id: String,
+    mesh_slug: String,
+    broker_url: String,
+    member_id: String,
+    address: String,
+    secret_hex: String,
+}
+
+impl JoinedMesh {
+    /// Persist this record to `path`. On Unix, the file is created with
+    /// mode 0o600 (owner read/write only) before any bytes are written.
+    pub fn save(&self, path: &Path) -> Result<()> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| Error::Encoding(format!("create parent for {}: {e}", path.display())))?;
+        }
+        let file = JoinedMeshFile {
+            mesh_id: self.mesh_id.clone(),
+            mesh_slug: self.mesh_slug.clone(),
+            broker_url: self.broker_url.clone(),
+            member_id: self.member_id.clone(),
+            address: self.address.clone(),
+            secret_hex: self.secret_hex.clone(),
+        };
+        let json = serde_json::to_vec_pretty(&file)
+            .map_err(|e| Error::Encoding(format!("serialize JoinedMesh: {e}")))?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            let mut f = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(path)
+                .map_err(|e| Error::Encoding(format!("open {}: {e}", path.display())))?;
+            std::io::Write::write_all(&mut f, &json)
+                .map_err(|e| Error::Encoding(format!("write {}: {e}", path.display())))?;
+        }
+        #[cfg(not(unix))]
+        {
+            std::fs::write(path, &json)
+                .map_err(|e| Error::Encoding(format!("write {}: {e}", path.display())))?;
+        }
+        Ok(())
+    }
+
+    /// Load a record previously written by `save()`.
+    pub fn load(path: &Path) -> Result<Self> {
+        let bytes = std::fs::read(path)
+            .map_err(|e| Error::Encoding(format!("read {}: {e}", path.display())))?;
+        let file: JoinedMeshFile = serde_json::from_slice(&bytes)
+            .map_err(|e| Error::Encoding(format!("parse {}: {e}", path.display())))?;
+        Ok(JoinedMesh {
+            mesh_id: file.mesh_id,
+            mesh_slug: file.mesh_slug,
+            broker_url: file.broker_url,
+            member_id: file.member_id,
+            address: file.address,
+            secret_hex: file.secret_hex,
+        })
+    }
 }
 
 /// Wire body for `POST /join`. The broker re-verifies the invite signature

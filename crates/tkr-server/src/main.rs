@@ -328,7 +328,7 @@ async fn handle_login(req: Request<Incoming>, state: AppState) -> Response<Body>
     res.headers_mut().insert(
         SET_COOKIE,
         HeaderValue::from_str(&format!(
-            "tkr_session={session_id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800"
+            "tkr_session={session_id}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=604800"
         ))
         .expect("set-cookie"),
     );
@@ -343,7 +343,7 @@ fn handle_logout(req: Request<Incoming>, state: AppState) -> Response<Body> {
     let mut res = json_response(req.headers(), StatusCode::OK, json!({ "ok": true }));
     res.headers_mut().insert(
         SET_COOKIE,
-        HeaderValue::from_static("tkr_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"),
+        HeaderValue::from_static("tkr_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0"),
     );
     res
 }
@@ -479,6 +479,20 @@ async fn handle_stream(req: Request<Incoming>, state: AppState) -> Response<Body
 
 async fn handle_mesh_join(req: Request<Incoming>, state: AppState) -> Response<Body> {
     let origin_headers = req.headers().clone();
+    if session_cookie(&origin_headers)
+        .and_then(|sid| {
+            state
+                .inner
+                .sessions
+                .lock()
+                .expect("sessions lock")
+                .get(&sid)
+                .cloned()
+        })
+        .is_none()
+    {
+        return unauth(&req);
+    }
     let payload: serde_json::Value = match read_json(req).await {
         Ok(v) => v,
         Err(_) => {
@@ -512,6 +526,20 @@ async fn handle_mesh_join(req: Request<Incoming>, state: AppState) -> Response<B
 }
 
 async fn handle_mesh_ws(req: Request<Incoming>, state: AppState) -> Response<Body> {
+    if session_cookie(req.headers())
+        .and_then(|sid| {
+            state
+                .inner
+                .sessions
+                .lock()
+                .expect("sessions lock")
+                .get(&sid)
+                .cloned()
+        })
+        .is_none()
+    {
+        return unauth(&req);
+    }
     // Reuse the same SHA-1 / base64 handshake we already do for /api/v1/stream.
     let key = match req.headers().get(SEC_WEBSOCKET_KEY) {
         Some(k) => k.clone(),
@@ -846,9 +874,33 @@ fn sha1_digest(input: &[u8]) -> [u8; 20] {
     out
 }
 
+/// Hard cap on JSON request bodies. Anything larger is rejected without
+/// reading it into memory — protects against trivial OOM via oversized
+/// ingest/join payloads. Tune via TKR_MAX_BODY_BYTES if needed.
+const MAX_BODY_BYTES: usize = 4 * 1024 * 1024;
+
 async fn read_json(req: Request<Incoming>) -> anyhow::Result<serde_json::Value> {
-    use http_body_util::BodyExt;
-    let bytes = req.into_body().collect().await?.to_bytes();
+    use http_body_util::{BodyExt, Limited};
+    let cap = std::env::var("TKR_MAX_BODY_BYTES")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(MAX_BODY_BYTES);
+    if let Some(len) = req
+        .headers()
+        .get(CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<usize>().ok())
+    {
+        if len > cap {
+            anyhow::bail!("request body too large: {len} > {cap}");
+        }
+    }
+    let limited = Limited::new(req.into_body(), cap);
+    let bytes = limited
+        .collect()
+        .await
+        .map_err(|e| anyhow::anyhow!("body read failed (cap {cap} bytes): {e}"))?
+        .to_bytes();
     if bytes.is_empty() {
         return Ok(serde_json::Value::Object(Default::default()));
     }
@@ -889,15 +941,29 @@ fn unauth(req: &Request<Incoming>) -> Response<Body> {
 }
 
 fn apply_cors_headers(dst: &mut HeaderMap, src: &HeaderMap) {
-    let origin = src
-        .get("origin")
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or("http://localhost:3001");
-    dst.insert(
-        ACCESS_CONTROL_ALLOW_ORIGIN,
-        HeaderValue::from_str(origin).expect("origin header"),
-    );
-    dst.insert(ACCESS_CONTROL_ALLOW_CREDENTIALS, HeaderValue::from_static("true"));
+    // Allowlist of origins permitted to make credentialed requests. Reflecting
+    // arbitrary origins with `Access-Control-Allow-Credentials: true` is
+    // equivalent to wildcard-with-credentials and lets any page on any domain
+    // call this API as the logged-in user.
+    let origin = src.get("origin").and_then(|value| value.to_str().ok());
+    let allowed: &[&str] = &[
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "http://localhost:4000",
+        "http://127.0.0.1:4000",
+        "https://tkr.prysm.sh",
+    ];
+    let extra_allowed = std::env::var("TKR_ALLOWED_ORIGIN").ok();
+    if let Some(o) = origin {
+        let permitted =
+            allowed.iter().any(|a| *a == o) || extra_allowed.as_deref() == Some(o);
+        if permitted {
+            if let Ok(hv) = HeaderValue::from_str(o) {
+                dst.insert(ACCESS_CONTROL_ALLOW_ORIGIN, hv);
+                dst.insert(ACCESS_CONTROL_ALLOW_CREDENTIALS, HeaderValue::from_static("true"));
+            }
+        }
+    }
     dst.insert(
         ACCESS_CONTROL_ALLOW_METHODS,
         HeaderValue::from_static("GET,POST,OPTIONS"),
@@ -921,10 +987,8 @@ fn session_cookie(headers: &HeaderMap) -> Option<String> {
 }
 
 fn new_session_id() -> String {
-    let a = unix_ts();
-    let b = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    format!("{a:08x}{b:024x}")
+    use rand::RngCore;
+    let mut bytes = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut bytes);
+    hex::encode(bytes)
 }
