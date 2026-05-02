@@ -1,3 +1,4 @@
+use indexmap::IndexMap;
 use regex::{Captures, Regex, RegexBuilder};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -77,6 +78,15 @@ pub enum Rule {
     EmptyResultSubstitute {
         message: String,
     },
+    /// Suppress lines matching `pattern`; aggregate by capture group
+    /// `key_capture` (default 1, falling back to group 0). At flush emit
+    /// the FIRST line for each key, with `×N` suffix if N > 1.
+    /// Insertion order preserved.
+    DedupWithCount {
+        pattern: String,
+        #[serde(default)]
+        key_capture: Option<usize>,
+    },
 }
 
 fn default_prefix_len() -> usize {
@@ -139,6 +149,12 @@ pub enum CompiledRule {
     EmptyResultSubstitute {
         message: String,
         observed_count: u64,
+    },
+    DedupWithCount {
+        re: Regex,
+        key_capture: Option<usize>,
+        /// key -> (first_line_seen, count)
+        seen: IndexMap<String, (String, u32)>,
     },
 }
 
@@ -215,6 +231,14 @@ impl Rule {
             Rule::EmptyResultSubstitute { message } => CompiledRule::EmptyResultSubstitute {
                 message,
                 observed_count: 0,
+            },
+            Rule::DedupWithCount {
+                pattern,
+                key_capture,
+            } => CompiledRule::DedupWithCount {
+                re: Regex::new(&pattern)?,
+                key_capture,
+                seen: IndexMap::new(),
             },
         })
     }
@@ -376,6 +400,25 @@ impl CompiledRule {
                 *observed_count += 1;
                 None
             }
+            CompiledRule::DedupWithCount {
+                re,
+                key_capture,
+                seen,
+            } => {
+                let Some(caps) = re.captures(line) else {
+                    return None;
+                };
+                let group_idx = key_capture.unwrap_or(1);
+                let key = caps
+                    .get(group_idx)
+                    .or_else(|| caps.get(0))
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default();
+                seen.entry(key)
+                    .and_modify(|(_, c)| *c += 1)
+                    .or_insert_with(|| (line.to_string(), 1));
+                Some(FilterResult::Suppress)
+            }
         }
     }
 
@@ -392,6 +435,23 @@ impl CompiledRule {
                 } else {
                     None
                 }
+            }
+            CompiledRule::DedupWithCount { seen, .. } => {
+                if seen.is_empty() {
+                    return None;
+                }
+                let mut out = String::new();
+                for (i, (_, (line, count))) in seen.iter().enumerate() {
+                    if i > 0 {
+                        out.push('\n');
+                    }
+                    if *count > 1 {
+                        out.push_str(&format!("{line} ×{count}"));
+                    } else {
+                        out.push_str(line);
+                    }
+                }
+                Some(out)
             }
             _ => None,
         }
@@ -612,6 +672,39 @@ mod tests {
         };
         let mut compiled = rule.compile().unwrap();
         assert_eq!(compiled.apply("a real result line"), None);
+        assert_eq!(compiled.flush_summary(), None);
+    }
+
+    #[test]
+    fn dedup_with_count_aggregates_repeats() {
+        let rule = Rule::DedupWithCount {
+            pattern: r"^Error: (\w+)".to_string(),
+            key_capture: Some(1),
+        };
+        let mut compiled = rule.compile().unwrap();
+        assert_eq!(compiled.apply("Error: E001 happened"), Some(FilterResult::Suppress));
+        assert_eq!(compiled.apply("Error: E001 again"), Some(FilterResult::Suppress));
+        assert_eq!(compiled.apply("Error: E002 different"), Some(FilterResult::Suppress));
+        assert_eq!(compiled.apply("Error: E001 third time"), Some(FilterResult::Suppress));
+        assert_eq!(compiled.apply("not an error line"), None);
+
+        let summary = compiled.flush_summary().expect("summary");
+        assert!(summary.contains("Error: E001 happened ×3"), "got {summary:?}");
+        assert!(summary.contains("Error: E002 different"), "got {summary:?}");
+        assert!(!summary.contains("Error: E002 different ×"), "got {summary:?}");
+        let p1 = summary.find("E001").unwrap();
+        let p2 = summary.find("E002").unwrap();
+        assert!(p1 < p2);
+    }
+
+    #[test]
+    fn dedup_with_count_no_match_passes_through() {
+        let rule = Rule::DedupWithCount {
+            pattern: r"^Error: (\w+)".to_string(),
+            key_capture: Some(1),
+        };
+        let mut compiled = rule.compile().unwrap();
+        assert_eq!(compiled.apply("plain line"), None);
         assert_eq!(compiled.flush_summary(), None);
     }
 }

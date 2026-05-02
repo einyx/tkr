@@ -17,3 +17,4 @@ anyhow = { workspace = true }
 serde = { workspace = true }
 toml = { workspace = true }
 regex = { workspace = true }
+indexmap = "2"
