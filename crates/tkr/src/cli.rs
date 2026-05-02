@@ -177,6 +177,21 @@ pub enum PayCmd {
         #[arg(long)]
         payer: String,
     },
+    /// Submit a receipt to MeshEscrow.claim() on-chain. Recipient signs the
+    /// transaction; their address must match the channel's registered
+    /// recipient or the call reverts.
+    Claim {
+        /// Path to the JSON receipt file (the same shape produced by
+        /// `tkr pay receipt-issue`)
+        #[arg(long)]
+        receipt: String,
+        /// EVM JSON-RPC URL (e.g. https://mainnet.base.org or http://127.0.0.1:8545)
+        #[arg(long)]
+        rpc_url: String,
+        /// Path to a 32-byte hex private key file for the recipient
+        #[arg(long)]
+        key_file: std::path::PathBuf,
+    },
 }
 
 /// Subcommands for `tkr vault`. When omitted, defaults to `status`.

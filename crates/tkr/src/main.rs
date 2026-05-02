@@ -186,6 +186,9 @@ fn main() -> anyhow::Result<()> {
             PayCmd::ReceiptVerify { receipt, payer } => {
                 cmds::pay::receipt_verify(&receipt, &payer)
             }
+            PayCmd::Claim { receipt, rpc_url, key_file } => {
+                cmds::pay::claim(&receipt, &rpc_url, &key_file)
+            }
         },
         Some(Commands::Watch) => cmds::watch::run(),
         Some(Commands::Gain {

@@ -64,6 +64,121 @@ pub fn receipt_verify(receipt_path: &str, expected_payer: &str) -> Result<()> {
     Ok(())
 }
 
+// ---------- claim (on-chain) ----------
+
+use alloy::network::EthereumWallet;
+use alloy::primitives::{Address as EvmAddr, Bytes, FixedBytes, U256};
+use alloy::providers::ProviderBuilder;
+use alloy::signers::local::PrivateKeySigner;
+use alloy::sol;
+
+sol! {
+    #[sol(rpc)]
+    interface IMeshEscrow {
+        function claim(bytes32 sessionId, uint256 cumulative, bytes signature) external;
+    }
+}
+
+pub fn claim(receipt_path: &str, rpc_url: &str, key_file: &Path) -> Result<()> {
+    let raw = if receipt_path == "-" {
+        let mut buf = String::new();
+        std::io::stdin().read_to_string(&mut buf).context("read stdin")?;
+        buf
+    } else {
+        std::fs::read_to_string(receipt_path)
+            .with_context(|| format!("read {receipt_path}"))?
+    };
+    let receipt: Receipt =
+        serde_json::from_str(&raw).context("parse receipt JSON")?;
+
+    let session_id = parse_session_id(&receipt.session_id)?;
+    let cumulative: u128 = receipt
+        .cumulative
+        .parse()
+        .with_context(|| format!("cumulative parse: {:?}", receipt.cumulative))?;
+    let sig_hex = receipt.signature.strip_prefix("0x").unwrap_or(&receipt.signature);
+    let sig_bytes = hex::decode(sig_hex).context("signature hex decode")?;
+    if sig_bytes.len() != 65 {
+        bail!("signature must be 65 bytes, got {}", sig_bytes.len());
+    }
+
+    let contract_addr: EvmAddr = receipt
+        .domain
+        .verifying_contract
+        .to_string()
+        .parse()
+        .context("verifying_contract parse")?;
+
+    // Build the runtime + signer.
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .context("tokio runtime")?;
+    let signer = load_signer(key_file)?;
+    let recipient = signer.address();
+    let wallet = EthereumWallet::from(signer);
+
+    let provider = ProviderBuilder::new()
+        .with_recommended_fillers()
+        .wallet(wallet)
+        .on_http(rpc_url.parse().context("rpc_url parse")?);
+
+    eprintln!("→ submitting claim()");
+    eprintln!("  contract  {contract_addr}");
+    eprintln!("  recipient {recipient}");
+    eprintln!("  session   0x{}", hex::encode(session_id));
+    eprintln!("  cumul.    {cumulative}");
+
+    let receipt_chain = rt.block_on(async {
+        let escrow = IMeshEscrow::new(contract_addr, &provider);
+        let pending = escrow
+            .claim(
+                FixedBytes::from(session_id),
+                U256::from(cumulative),
+                Bytes::from(sig_bytes),
+            )
+            .send()
+            .await
+            .map_err(|e| anyhow!("claim send: {e}"))?;
+        let tx_hash = *pending.tx_hash();
+        eprintln!("  tx hash   {tx_hash:#x}");
+        eprintln!("  awaiting confirmation...");
+        let receipt = pending
+            .get_receipt()
+            .await
+            .map_err(|e| anyhow!("await receipt: {e}"))?;
+        Ok::<_, anyhow::Error>(receipt)
+    })?;
+
+    let success = receipt_chain.status();
+    let block = receipt_chain.block_number.unwrap_or_default();
+    let gas = receipt_chain.gas_used;
+    if success {
+        println!("✓ claim confirmed");
+        println!("  block     {block}");
+        println!("  gas used  {gas}");
+        Ok(())
+    } else {
+        bail!("claim transaction reverted on-chain (block {block}, gas {gas})")
+    }
+}
+
+fn load_signer(path: &Path) -> Result<PrivateKeySigner> {
+    let raw = std::fs::read_to_string(path)
+        .with_context(|| format!("read key file {}", path.display()))?;
+    let hex_str = pick_hex(&raw)
+        .ok_or_else(|| anyhow!("no 32-byte hex private key found in {}", path.display()))?;
+    let hex_clean = hex_str.strip_prefix("0x").unwrap_or(&hex_str);
+    let bytes = hex::decode(hex_clean).with_context(|| format!("key file hex: {}", path.display()))?;
+    if bytes.len() != 32 {
+        bail!("key file must contain 32 bytes (64 hex chars), got {}", bytes.len());
+    }
+    let mut secret = [0u8; 32];
+    secret.copy_from_slice(&bytes);
+    PrivateKeySigner::from_bytes(&FixedBytes::from(secret))
+        .map_err(|e| anyhow!("alloy signer: {e}"))
+}
+
 // ---------- helpers ----------
 
 fn parse_session_id(s: &str) -> Result<[u8; 32]> {
