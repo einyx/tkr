@@ -87,6 +87,20 @@ pub enum Rule {
         #[serde(default)]
         key_capture: Option<usize>,
     },
+    /// Bucket matching lines by `key_capture`. Keep at most
+    /// `cap_per_key` lines per bucket and `total_cap` overall;
+    /// excess increments per-bucket and global overflow counters.
+    /// At flush emit a `header` followed by indented per-bucket lines.
+    GroupByCapture {
+        pattern: String,
+        #[serde(default)]
+        key_capture: Option<usize>,
+        #[serde(default = "default_cap_per_key")]
+        cap_per_key: u32,
+        #[serde(default = "default_total_cap")]
+        total_cap: u32,
+        header: String,
+    },
 }
 
 fn default_prefix_len() -> usize {
@@ -99,6 +113,14 @@ fn default_keep_first() -> u32 {
 
 fn default_ellipsis() -> String {
     "…".to_string()
+}
+
+fn default_cap_per_key() -> u32 {
+    3
+}
+
+fn default_total_cap() -> u32 {
+    50
 }
 
 /// Compiled rule with state inlined per variant. `apply` takes &mut self so
@@ -155,6 +177,17 @@ pub enum CompiledRule {
         key_capture: Option<usize>,
         /// key -> (first_line_seen, count)
         seen: IndexMap<String, (String, u32)>,
+    },
+    GroupByCapture {
+        re: Regex,
+        key_capture: Option<usize>,
+        cap_per_key: u32,
+        total_cap: u32,
+        header: String,
+        /// key -> (kept_lines, overflow_count)
+        buckets: IndexMap<String, (Vec<String>, u32)>,
+        total_kept: u32,
+        global_overflow: u32,
     },
 }
 
@@ -239,6 +272,22 @@ impl Rule {
                 re: Regex::new(&pattern)?,
                 key_capture,
                 seen: IndexMap::new(),
+            },
+            Rule::GroupByCapture {
+                pattern,
+                key_capture,
+                cap_per_key,
+                total_cap,
+                header,
+            } => CompiledRule::GroupByCapture {
+                re: Regex::new(&pattern)?,
+                key_capture,
+                cap_per_key,
+                total_cap,
+                header,
+                buckets: IndexMap::new(),
+                total_kept: 0,
+                global_overflow: 0,
             },
         })
     }
@@ -419,6 +468,38 @@ impl CompiledRule {
                     .or_insert_with(|| (line.to_string(), 1));
                 Some(FilterResult::Suppress)
             }
+            CompiledRule::GroupByCapture {
+                re,
+                key_capture,
+                cap_per_key,
+                total_cap,
+                buckets,
+                total_kept,
+                global_overflow,
+                ..
+            } => {
+                let Some(caps) = re.captures(line) else {
+                    return None;
+                };
+                let group_idx = key_capture.unwrap_or(1);
+                let key = caps
+                    .get(group_idx)
+                    .or_else(|| caps.get(0))
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default();
+                let bucket = buckets.entry(key).or_insert_with(|| (Vec::new(), 0));
+                let under_per_key = (bucket.0.len() as u32) < *cap_per_key;
+                let under_total = *total_kept < *total_cap;
+                if under_per_key && under_total {
+                    bucket.0.push(line.to_string());
+                    *total_kept += 1;
+                } else if !under_per_key && under_total {
+                    bucket.1 += 1;
+                } else {
+                    *global_overflow += 1;
+                }
+                Some(FilterResult::Suppress)
+            }
         }
     }
 
@@ -450,6 +531,31 @@ impl CompiledRule {
                     } else {
                         out.push_str(line);
                     }
+                }
+                Some(out)
+            }
+            CompiledRule::GroupByCapture {
+                header,
+                buckets,
+                global_overflow,
+                ..
+            } => {
+                if buckets.is_empty() {
+                    return None;
+                }
+                let mut out = String::new();
+                out.push_str(header);
+                for (key, (lines, overflow)) in buckets.iter() {
+                    out.push_str("\n  ");
+                    out.push_str(key);
+                    out.push_str(": ");
+                    out.push_str(&lines.join(", "));
+                    if *overflow > 0 {
+                        out.push_str(&format!(" (+{overflow} more)"));
+                    }
+                }
+                if *global_overflow > 0 {
+                    out.push_str(&format!("\n  (+{global_overflow} more dropped past total cap)"));
                 }
                 Some(out)
             }
@@ -706,5 +812,47 @@ mod tests {
         let mut compiled = rule.compile().unwrap();
         assert_eq!(compiled.apply("plain line"), None);
         assert_eq!(compiled.flush_summary(), None);
+    }
+
+    #[test]
+    fn group_by_capture_buckets_and_caps() {
+        let rule = Rule::GroupByCapture {
+            pattern: r"^([^:]+):".to_string(),
+            key_capture: Some(1),
+            cap_per_key: 2,
+            total_cap: 10,
+            header: "Matches by file:".to_string(),
+        };
+        let mut compiled = rule.compile().unwrap();
+        assert_eq!(compiled.apply("fileA: hit 1"), Some(FilterResult::Suppress));
+        assert_eq!(compiled.apply("fileA: hit 2"), Some(FilterResult::Suppress));
+        assert_eq!(compiled.apply("fileA: hit 3"), Some(FilterResult::Suppress));
+        assert_eq!(compiled.apply("fileB: hit 1"), Some(FilterResult::Suppress));
+        assert_eq!(compiled.apply("no colon line"), None);
+
+        let summary = compiled.flush_summary().expect("summary");
+        assert!(summary.starts_with("Matches by file:"), "got {summary:?}");
+        assert!(summary.contains("fileA"), "got {summary:?}");
+        assert!(summary.contains("hit 1"), "got {summary:?}");
+        assert!(summary.contains("hit 2"), "got {summary:?}");
+        assert!(summary.contains("(+1 more)"), "got {summary:?}");
+        assert!(summary.contains("fileB"), "got {summary:?}");
+    }
+
+    #[test]
+    fn group_by_capture_total_cap_caps_globally() {
+        let rule = Rule::GroupByCapture {
+            pattern: r"^(\w+):".to_string(),
+            key_capture: Some(1),
+            cap_per_key: 5,
+            total_cap: 2,
+            header: "Hits:".to_string(),
+        };
+        let mut compiled = rule.compile().unwrap();
+        compiled.apply("a: 1");
+        compiled.apply("b: 1");
+        compiled.apply("c: 1"); // exceeds total_cap
+        let summary = compiled.flush_summary().expect("summary");
+        assert!(summary.contains("(+1 more"), "got {summary:?}");
     }
 }
