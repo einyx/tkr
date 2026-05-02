@@ -16,6 +16,12 @@ services:
       # what enforces the loopback-only exposure.
       HOST: "0.0.0.0"
       PORT: "4000"
+      # tkr-server proxies POST /api/v1/chain/rpc → this URL. The
+      # `tkr-chain` service (anvil) sits on the same compose network, so
+      # the service name resolves to its container IP.
+      TKR_CHAIN_RPC_URL: "http://tkr-chain:8545"
+    depends_on:
+      - tkr-chain
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/health"]
       interval: 30s
