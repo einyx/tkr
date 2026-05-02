@@ -251,6 +251,7 @@ async fn route(req: Request<Incoming>, state: AppState) -> Result<Response<Body>
         (&Method::POST, "/api/v1/chain/rpc") => handle_chain_rpc(req, state).await,
         (&Method::POST, "/api/v1/aggregator/queue") => handle_aggregator_queue(req, state).await,
         (&Method::GET, "/api/v1/aggregator/pending") => handle_aggregator_pending(&req, state),
+        (&Method::GET, "/api/v1/aggregator/stats") => handle_aggregator_stats(&req, state),
         (&Method::POST, "/api/v1/ingest") => handle_ingest(req, state).await,
         (&Method::GET, "/api/v1/sessions") => handle_list_sessions(&req, state),
         (&Method::GET, path)
@@ -695,6 +696,26 @@ async fn handle_aggregator_queue(req: Request<Incoming>, state: AppState) -> Res
             "recipient": bucket_key,
             "bucketSize": bucket_size,
             "readyToFlush": ready_to_flush,
+            "batchSize": AGGREGATOR_BATCH_SIZE,
+            "maxAgeSecs": AGGREGATOR_MAX_AGE_SECS,
+        }),
+    )
+}
+
+/// Public aggregator stats — counts only, no recipient addresses or
+/// per-receipt detail. Safe to surface on the unauthenticated landing
+/// page as a "claims queued" indicator. The auth-gated
+/// `/aggregator/pending` endpoint above still returns the full breakdown.
+fn handle_aggregator_stats(req: &Request<Incoming>, state: AppState) -> Response<Body> {
+    let agg = state.inner.aggregator.lock().expect("aggregator lock");
+    let total_pending: usize = agg.values().map(|v| v.len()).sum();
+    let buckets = agg.len();
+    json_response(
+        req.headers(),
+        StatusCode::OK,
+        json!({
+            "totalPending": total_pending,
+            "buckets": buckets,
             "batchSize": AGGREGATOR_BATCH_SIZE,
             "maxAgeSecs": AGGREGATOR_MAX_AGE_SECS,
         }),

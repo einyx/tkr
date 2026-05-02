@@ -5,6 +5,13 @@ interface Props {
   onSignIn: () => void;
 }
 
+interface AggregatorStats {
+  totalPending: number;
+  buckets: number;
+  batchSize: number;
+  maxAgeSecs: number;
+}
+
 /// MeshEscrow address on the tkr devnet. Deterministic — first deploy
 /// from anvil[0] always lands here. If the chain ever gets wiped + we
 /// redeploy, this stays valid.
@@ -192,6 +199,12 @@ export function LandingView({ onSignIn }: Props) {
     refetchInterval: 4_000,
   });
 
+  const { data: agg } = useQuery<AggregatorStats>({
+    queryKey: ["aggregator-stats"],
+    queryFn: () => api<AggregatorStats>("/api/v1/aggregator/stats"),
+    refetchInterval: 5_000,
+  });
+
   const total_connected = status?.total_connected ?? 0;
   const total_meshes = status?.total_meshes ?? 0;
   const enrolled = (status?.meshes ?? []).reduce(
@@ -285,8 +298,12 @@ export function LandingView({ onSignIn }: Props) {
             label="last block size"
           />
           <Stat
-            value={chain?.miner ?? "—"}
-            label="block proposer"
+            value={agg?.totalPending != null ? String(agg.totalPending) : "—"}
+            label={
+              agg?.buckets != null
+                ? `receipts queued · ${agg.buckets} bucket${agg.buckets === 1 ? "" : "s"}`
+                : "receipts queued"
+            }
           />
           <Stat
             value={chain?.queuedTxs != null ? String(chain.queuedTxs) : "—"}
