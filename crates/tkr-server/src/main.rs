@@ -46,6 +46,10 @@ struct StateInner {
     vault: Mutex<BTreeMap<String, StoredSession>>,
     admin_password: String,
     broker: Arc<broker::BrokerState>,
+    /// Upstream EVM JSON-RPC URL. When set, /api/v1/chain/rpc proxies POST
+    /// bodies here. Configure via TKR_CHAIN_RPC_URL; defaults to none
+    /// (the route returns 503 unless configured).
+    chain_rpc_url: Option<String>,
 }
 
 const INDEX_HTML: &str = include_str!("../static/index.html");
@@ -177,6 +181,7 @@ async fn async_main() -> anyhow::Result<()> {
             vault: Mutex::new(BTreeMap::new()),
             admin_password,
             broker: broker::BrokerState::new(),
+            chain_rpc_url: std::env::var("TKR_CHAIN_RPC_URL").ok().filter(|s| !s.is_empty()),
         }),
     };
 
@@ -236,6 +241,7 @@ async fn route(req: Request<Incoming>, state: AppState) -> Result<Response<Body>
             StatusCode::OK,
             state.inner.broker.status(),
         ),
+        (&Method::POST, "/api/v1/chain/rpc") => handle_chain_rpc(req, state).await,
         (&Method::POST, "/api/v1/ingest") => handle_ingest(req, state).await,
         (&Method::GET, "/api/v1/sessions") => handle_list_sessions(&req, state),
         (&Method::GET, path)
@@ -581,6 +587,161 @@ async fn handle_mesh_ws(req: Request<Incoming>, state: AppState) -> Response<Bod
     );
     apply_cors_headers(headers, &HeaderMap::new());
     builder.body(Full::new(Bytes::new())).expect("response")
+}
+
+async fn handle_chain_rpc(req: Request<Incoming>, state: AppState) -> Response<Body> {
+    use http_body_util::BodyExt;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpStream;
+
+    let upstream = match state.inner.chain_rpc_url.as_deref() {
+        Some(u) => u,
+        None => {
+            return json_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "chain_rpc_unconfigured",
+                "TKR_CHAIN_RPC_URL is not set on this server",
+                req.headers(),
+            )
+        }
+    };
+
+    // Parse the upstream URL into (host, port, path). Only http:// is
+    // supported — the chain runs in the same compose network, no TLS.
+    let stripped = match upstream.strip_prefix("http://") {
+        Some(s) => s,
+        None => {
+            return json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "chain_rpc_misconfigured",
+                "TKR_CHAIN_RPC_URL must start with http://",
+                req.headers(),
+            )
+        }
+    };
+    let (authority, path) = match stripped.find('/') {
+        Some(i) => (&stripped[..i], &stripped[i..]),
+        None => (stripped, "/"),
+    };
+    let (host, port): (&str, u16) = match authority.rsplit_once(':') {
+        Some((h, p)) => (h, p.parse().unwrap_or(8545)),
+        None => (authority, 80),
+    };
+
+    // Read the body up-front (RPC bodies are small; we cap at 256 KiB
+    // defensively even though the standard read_json caps further).
+    let origin_headers = req.headers().clone();
+    let body_bytes = match req.into_body().collect().await {
+        Ok(b) => b.to_bytes(),
+        Err(_) => {
+            return json_error(
+                StatusCode::BAD_REQUEST,
+                "body_read_failed",
+                "could not read request body",
+                &origin_headers,
+            )
+        }
+    };
+    if body_bytes.len() > 256 * 1024 {
+        return json_error(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "body_too_large",
+            "RPC body exceeds 256 KiB",
+            &origin_headers,
+        );
+    }
+
+    // Build the upstream HTTP request manually. Tight loop: connect, write,
+    // read until upstream closes (HTTP/1.0) or until we've consumed
+    // Content-Length (HTTP/1.1).
+    let upstream_req = format!(
+        "POST {path} HTTP/1.1\r\nHost: {host}\r\nContent-Type: application/json\r\nContent-Length: {len}\r\nConnection: close\r\n\r\n",
+        len = body_bytes.len()
+    );
+    let connect = TcpStream::connect((host, port));
+    let mut sock = match tokio::time::timeout(Duration::from_secs(5), connect).await {
+        Ok(Ok(s)) => s,
+        Ok(Err(e)) => {
+            return json_error(
+                StatusCode::BAD_GATEWAY,
+                "upstream_connect",
+                &format!("connect {host}:{port}: {e}"),
+                &origin_headers,
+            )
+        }
+        Err(_) => {
+            return json_error(
+                StatusCode::GATEWAY_TIMEOUT,
+                "upstream_connect_timeout",
+                "timed out connecting to upstream chain",
+                &origin_headers,
+            )
+        }
+    };
+    if sock.write_all(upstream_req.as_bytes()).await.is_err()
+        || sock.write_all(&body_bytes).await.is_err()
+    {
+        return json_error(
+            StatusCode::BAD_GATEWAY,
+            "upstream_write",
+            "failed to send request to upstream",
+            &origin_headers,
+        );
+    }
+
+    // Read until EOF (we requested Connection: close); cap at 16 MiB.
+    let mut raw = Vec::with_capacity(4096);
+    let mut buf = [0u8; 16 * 1024];
+    let read_deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+    loop {
+        let remaining = read_deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            break;
+        }
+        match tokio::time::timeout(remaining, sock.read(&mut buf)).await {
+            Ok(Ok(0)) => break,
+            Ok(Ok(n)) => {
+                raw.extend_from_slice(&buf[..n]);
+                if raw.len() > 16 * 1024 * 1024 {
+                    return json_error(
+                        StatusCode::BAD_GATEWAY,
+                        "upstream_too_large",
+                        "upstream response exceeded 16 MiB",
+                        &origin_headers,
+                    );
+                }
+            }
+            Ok(Err(_)) | Err(_) => break,
+        }
+    }
+
+    // Split headers / body at "\r\n\r\n" and find Content-Type / status.
+    let split = raw.windows(4).position(|w| w == b"\r\n\r\n");
+    let (head, body) = match split {
+        Some(i) => (&raw[..i], &raw[i + 4..]),
+        None => (raw.as_slice(), &[][..]),
+    };
+    let head_str = std::str::from_utf8(head).unwrap_or("");
+    let mut lines = head_str.split("\r\n");
+    let status_line = lines.next().unwrap_or("");
+    let status_code = status_line
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse::<u16>().ok())
+        .unwrap_or(502);
+
+    // Build our response with the upstream body verbatim. Force JSON content
+    // type — anvil sends application/json which is what callers expect.
+    let bytes = Bytes::copy_from_slice(body);
+    let mut builder = Response::builder().status(StatusCode::from_u16(status_code).unwrap_or(StatusCode::BAD_GATEWAY));
+    let headers = builder.headers_mut().expect("headers");
+    apply_cors_headers(headers, &origin_headers);
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    headers.insert(
+        CONTENT_LENGTH,
+        HeaderValue::from_str(&bytes.len().to_string()).expect("len"),
+    );
+    builder.body(Full::new(bytes)).expect("response")
 }
 
 async fn handle_ingest(req: Request<Incoming>, state: AppState) -> Response<Body> {
