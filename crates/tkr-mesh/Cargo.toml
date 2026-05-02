@@ -21,7 +21,7 @@ sha3 = "0.10"
 thiserror = { workspace = true }
 ureq = { workspace = true }
 tokio = { workspace = true }
-tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 
 [dev-dependencies]

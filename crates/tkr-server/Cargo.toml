@@ -21,7 +21,7 @@ hyper-util = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
-tokio-tungstenite = { version = "0.21", default-features = false }
+tokio-tungstenite = { version = "0.24", default-features = false }
 tkr-mesh = { path = "../tkr-mesh" }
 rand = { workspace = true }
 hex = { workspace = true }
