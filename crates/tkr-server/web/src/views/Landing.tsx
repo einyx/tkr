@@ -20,6 +20,13 @@ interface ChainStats {
   uptimeSec: number | null;         // since chain genesis
   escrowBalanceEth: number | null;  // ETH locked in MeshEscrow
   pendingTxs: number | null;        // anvil txpool size
+  // ── third row ───────────────────────────────────────────────────────
+  priorityFeeGwei: number | null;   // eth_maxPriorityFeePerGas
+  blockUtilization: number | null;  // gasUsed / gasLimit, percent
+  blockSizeBytes: number | null;    // RLP-encoded block size
+  miner: string | null;             // truncated 0x… prefix
+  queuedTxs: number | null;         // anvil txpool queued
+  clientVersion: string | null;     // web3_clientVersion (anvil/<ver>)
 }
 
 async function rpc<T = unknown>(method: string, params: unknown[] = []): Promise<T> {
@@ -39,6 +46,10 @@ interface RpcBlock {
   hash: string;
   timestamp: string;
   transactions: string[];
+  miner?: string;
+  size?: string;
+  gasUsed?: string;
+  gasLimit?: string;
 }
 
 interface RpcTxpoolStatus {
@@ -51,14 +62,25 @@ async function fetchChainStats(): Promise<ChainStats> {
   const okOr = <T,>(p: PromiseSettledResult<T>): T | null =>
     p.status === "fulfilled" ? p.value : null;
 
-  // First wave: chain id + latest block (timestamp, hash, tx count) + gas
-  // price + escrow balance + txpool status. All parallel.
-  const [chainId, latest, gasPrice, escrowBal, txpool] = await Promise.allSettled([
+  // First wave: chain id + latest block (header w/ miner/size/gasUsed/
+  // gasLimit fields included) + gas price + escrow balance + txpool +
+  // priority fee + client version. All parallel.
+  const [
+    chainId,
+    latest,
+    gasPrice,
+    escrowBal,
+    txpool,
+    priorityFee,
+    clientVersion,
+  ] = await Promise.allSettled([
     rpc<string>("eth_chainId"),
     rpc<RpcBlock>("eth_getBlockByNumber", ["latest", false]),
     rpc<string>("eth_gasPrice"),
     rpc<string>("eth_getBalance", [MESH_ESCROW_ADDR, "latest"]),
     rpc<RpcTxpoolStatus>("txpool_status"),
+    rpc<string>("eth_maxPriorityFeePerGas"),
+    rpc<string>("web3_clientVersion"),
   ]);
 
   const latestBlock = okOr(latest);
@@ -96,6 +118,26 @@ async function fetchChainStats(): Promise<ChainStats> {
     gasPrice.status === "fulfilled" ? Math.round(fromHex(gasPrice.value) / 1e9) : null;
   const escrowBalanceEth =
     escrowBal.status === "fulfilled" ? fromHex(escrowBal.value) / 1e18 : null;
+  const priorityFeeGwei =
+    priorityFee.status === "fulfilled"
+      ? Math.round((fromHex(priorityFee.value) / 1e9) * 100) / 100
+      : null;
+
+  let blockUtilization: number | null = null;
+  let blockSizeBytes: number | null = null;
+  let miner: string | null = null;
+  if (latestBlock) {
+    if (latestBlock.gasUsed && latestBlock.gasLimit) {
+      const used = fromHex(latestBlock.gasUsed);
+      const limit = fromHex(latestBlock.gasLimit);
+      if (limit > 0) {
+        // Two decimal places — anvil's blocks are usually ~0.00% utilized.
+        blockUtilization = Math.round((used / limit) * 10000) / 100;
+      }
+    }
+    if (latestBlock.size) blockSizeBytes = fromHex(latestBlock.size);
+    if (latestBlock.miner) miner = latestBlock.miner.slice(0, 10);
+  }
 
   return {
     chainId: chainId.status === "fulfilled" ? fromHex(chainId.value) : null,
@@ -108,6 +150,17 @@ async function fetchChainStats(): Promise<ChainStats> {
     escrowBalanceEth,
     pendingTxs:
       txpool.status === "fulfilled" ? fromHex(txpool.value.pending) : null,
+    priorityFeeGwei,
+    blockUtilization,
+    blockSizeBytes,
+    miner,
+    queuedTxs:
+      txpool.status === "fulfilled" ? fromHex(txpool.value.queued) : null,
+    clientVersion:
+      clientVersion.status === "fulfilled"
+        // Most clients return e.g. "anvil/v1.0.3-dev"; trim long suffixes.
+        ? clientVersion.value.split("/").slice(0, 2).join("/").slice(0, 24)
+        : null,
   };
 }
 
@@ -200,6 +253,48 @@ export function LandingView({ onSignIn }: Props) {
           <Stat
             value={chain?.latestBlockHash ?? "—"}
             label="latest block hash"
+          />
+        </div>
+
+        <div className="lp-section-title" style={{ marginTop: 18 }}>
+          chain detail
+        </div>
+        <div className="lp-stats lp-stats-3">
+          <Stat
+            value={
+              chain?.priorityFeeGwei != null
+                ? `${chain.priorityFeeGwei} gwei`
+                : "—"
+            }
+            label="priority fee"
+          />
+          <Stat
+            value={
+              chain?.blockUtilization != null
+                ? `${chain.blockUtilization}%`
+                : "—"
+            }
+            label="last block gas used"
+          />
+          <Stat
+            value={
+              chain?.blockSizeBytes != null
+                ? `${chain.blockSizeBytes} B`
+                : "—"
+            }
+            label="last block size"
+          />
+          <Stat
+            value={chain?.miner ?? "—"}
+            label="block proposer"
+          />
+          <Stat
+            value={chain?.queuedTxs != null ? String(chain.queuedTxs) : "—"}
+            label="queued txs"
+          />
+          <Stat
+            value={chain?.clientVersion ?? "—"}
+            label="rpc client"
           />
         </div>
         <div className="lp-ctas">
