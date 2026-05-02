@@ -59,6 +59,49 @@ pattern = "^nothing to commit, working tree clean"
 type = "suppress_regex"
 pattern = "^You are currently rebasing"
 
+# `git status` long-form → short-form codes. Eliminates ~60% of bytes per
+# changed-file line (`        modified:   crates/foo.rs` → `M crates/foo.rs`).
+# These match the same letters `git status --short` emits, so the result is
+# as familiar to humans as porcelain output.
+[[rules]]
+type = "truncate_match"
+pattern = "^\\s+modified:\\s+(.+)$"
+replace = "M $1"
+
+[[rules]]
+type = "truncate_match"
+pattern = "^\\s+new file:\\s+(.+)$"
+replace = "A $1"
+
+[[rules]]
+type = "truncate_match"
+pattern = "^\\s+deleted:\\s+(.+)$"
+replace = "D $1"
+
+[[rules]]
+type = "truncate_match"
+pattern = "^\\s+renamed:\\s+(.+)$"
+replace = "R $1"
+
+[[rules]]
+type = "truncate_match"
+pattern = "^\\s+typechange:\\s+(.+)$"
+replace = "T $1"
+
+[[rules]]
+type = "truncate_match"
+pattern = "^\\s+copied:\\s+(.+)$"
+replace = "C $1"
+
+# Section banner the porcelain rename leaves dangling — `Untracked files:`
+# was already suppressed; bare `?? path` lines are short enough to keep.
+# But the section's leading-tab indented filenames (`\tpath`) need a small
+# tweak: turn them into `?? path`.
+[[rules]]
+type = "truncate_match"
+pattern = "^\\t(.+)$"
+replace = "?? $1"
+
 # Truncate git commit's "[branch SHA] subject" — SHA already short, but
 # repeated commit refs in `git log --all` output are noise; this leaves
 # them alone and instead targets the `... files changed` summary's whitespace.
