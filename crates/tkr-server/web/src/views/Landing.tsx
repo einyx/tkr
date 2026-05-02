@@ -5,10 +5,21 @@ interface Props {
   onSignIn: () => void;
 }
 
+/// MeshEscrow address on the tkr devnet. Deterministic — first deploy
+/// from anvil[0] always lands here. If the chain ever gets wiped + we
+/// redeploy, this stays valid.
+const MESH_ESCROW_ADDR = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+
 interface ChainStats {
   chainId: number | null;
   blockNumber: number | null;
   gasPriceGwei: number | null;
+  blockTimeMs: number | null;       // avg over the last ~10 blocks
+  txsInLatestBlock: number | null;
+  latestBlockHash: string | null;   // truncated 0x… prefix
+  uptimeSec: number | null;         // since chain genesis
+  escrowBalanceEth: number | null;  // ETH locked in MeshEscrow
+  pendingTxs: number | null;        // anvil txpool size
 }
 
 async function rpc<T = unknown>(method: string, params: unknown[] = []): Promise<T> {
@@ -23,22 +34,96 @@ async function rpc<T = unknown>(method: string, params: unknown[] = []): Promise
   return j.result as T;
 }
 
+interface RpcBlock {
+  number: string;
+  hash: string;
+  timestamp: string;
+  transactions: string[];
+}
+
+interface RpcTxpoolStatus {
+  pending: string;
+  queued: string;
+}
+
 async function fetchChainStats(): Promise<ChainStats> {
-  // Hit the three RPCs in parallel; tolerate failures (devnet unreachable).
-  const [chainId, blockNumber, gasPrice] = await Promise.allSettled([
-    rpc<string>("eth_chainId"),
-    rpc<string>("eth_blockNumber"),
-    rpc<string>("eth_gasPrice"),
-  ]);
   const fromHex = (s: string) => parseInt(s, 16);
+  const okOr = <T,>(p: PromiseSettledResult<T>): T | null =>
+    p.status === "fulfilled" ? p.value : null;
+
+  // First wave: chain id + latest block (timestamp, hash, tx count) + gas
+  // price + escrow balance + txpool status. All parallel.
+  const [chainId, latest, gasPrice, escrowBal, txpool] = await Promise.allSettled([
+    rpc<string>("eth_chainId"),
+    rpc<RpcBlock>("eth_getBlockByNumber", ["latest", false]),
+    rpc<string>("eth_gasPrice"),
+    rpc<string>("eth_getBalance", [MESH_ESCROW_ADDR, "latest"]),
+    rpc<RpcTxpoolStatus>("txpool_status"),
+  ]);
+
+  const latestBlock = okOr(latest);
+  const blockNumber = latestBlock ? fromHex(latestBlock.number) : null;
+  const latestTs = latestBlock ? fromHex(latestBlock.timestamp) : null;
+
+  // Second wave: prior block (10 back, capped) + genesis. Both depend on
+  // having the latest block number first, so they're sequential after
+  // wave 1 but parallel with each other.
+  let blockTimeMs: number | null = null;
+  let uptimeSec: number | null = null;
+  if (blockNumber != null) {
+    const priorN = Math.max(0, blockNumber - 10);
+    const [prior, genesis] = await Promise.allSettled([
+      priorN === blockNumber
+        ? Promise.resolve(latestBlock!)
+        : rpc<RpcBlock>("eth_getBlockByNumber", [`0x${priorN.toString(16)}`, false]),
+      rpc<RpcBlock>("eth_getBlockByNumber", ["0x0", false]),
+    ]);
+    const priorBlock = okOr(prior);
+    if (priorBlock && latestTs != null) {
+      const priorTs = fromHex(priorBlock.timestamp);
+      const span = blockNumber - fromHex(priorBlock.number);
+      if (span > 0) {
+        blockTimeMs = Math.round(((latestTs - priorTs) * 1000) / span);
+      }
+    }
+    const genesisBlock = okOr(genesis);
+    if (genesisBlock && latestTs != null) {
+      uptimeSec = latestTs - fromHex(genesisBlock.timestamp);
+    }
+  }
+
+  const gasPriceGwei =
+    gasPrice.status === "fulfilled" ? Math.round(fromHex(gasPrice.value) / 1e9) : null;
+  const escrowBalanceEth =
+    escrowBal.status === "fulfilled" ? fromHex(escrowBal.value) / 1e18 : null;
+
   return {
     chainId: chainId.status === "fulfilled" ? fromHex(chainId.value) : null,
-    blockNumber: blockNumber.status === "fulfilled" ? fromHex(blockNumber.value) : null,
-    gasPriceGwei:
-      gasPrice.status === "fulfilled"
-        ? Math.round(fromHex(gasPrice.value) / 1e9)
-        : null,
+    blockNumber,
+    gasPriceGwei,
+    blockTimeMs,
+    txsInLatestBlock: latestBlock ? latestBlock.transactions.length : null,
+    latestBlockHash: latestBlock ? latestBlock.hash.slice(0, 10) : null,
+    uptimeSec,
+    escrowBalanceEth,
+    pendingTxs:
+      txpool.status === "fulfilled" ? fromHex(txpool.value.pending) : null,
   };
+}
+
+function fmtUptime(sec: number): string {
+  if (sec < 60) return `${sec}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m`;
+  return `${Math.floor(sec / 86400)}d ${Math.floor((sec % 86400) / 3600)}h`;
+}
+
+function fmtEth(eth: number): string {
+  if (eth === 0) return "0";
+  if (eth < 0.001) return "<0.001";
+  if (eth < 1) return eth.toFixed(3);
+  if (eth < 1000) return eth.toFixed(2);
+  return Math.round(eth).toLocaleString();
 }
 
 export function LandingView({ onSignIn }: Props) {
@@ -85,6 +170,36 @@ export function LandingView({ onSignIn }: Props) {
                 ? `chain ${chain.chainId} · ${chain.gasPriceGwei ?? "?"} gwei`
                 : "tkr devnet"
             }
+          />
+        </div>
+
+        <div className="lp-section-title" style={{ marginTop: 18 }}>
+          tkr devnet — live
+        </div>
+        <div className="lp-stats lp-stats-3">
+          <Stat
+            value={chain?.blockTimeMs != null ? `${chain.blockTimeMs}ms` : "—"}
+            label="avg block time"
+          />
+          <Stat
+            value={chain?.txsInLatestBlock != null ? String(chain.txsInLatestBlock) : "—"}
+            label="txs in latest block"
+          />
+          <Stat
+            value={chain?.pendingTxs != null ? String(chain.pendingTxs) : "—"}
+            label="pending txs"
+          />
+          <Stat
+            value={chain?.escrowBalanceEth != null ? `${fmtEth(chain.escrowBalanceEth)} ETH` : "—"}
+            label="locked in MeshEscrow"
+          />
+          <Stat
+            value={chain?.uptimeSec != null ? fmtUptime(chain.uptimeSec) : "—"}
+            label="chain uptime"
+          />
+          <Stat
+            value={chain?.latestBlockHash ?? "—"}
+            label="latest block hash"
           />
         </div>
         <div className="lp-ctas">

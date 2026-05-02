@@ -199,8 +199,13 @@ pre {
   gap: 12px;
   margin: 0 0 28px 0;
 }
+.lp-stats-3 {
+  grid-template-columns: repeat(3, 1fr);
+  margin-bottom: 28px;
+}
 @media (max-width: 640px) {
   .lp-stats { grid-template-columns: repeat(2, 1fr); }
+  .lp-stats-3 { grid-template-columns: repeat(2, 1fr); }
   .lp-title { font-size: 56px; }
 }
 .lp-stat {
