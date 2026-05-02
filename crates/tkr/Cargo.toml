@@ -61,6 +61,7 @@ flate2 = { workspace = true }
 self_update = { version = "0.44.0", default-features = false, features = ["archive-tar", "compression-flate2", "ureq", "rustls"] }
 alloy = { version = "0.8", default-features = false, features = ["std", "providers", "signer-local", "sol-types", "contract", "network", "rpc-types-eth", "reqwest-rustls-tls"] }
 tokio = { workspace = true, features = ["rt"] }
+k256 = { version = "0.13", features = ["ecdh"] }
 
 [dev-dependencies]
 regex = { workspace = true }

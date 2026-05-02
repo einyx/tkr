@@ -95,9 +95,20 @@ pub fn enroll(
         Err(e) => return Err(Error::Encoding(format!("broker unreachable: {e}"))),
     };
 
-    let parsed: JoinResponse = resp
-        .into_json()
-        .map_err(|e| Error::Encoding(format!("broker response not JSON: {e}")))?;
+    let status = resp.status();
+    let raw = resp
+        .into_string()
+        .map_err(|e| Error::Encoding(format!("broker response read: {e}")))?;
+    let parsed: JoinResponse = serde_json::from_str(&raw).map_err(|e| {
+        let snippet = if raw.len() > 200 {
+            format!("{}…", &raw[..200])
+        } else {
+            raw.clone()
+        };
+        Error::Encoding(format!(
+            "broker response not JSON (status={status}): {e}; body={snippet}"
+        ))
+    })?;
     if !parsed.ok {
         return Err(Error::InvalidInvite(
             parsed.error.unwrap_or_else(|| "broker rejected join".into()),
@@ -118,9 +129,14 @@ pub fn enroll(
     })
 }
 
-/// Map a `wss://host[:port]/path` broker URL to the HTTP base used for
-/// `POST /join` — the path is replaced with `/join`. Schemes `wss://` and
-/// `ws://` flip to `https://` and `http://` respectively.
+/// Map a `wss://host[:port]/path` broker URL to the HTTP enrollment URL.
+/// Schemes `wss://` and `ws://` flip to `https://` and `http://`.
+///
+/// Path mapping:
+/// - if the path ends with `/ws` (or `/ws/`), replace it with `/join`
+///   (e.g. `wss://h/api/v1/mesh/ws` → `https://h/api/v1/mesh/join`).
+/// - otherwise, append `/join` to host[:port] only — the
+///   claudemesh-compatible legacy default.
 fn http_join_url(broker_url: &str) -> Result<String> {
     let (scheme_out, rest) = if let Some(r) = broker_url.strip_prefix("wss://") {
         ("https", r)
@@ -136,15 +152,21 @@ fn http_join_url(broker_url: &str) -> Result<String> {
         )));
     };
 
-    // Strip path/query — keep host[:port] only.
-    let host = rest
-        .split(|c| c == '/' || c == '?' || c == '#')
-        .next()
-        .unwrap_or(rest);
-    if host.is_empty() {
-        return Err(Error::Encoding("broker_url missing host".into()));
-    }
-    Ok(format!("{scheme_out}://{host}/join"))
+    // Trim trailing slash + query/fragment if any.
+    let path_query_end = rest.find(|c: char| c == '?' || c == '#').unwrap_or(rest.len());
+    let path_part = &rest[..path_query_end];
+    let trimmed = path_part.trim_end_matches('/');
+
+    let mapped = if let Some(prefix) = trimmed.strip_suffix("/ws") {
+        format!("{prefix}/join")
+    } else {
+        let host = trimmed.split('/').next().unwrap_or(trimmed);
+        if host.is_empty() {
+            return Err(Error::Encoding("broker_url missing host".into()));
+        }
+        format!("{host}/join")
+    };
+    Ok(format!("{scheme_out}://{mapped}"))
 }
 
 #[cfg(test)]
@@ -180,6 +202,32 @@ mod tests {
         assert_eq!(
             http_join_url("https://broker.example.com").unwrap(),
             "https://broker.example.com/join"
+        );
+    }
+
+    #[test]
+    fn http_join_url_preserves_path_prefix_when_replacing_ws() {
+        // tkr-server serves at /api/v1/mesh/ws — the join endpoint is at
+        // /api/v1/mesh/join (sibling, not at the host root).
+        assert_eq!(
+            http_join_url("wss://tkr.prysm.sh/api/v1/mesh/ws").unwrap(),
+            "https://tkr.prysm.sh/api/v1/mesh/join"
+        );
+        assert_eq!(
+            http_join_url("ws://localhost:4000/api/v1/mesh/ws/").unwrap(),
+            "http://localhost:4000/api/v1/mesh/join"
+        );
+    }
+
+    #[test]
+    fn http_join_url_strips_query_and_fragment() {
+        assert_eq!(
+            http_join_url("wss://h/ws?foo=1").unwrap(),
+            "https://h/join"
+        );
+        assert_eq!(
+            http_join_url("wss://h/ws#frag").unwrap(),
+            "https://h/join"
         );
     }
 

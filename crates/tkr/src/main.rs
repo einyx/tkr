@@ -16,7 +16,7 @@ mod stream;
 mod util;
 
 use clap::Parser;
-use cli::{AdminCmd, AgentCmd, Cli, Commands, HookTarget, PayCmd, VaultCmd};
+use cli::{AdminCmd, AgentCmd, Cli, Commands, HookTarget, MeshCmd, PayCmd, VaultCmd};
 use std::io::IsTerminal;
 
 fn vault_main(cmd: Option<VaultCmd>) -> ! {
@@ -188,6 +188,20 @@ fn main() -> anyhow::Result<()> {
             }
             PayCmd::Claim { receipt, rpc_url, key_file } => {
                 cmds::pay::claim(&receipt, &rpc_url, &key_file)
+            }
+        },
+        Some(Commands::Mesh { cmd }) => match cmd {
+            MeshCmd::Join { url, display_name } => {
+                cmds::mesh::join(&url, display_name.as_deref())
+            }
+            MeshCmd::List => cmds::mesh::list(),
+            MeshCmd::Whoami { slug } => cmds::mesh::whoami(&slug),
+            MeshCmd::Tail { slug } => cmds::mesh::tail(&slug),
+            MeshCmd::Send { slug, to, recipient_pubkey, message } => {
+                cmds::mesh::send(&slug, &to, &recipient_pubkey, &message)
+            }
+            MeshCmd::InviteMint { slug, broker_url, owner_key_file, ttl_hours } => {
+                cmds::mesh::invite_mint(&slug, &broker_url, &owner_key_file, ttl_hours)
             }
         },
         Some(Commands::Watch) => cmds::watch::run(),

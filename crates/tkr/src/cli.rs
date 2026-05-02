@@ -143,6 +143,72 @@ pub enum Commands {
         #[command(subcommand)]
         cmd: PayCmd,
     },
+    /// tkr-mesh peer messaging — join a mesh, tail incoming messages,
+    /// send DMs to other peers.
+    Mesh {
+        #[command(subcommand)]
+        cmd: MeshCmd,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum MeshCmd {
+    /// Join a mesh via an invite URL (https://.../join/<token> or bare token).
+    /// Generates a fresh secp256k1 identity, calls POST /join, persists the
+    /// JoinedMesh record to ~/.tkr/mesh/<slug>.json (chmod 0600).
+    Join {
+        /// Invite URL or bare base64url token from the mesh owner
+        #[arg(value_name = "INVITE_URL")]
+        url: String,
+        /// Optional human-readable name to register with the broker
+        #[arg(long)]
+        display_name: Option<String>,
+    },
+    /// List meshes this machine has joined.
+    List,
+    /// Connect to a joined mesh and tail incoming messages. Run in one
+    /// terminal while another peer sends DMs to your address.
+    Tail {
+        /// Mesh slug (from `tkr mesh list`)
+        slug: String,
+    },
+    /// Send a plaintext direct message to a peer in the mesh.
+    Send {
+        /// Mesh slug (from `tkr mesh list`)
+        slug: String,
+        /// Recipient mesh address (0x... EIP-55)
+        #[arg(long)]
+        to: String,
+        /// Recipient's secp256k1 public key (compressed, 33-byte hex 0x02.../0x03...)
+        /// — the recipient prints this with `tkr mesh whoami`.
+        #[arg(long)]
+        recipient_pubkey: String,
+        /// Message body (UTF-8). Use `-` to read from stdin.
+        message: String,
+    },
+    /// Print this peer's mesh address + compressed public key (share the
+    /// public key with peers who want to send you DMs).
+    Whoami {
+        /// Mesh slug (from `tkr mesh list`)
+        slug: String,
+    },
+    /// Mint a signed invite URL. The owner key signs it; share the URL
+    /// with anyone you want to admit to the mesh.
+    InviteMint {
+        /// Short human-readable mesh slug (e.g. "team-alpha")
+        #[arg(long)]
+        slug: String,
+        /// Broker WebSocket URL the invitee will connect to
+        /// (e.g. wss://tkr.prysm.sh/api/v1/mesh/ws)
+        #[arg(long)]
+        broker_url: String,
+        /// Path to the mesh owner's private key file (TKR_PAYMENT_KEY=0x...)
+        #[arg(long)]
+        owner_key_file: std::path::PathBuf,
+        /// Invite lifetime in hours. Default: 24.
+        #[arg(long, default_value_t = 24)]
+        ttl_hours: u64,
+    },
 }
 
 #[derive(Subcommand, Debug, Clone)]
