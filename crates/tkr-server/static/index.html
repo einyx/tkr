@@ -179,6 +179,141 @@
     padding: 1px 6px;
     user-select: all;
   }
+
+  /* landing page (unauth public) */
+  .lp { max-width: 880px; margin: 0 auto; padding: 60px 24px 40px; }
+  .lp-hero { padding: 0 0 32px 0; border-bottom: 1px solid var(--line); margin-bottom: 32px; }
+  .lp-title {
+    font-size: 84px;
+    margin: 0 0 8px 0;
+    line-height: 1;
+    letter-spacing: -0.04em;
+    font-weight: 600;
+  }
+  .lp-title::before { content: "▲ "; color: var(--accent); }
+  .lp-subtitle {
+    font-size: 14px;
+    color: var(--fg);
+    margin: 0 0 28px 0;
+    line-height: 1.6;
+    max-width: 640px;
+  }
+  .lp-subtitle strong { color: var(--accent); font-weight: 600; }
+  .lp-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin: 0 0 28px 0;
+  }
+  @media (max-width: 640px) {
+    .lp-stats { grid-template-columns: repeat(2, 1fr); }
+    .lp-title { font-size: 56px; }
+  }
+  .lp-stat {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    padding: 14px 16px;
+  }
+  .lp-stat-value {
+    font-size: 26px;
+    color: var(--accent);
+    line-height: 1;
+    margin-bottom: 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  .lp-stat-label {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .lp-ctas { display: flex; gap: 10px; flex-wrap: wrap; }
+  .lp-cta {
+    display: inline-block;
+    padding: 10px 18px;
+    border: 1px solid var(--line);
+    text-decoration: none;
+    font-size: 13px;
+  }
+  .lp-cta-primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .lp-cta-primary:hover { background: var(--bg); color: var(--accent); text-decoration: none; }
+  .lp-cta-secondary { background: var(--bg-2); color: var(--fg); }
+  .lp-cta-secondary:hover { border-color: var(--accent); text-decoration: none; }
+
+  .lp-install { margin: 0 0 22px 0; }
+  .lp-install-label {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 6px;
+  }
+  .lp-cmd {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    padding: 12px 14px;
+    margin: 0;
+    font-size: 12px;
+    color: var(--fg);
+    overflow-x: auto;
+    user-select: all;
+    border-radius: 2px;
+  }
+  .lp-broker-line {
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .lp-broker-line code {
+    color: var(--accent-2);
+    background: var(--bg);
+    padding: 1px 6px;
+    user-select: all;
+  }
+
+  .lp-features-section { margin-top: 36px; }
+  .lp-section-title {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin: 0 0 12px 0;
+    font-weight: normal;
+  }
+  .lp-features {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  @media (max-width: 720px) {
+    .lp-features { grid-template-columns: 1fr; }
+  }
+  .lp-feature {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    padding: 16px 16px 18px 16px;
+  }
+  .lp-feature-title {
+    font-size: 12px;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+  }
+  .lp-feature-body {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  .lp-footer {
+    margin-top: 48px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .lp-footer a { color: var(--accent-2); }
 </style>
 </head>
 <body>
@@ -236,6 +371,108 @@ function mount(node) { clear(); app.appendChild(node); }
 
 // ---------- Login ----------
 
+// ---------- Landing (unauth public) ----------
+
+async function landingView() {
+  const status = await api("/api/v1/mesh/status").catch(() => ({
+    total_meshes: 0, total_connected: 0, meshes: [],
+  }));
+
+  const heroSubtitle = el("p", { class: "lp-subtitle" }, [
+    "token-optimized CLI proxy + ",
+    el("strong", { text: "agent mesh" }),
+    " + on-chain payments.",
+    el("br"),
+    "encrypted peer messaging through this broker, EIP-712 receipts, MeshEscrow on Base.",
+  ]);
+
+  const stats = el("div", { class: "lp-stats" }, [
+    statCard(String(status.total_connected || 0), "peers online"),
+    statCard(String(status.total_meshes || 0), "meshes"),
+    statCard(
+      (status.meshes || []).reduce((a, m) => a + (m.enrolled || 0), 0).toString(),
+      "members enrolled",
+    ),
+    statCard("E2E", "ECDH + AES-GCM"),
+  ]);
+
+  const ctas = el("div", { class: "lp-ctas" }, [
+    el("a", {
+      class: "lp-cta lp-cta-primary",
+      href: "https://github.com/einyx/tkr",
+      target: "_blank",
+      rel: "noopener",
+      text: "github →",
+    }),
+    el("a", {
+      class: "lp-cta lp-cta-secondary",
+      href: "#",
+      text: "sign in",
+      onclick: (e) => { e.preventDefault(); loginView(); },
+    }),
+  ]);
+
+  const installBlock = el("div", { class: "lp-install" }, [
+    el("div", { class: "lp-install-label", text: "install" }),
+    el("pre", { class: "lp-cmd", text: "curl -fsSL https://github.com/einyx/tkr/releases/latest/download/install.sh | bash" }),
+  ]);
+
+  const meshHost = location.host;
+  const brokerInline = el("div", { class: "lp-install" }, [
+    el("div", { class: "lp-install-label", text: "join the mesh" }),
+    el("pre", { class: "lp-cmd", text: `tkr mesh join <invite-url>\ntkr mesh tail demo                   # listen\ntkr mesh send demo --to <addr> --recipient-pubkey <pub> 'hi'` }),
+    el("div", { class: "lp-broker-line" }, [
+      "broker: ",
+      el("code", { text: `wss://${meshHost}/api/v1/mesh/ws` }),
+    ]),
+  ]);
+
+  const features = el("div", { class: "lp-features" }, [
+    featureCard("filter", "60–95% fewer tokens on git, ls, npm, find, grep, cargo, kubectl, docker. Filters are TOML rules — extend without recompiling."),
+    featureCard("mesh", "secp256k1 identity = wallet address. EIP-712 invites verifiable in any wallet. WSS broker, ECDH+AES-GCM, encrypted DMs the broker can't read."),
+    featureCard("pay", "MeshEscrow.sol on Base: open channel, sign EIP-712 receipts off-chain, claim on-chain. Forge-tested, end-to-end demo via `make demo-payment`."),
+  ]);
+
+  const main = el("main", { class: "lp" }, [
+    el("section", { class: "lp-hero" }, [
+      el("h1", { class: "lp-title", text: "tkr" }),
+      heroSubtitle,
+      stats,
+      ctas,
+    ]),
+    el("section", null, [installBlock]),
+    el("section", null, [brokerInline]),
+    el("section", { class: "lp-features-section" }, [
+      el("h2", { class: "lp-section-title", text: "what's inside" }),
+      features,
+    ]),
+    el("footer", { class: "lp-footer" }, [
+      "Apache-2.0 · ",
+      el("a", { href: "https://github.com/einyx/tkr", target: "_blank", rel: "noopener", text: "github.com/einyx/tkr" }),
+      " · live at this broker",
+    ]),
+  ]);
+
+  clear();
+  app.appendChild(main);
+}
+
+function statCard(value, label) {
+  return el("div", { class: "lp-stat" }, [
+    el("div", { class: "lp-stat-value", text: value }),
+    el("div", { class: "lp-stat-label", text: label }),
+  ]);
+}
+
+function featureCard(title, body) {
+  return el("div", { class: "lp-feature" }, [
+    el("div", { class: "lp-feature-title", text: title }),
+    el("div", { class: "lp-feature-body", text: body }),
+  ]);
+}
+
+// ---------- Login ----------
+
 function loginView(errorMsg) {
   const passwordInput = el("input", { id: "password", type: "password", autocomplete: "current-password", autofocus: "" });
   const errBox = el("div", { class: "err" });
@@ -277,7 +514,7 @@ async function boot() {
     const me = await api("/api/auth/me");
     dashboardView(me);
   } catch (err) {
-    if (err.status === 401) { loginView(); return; }
+    if (err.status === 401) { landingView(); return; }
     const main = el("main", null, [el("div", { class: "err", text: "failed to boot: " + err.message })]);
     mount(main);
   }
