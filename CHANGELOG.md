@@ -49,6 +49,31 @@ deep review of the new mesh / broker / contract / MCP surfaces.
   `test_close_revert_not_payer`, `test_claim_revert_not_recipient`).
   20/20 passing.
 
+### Defence in depth (follow-up)
+
+- **tkr-mesh**: invite EIP-712 domain now matches the standard four-field
+  shape (`name, version, chainId, verifyingContract`) — `chainId = 0`,
+  `verifyingContract = address(0)` since invites are off-chain. Brings
+  invites in line with the on-chain `MeshEscrow` receipt domain and
+  removes any structural ambiguity if a future on-chain invite registry
+  is added. **Breaking**: invalidates any previously-issued invite
+  signatures (none in production yet).
+- **tkr-mesh**: `Hello.session_id` is now a 128-bit `OsRng` nonce (was
+  `pid + now_ms`). New `Hello::verify_with_now(now_ms, max_skew_ms)` and
+  `HELLO_MAX_SKEW_MS = 60s`; the broker calls the freshness-checking
+  variant so a captured Hello frame can't be replayed by a network
+  adversary later.
+- **tkr-sandbox**: `SandboxPolicy.env_allow` opt-in allowlist; child
+  processes now spawn with `env_clear()` + `PATH` only by default.
+  Prevents leaking `ANTHROPIC_API_KEY`, `AWS_*`, `GITHUB_TOKEN`, etc.
+  into sandboxed code that has network access. Applies to both linux
+  (Landlock) and macos (`sandbox-exec`) backends.
+- **tkr-session-recorder**: new `scrub` module. Commands like `cat`,
+  `env`, `printenv`, `op`, `gpg` (full deny list in `scrub.rs`) suppress
+  the `output_preview` entirely; for everything else, lines matching
+  common API-key, bearer-token, AWS access-key, or PEM-block patterns
+  are replaced with `<redacted: …>` before being persisted to the vault.
+
 ## [0.3.0] — 2026-05-02
 
 Major: tkr is no longer just a Bash filter. New surfaces extend it into

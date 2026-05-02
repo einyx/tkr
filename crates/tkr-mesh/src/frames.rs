@@ -57,6 +57,10 @@ impl Hello {
     /// broker calls this on receive; the result tells it which member
     /// claims this connection (and the signature proves they hold the
     /// matching key).
+    ///
+    /// **Does not check freshness** — the broker should call
+    /// [`Hello::verify_with_now`] instead, so a captured Hello cannot be
+    /// replayed by a network adversary at a later time.
     pub fn verify(&self) -> Result<()> {
         let digest = hello_digest(&self.mesh_id, &self.address, &self.session_id, self.timestamp_ms);
         let sig_bytes = parse_signature(&self.signature)?;
@@ -66,7 +70,26 @@ impl Hello {
         }
         Ok(())
     }
+
+    /// Verify the signature **and** check that the embedded `timestamp_ms`
+    /// is within `max_skew_ms` of `now_ms` (in either direction). Brokers
+    /// should call this with a small skew (e.g. 60_000 ms) so a captured
+    /// Hello frame cannot be replayed by a network adversary later.
+    pub fn verify_with_now(&self, now_ms: u64, max_skew_ms: u64) -> Result<()> {
+        self.verify()?;
+        let skew = self.timestamp_ms.abs_diff(now_ms);
+        if skew > max_skew_ms {
+            return Err(Error::Encoding(format!(
+                "hello timestamp out of window: skew={skew}ms, max={max_skew_ms}ms"
+            )));
+        }
+        Ok(())
+    }
 }
+
+/// Default freshness window the broker enforces against `Hello.timestamp_ms`.
+/// Tuned for typical clock skew between client and broker.
+pub const HELLO_MAX_SKEW_MS: u64 = 60_000;
 
 fn hello_digest(mesh_id: &str, addr: &Address, session_id: &str, ts: u64) -> [u8; 32] {
     // Domain-tagged keccak so the hello signature can never be confused

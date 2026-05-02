@@ -15,6 +15,7 @@
 //!   events.jsonl    — append-only Event stream
 //! ```
 
+pub mod scrub;
 pub mod storage;
 
 pub use storage::{
@@ -59,6 +60,10 @@ struct InFlight {
     chars_in: u64,
     filter_savings_chars: u64,
     output_preview: String,
+    /// True when the command name is on the deny list (cat / env / printenv
+    /// / etc.) — `output_preview` is suppressed for the lifetime of the
+    /// command and replaced with a single explanatory marker on completion.
+    suppress_preview: bool,
 }
 
 impl SessionRecorderPluginV2 {
@@ -142,6 +147,7 @@ impl Plugin for SessionRecorderPluginV2 {
     }
 
     fn on_command_begin(&mut self, ctx: &CommandCtx) -> ApiResult<()> {
+        let suppress = scrub::is_deny_listed(&ctx.command);
         *self.in_flight.lock().unwrap() = Some(InFlight {
             started_at: Instant::now(),
             command: ctx.command.clone(),
@@ -149,6 +155,7 @@ impl Plugin for SessionRecorderPluginV2 {
             chars_in: 0,
             filter_savings_chars: 0,
             output_preview: String::new(),
+            suppress_preview: suppress,
         });
         Ok(())
     }
@@ -156,12 +163,19 @@ impl Plugin for SessionRecorderPluginV2 {
     fn on_line(&mut self, line: &str, _ctx: &CommandCtx) -> ApiResult<FilterDecision> {
         if let Some(inflight) = self.in_flight.lock().unwrap().as_mut() {
             inflight.chars_in += line.len() as u64;
+            if inflight.suppress_preview {
+                return Ok(FilterDecision::Pass);
+            }
             // Keep the first ~2 KB as a preview snapshot — matches design §5.2.
+            // Each line is run through scrub::scrub_line so common API-key /
+            // bearer-token / PEM shapes are replaced with `<redacted: …>`
+            // before they reach the encrypted-but-recoverable preview.
+            let scrubbed = scrub::scrub_line(line);
             if inflight.output_preview.len() < 2048 {
                 let remaining = 2048 - inflight.output_preview.len();
-                let take = line.len().min(remaining);
-                inflight.output_preview.push_str(&line[..take]);
-                if take < line.len() {
+                let take = scrubbed.len().min(remaining);
+                inflight.output_preview.push_str(&scrubbed[..take]);
+                if take < scrubbed.len() {
                     inflight.output_preview.push('\n');
                 }
             }
@@ -190,12 +204,17 @@ impl Plugin for SessionRecorderPluginV2 {
             format!("{} {}", inflight.command, inflight.args)
         };
 
+        let preview = if inflight.suppress_preview {
+            "<preview suppressed: command in deny-list>".to_string()
+        } else {
+            inflight.output_preview
+        };
         let event = storage::make_event(
             session_id,
             seq,
             "Bash",
             serde_json::Value::String(input_str),
-            inflight.output_preview,
+            preview,
             0, // tokens_in: command-line input is tiny; left at 0 for v1
             (inflight.chars_in / 4) as u32,
             (inflight.filter_savings_chars / 4) as u32,

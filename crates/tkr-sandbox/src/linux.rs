@@ -14,6 +14,23 @@ pub fn run(
 
     let mut cmd = Command::new(command);
     cmd.args(args);
+    // Strip the parent environment unconditionally, then re-add only the
+    // names listed in policy.env_allow (looking up live values at spawn).
+    // PATH is always forwarded so the kernel can resolve `command` when
+    // it is not an absolute path; refusing it would silently break every
+    // policy that does not think to allowlist it.
+    cmd.env_clear();
+    if let Ok(path) = std::env::var("PATH") {
+        cmd.env("PATH", path);
+    }
+    for name in &policy.env_allow {
+        if name == "PATH" {
+            continue;
+        }
+        if let Ok(value) = std::env::var(name) {
+            cmd.env(name, value);
+        }
+    }
 
     unsafe {
         cmd.pre_exec(move || {

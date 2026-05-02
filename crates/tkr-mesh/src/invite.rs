@@ -164,14 +164,30 @@ impl Invite {
     }
 }
 
-/// EIP-712 domain. Pinned constants — change → invalidates all old invites.
+/// EIP-712 domain for invites. Pinned constants — changing any field
+/// invalidates all previously-issued invites.
+///
+/// Shape matches the standard `EIP712Domain(string name,string version,
+/// uint256 chainId,address verifyingContract)` so wallets render it
+/// consistently with the on-chain `MeshEscrow` receipt domain. We use
+/// `chainId = 0` and `verifyingContract = address(0)` because invites are
+/// purely off-chain — the deployment binding lives in the struct hash via
+/// `brokerUrl` (and on the broker side, via the enrolled mesh_id record).
+/// Including the zero values explicitly still adds defence-in-depth: a
+/// future on-chain invite registry would use a non-zero pair, eliminating
+/// any structural ambiguity between off-chain and on-chain invites.
 fn domain_separator() -> [u8; 32] {
-    // typeHash = keccak256("EIP712Domain(string name,string version)")
-    let type_hash = Keccak256::digest(b"EIP712Domain(string name,string version)");
-    let mut buf = Vec::with_capacity(3 * 32);
+    let type_hash = Keccak256::digest(
+        b"EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+    );
+    let mut buf = Vec::with_capacity(5 * 32);
     buf.extend_from_slice(&type_hash);
     buf.extend_from_slice(&Keccak256::digest(b"tkr-mesh"));
     buf.extend_from_slice(&Keccak256::digest(b"1"));
+    // chainId = 0 (off-chain)
+    buf.extend_from_slice(&[0u8; 32]);
+    // verifyingContract = address(0)
+    buf.extend_from_slice(&[0u8; 32]);
     let mut out = [0u8; 32];
     out.copy_from_slice(&Keccak256::digest(&buf));
     out

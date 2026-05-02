@@ -83,12 +83,15 @@ impl Client {
 
         let (mut sink, mut stream) = ws_stream.split();
 
-        // Construct + send Hello.
-        let session_id = format!(
-            "{}-{}",
-            std::process::id(),
-            now_ms(),
-        );
+        // Construct + send Hello. The session_id is a 128-bit OsRng nonce so
+        // a captured Hello can't be predicted (or guessed via pid+timestamp)
+        // and reused by a network adversary.
+        let session_id = {
+            use rand::RngCore;
+            let mut bytes = [0u8; 16];
+            rand::rngs::OsRng.fill_bytes(&mut bytes);
+            hex::encode(bytes)
+        };
         let hello = Hello::new(
             &identity,
             joined.mesh_id.clone(),

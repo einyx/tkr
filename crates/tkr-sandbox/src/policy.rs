@@ -9,6 +9,13 @@ pub struct SandboxPolicy {
     pub fs_write: Vec<PathBuf>,
     #[serde(default)]
     pub disabled: bool,
+    /// Environment variables forwarded to the sandboxed child. The default
+    /// (empty) means the child starts with **no** inherited environment —
+    /// secrets like `ANTHROPIC_API_KEY`, `AWS_*`, `GITHUB_TOKEN` cannot leak
+    /// across the boundary. Names listed here are looked up in the parent
+    /// env at spawn time and forwarded only if present.
+    #[serde(default)]
+    pub env_allow: Vec<String>,
 }
 
 impl SandboxPolicy {
@@ -40,6 +47,10 @@ impl PolicyBuilder {
     }
     pub fn allow_write<P: AsRef<Path>>(mut self, p: P) -> Self {
         self.inner.fs_write.push(p.as_ref().to_path_buf());
+        self
+    }
+    pub fn allow_env<S: Into<String>>(mut self, name: S) -> Self {
+        self.inner.env_allow.push(name.into());
         self
     }
     pub fn build(self) -> SandboxPolicy {

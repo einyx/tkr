@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex};
 
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use tkr_mesh::frames::{AckFields, ErrorFields, Frame, PushFields};
+use tkr_mesh::frames::{AckFields, ErrorFields, Frame, PushFields, HELLO_MAX_SKEW_MS};
 use tkr_mesh::{Address, Invite};
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::Message;
@@ -243,7 +243,10 @@ where
         None => return,
     };
 
-    // Verify signature: re-build a Hello and call its verify().
+    // Verify signature **and** freshness: re-build a Hello and call
+    // verify_with_now(). A captured Hello older than HELLO_MAX_SKEW_MS
+    // (or with a future-dated timestamp out of window) is rejected — this
+    // makes captured frames non-replayable by a network adversary.
     let hello_check = tkr_mesh::frames::Hello {
         kind: tkr_mesh::frames::HelloTag::Hello,
         mesh_id: hello.mesh_id.clone(),
@@ -252,8 +255,16 @@ where
         timestamp_ms: hello.timestamp_ms,
         signature: hello.signature.clone(),
     };
-    if hello_check.verify().is_err() {
-        let _ = send_error(&mut sink, "bad_signature", "hello signature failed", Some(hello.session_id.clone())).await;
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    if let Err(e) = hello_check.verify_with_now(now_ms, HELLO_MAX_SKEW_MS) {
+        let code = match e {
+            tkr_mesh::Error::BadSignature => "bad_signature",
+            _ => "stale_hello",
+        };
+        let _ = send_error(&mut sink, code, "hello rejected", Some(hello.session_id.clone())).await;
         return;
     }
 

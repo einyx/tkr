@@ -38,3 +38,52 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+
+  # tkr-chain — long-lived anvil node serving as a "demo chain". Real EVM
+  # execution, persistent state across restarts via the named volume, BUT
+  # NOT a real rollup: no L1 settlement, no consensus, no security model
+  # beyond "I trust the host." Frame it as "tkr devnet" in any user-facing
+  # docs.
+  tkr-chain:
+    image: ghcr.io/foundry-rs/foundry:latest
+    container_name: tkr-chain
+    restart: unless-stopped
+    entrypoint: ["anvil"]
+    command:
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8545"
+      - "--chain-id"
+      - "31337420"   # arbitrary; pick whatever you like (not 1, 8453, etc.)
+      - "--state"
+      - "/data/state.json"
+      - "--state-interval"
+      - "30"          # snapshot every 30s so a docker restart loses < 30s of state
+      - "--gas-limit"
+      - "30000000"
+      - "--block-time"
+      - "2"
+      - "--silent"
+    volumes:
+      - tkr-chain-state:/data
+    ports:
+      # Host loopback only — nginx upstreams to chain.prysm.sh from same box.
+      - "127.0.0.1:8545:8545"
+    healthcheck:
+      # cast is in the foundry image; use it for a real RPC roundtrip.
+      test: ["CMD", "cast", "block-number", "--rpc-url", "http://127.0.0.1:8545"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "1G"   # anvil holds full state in memory; growth is bounded by usage.
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  tkr-chain-state:

@@ -19,6 +19,21 @@ pub fn run(
 
     let mut cmd = Command::new("/usr/bin/sandbox-exec");
     cmd.arg("-f").arg(&profile_path).arg(command).args(args);
+    // Mirror the linux backend: clear the parent env, then re-add only the
+    // names listed in policy.env_allow. Always forward PATH so the kernel
+    // can resolve `command` when not absolute.
+    cmd.env_clear();
+    if let Ok(path) = std::env::var("PATH") {
+        cmd.env("PATH", path);
+    }
+    for name in &policy.env_allow {
+        if name == "PATH" {
+            continue;
+        }
+        if let Ok(value) = std::env::var(name) {
+            cmd.env(name, value);
+        }
+    }
     let out = cmd
         .output()
         .map_err(|e| SandboxError::Backend(e.to_string()))?;
