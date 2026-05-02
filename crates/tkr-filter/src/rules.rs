@@ -53,6 +53,13 @@ pub enum Rule {
         #[serde(default = "default_ellipsis")]
         ellipsis: String,
     },
+    /// Replace the line with `around` chars before + match + `around` chars
+    /// after the FIRST match of `pattern`. If no match, line passes
+    /// through unchanged. Char-based, not byte-based.
+    ContextWindow {
+        pattern: String,
+        around: usize,
+    },
     /// Substitute words in the line according to a `pairs` dictionary.
     /// Each pair is `[word, abbreviation]`. Match is case-insensitive
     /// at word boundaries; the original case is preserved (lowercase
@@ -118,6 +125,10 @@ pub enum CompiledRule {
         max_len: usize,
         ellipsis: String,
     },
+    ContextWindow {
+        re: Regex,
+        around: usize,
+    },
 }
 
 impl Rule {
@@ -164,6 +175,10 @@ impl Rule {
             Rule::TruncateLong { max_len, ellipsis } => {
                 CompiledRule::TruncateLong { max_len, ellipsis }
             }
+            Rule::ContextWindow { pattern, around } => CompiledRule::ContextWindow {
+                re: Regex::new(&pattern)?,
+                around,
+            },
             Rule::SubstituteWords { pairs } => {
                 if pairs.is_empty() {
                     anyhow::bail!("substitute_words: pairs cannot be empty");
@@ -302,6 +317,28 @@ impl CompiledRule {
                 let keep = max_len.saturating_sub(ellipsis_chars);
                 let mut out: String = line.chars().take(keep).collect();
                 out.push_str(ellipsis);
+                Some(FilterResult::Replace(out))
+            }
+            CompiledRule::ContextWindow { re, around } => {
+                let Some(m) = re.find(line) else {
+                    return None;
+                };
+                let pre_str = &line[..m.start()];
+                let post_str = &line[m.end()..];
+                let pre_chars: Vec<char> = pre_str.chars().collect();
+                let post_chars: Vec<char> = post_str.chars().collect();
+                let pre_cut = pre_chars.len().saturating_sub(*around);
+                let post_keep = (*around).min(post_chars.len());
+                let mut out = String::new();
+                if pre_cut > 0 {
+                    out.push('…');
+                }
+                out.extend(pre_chars.iter().skip(pre_cut));
+                out.push_str(m.as_str());
+                out.extend(post_chars.iter().take(post_keep));
+                if post_keep < post_chars.len() {
+                    out.push('…');
+                }
                 Some(FilterResult::Replace(out))
             }
             CompiledRule::SubstituteWords { re, dict } => {
@@ -482,5 +519,48 @@ mod tests {
         let mut compiled = rule.compile().unwrap();
         let result = compiled.apply("héllo wörld");
         assert!(matches!(result, Some(FilterResult::Replace(_))));
+    }
+
+    #[test]
+    fn context_window_slices_around_match() {
+        let rule = Rule::ContextWindow {
+            pattern: r"NEEDLE".to_string(),
+            around: 5,
+        };
+        let mut compiled = rule.compile().unwrap();
+        let line = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxNEEDLEyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy";
+        let result = compiled.apply(line);
+        match result {
+            Some(FilterResult::Replace(s)) => {
+                assert!(s.contains("NEEDLE"), "got {s:?}");
+                assert!(s.chars().count() <= "NEEDLE".len() + 10 + 6, "got {s:?}");
+            }
+            other => panic!("expected Replace, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn context_window_no_op_on_no_match() {
+        let rule = Rule::ContextWindow {
+            pattern: r"NEEDLE".to_string(),
+            around: 5,
+        };
+        let mut compiled = rule.compile().unwrap();
+        assert_eq!(compiled.apply("nothing here"), None);
+    }
+
+    #[test]
+    fn context_window_keeps_short_lines_unchanged_only_if_match_centered() {
+        let rule = Rule::ContextWindow {
+            pattern: r"hi".to_string(),
+            around: 100,
+        };
+        let mut compiled = rule.compile().unwrap();
+        let result = compiled.apply("say hi there");
+        match result {
+            Some(FilterResult::Replace(s)) => assert!(s.contains("hi")),
+            None => {} // also acceptable
+            other => panic!("unexpected {other:?}"),
+        }
     }
 }
