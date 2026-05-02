@@ -149,6 +149,11 @@ pub enum Commands {
         #[command(subcommand)]
         cmd: MeshCmd,
     },
+    /// Run tkr's MCP server on stdio. Exposes tkr_outline_file,
+    /// tkr_find_symbol, tkr_grep_summary so AI agents read structured
+    /// summaries instead of raw file contents. Registered automatically
+    /// by `tkr install`.
+    Mcp,
 }
 
 #[derive(Subcommand, Debug, Clone)]

@@ -215,6 +215,15 @@ fn uninstall_claude(home: &std::path::Path) -> Result<()> {
         })
         .unwrap_or(0);
 
+    let mcp_removed = settings
+        .get_mut("mcpServers")
+        .and_then(|s| s.as_object_mut())
+        .map(|servers| servers.remove("tkr").is_some())
+        .unwrap_or(false);
+    if mcp_removed {
+        removed += 1;
+    }
+
     if removed == 0 {
         println!("✓ Claude Code: tkr hook not present in {}", settings_path.display());
         return Ok(());
@@ -379,6 +388,10 @@ fn install_claude(home: &std::path::Path, bin: &str) -> Result<()> {
     // oversized tool results (Phase 1 of MCP migration).
     ensure_post_hook(root, bin)?;
 
+    // MCP server registration — exposes tkr_outline_file, tkr_find_symbol,
+    // tkr_grep_summary so the model can opt into structured summaries.
+    ensure_mcp_server(root, bin)?;
+
     let serialized = serde_json::to_string_pretty(&settings)?;
     std::fs::write(&settings_path, serialized + "\n")
         .with_context(|| format!("writing {}", settings_path.display()))?;
@@ -450,6 +463,30 @@ fn ensure_post_hook(
             block_hooks.push(json!({ "type": "command", "command": hook_command }));
         }
     }
+    Ok(())
+}
+
+/// Ensure `mcpServers.tkr` is registered in `~/.claude/settings.json`,
+/// pointing at `<bin> mcp`. Claude Code will spawn this on startup and
+/// expose its tools (tkr_outline_file, tkr_find_symbol, tkr_grep_summary)
+/// to the model.
+fn ensure_mcp_server(
+    root: &mut serde_json::Map<String, Value>,
+    bin: &str,
+) -> Result<()> {
+    let servers = root
+        .entry("mcpServers")
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .context("mcpServers must be a JSON object")?;
+
+    servers.insert(
+        "tkr".to_string(),
+        json!({
+            "command": bin,
+            "args": ["mcp"]
+        }),
+    );
     Ok(())
 }
 

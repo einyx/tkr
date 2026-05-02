@@ -10,6 +10,7 @@ members = [
     "crates/tkr-sandbox",
     "crates/tkr-server",
     "crates/tkr-mesh",
+    "crates/tkr-mcp",
     "crates/tkr",
 ]
 

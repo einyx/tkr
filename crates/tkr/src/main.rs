@@ -204,6 +204,7 @@ fn main() -> anyhow::Result<()> {
                 cmds::mesh::invite_mint(&slug, &broker_url, &owner_key_file, ttl_hours)
             }
         },
+        Some(Commands::Mcp) => tkr_mcp::Server::run(),
         Some(Commands::Watch) => cmds::watch::run(),
         Some(Commands::Gain {
             breakdown,
