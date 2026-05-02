@@ -6,7 +6,8 @@ VERSION := $(shell grep -m1 '^version' crates/tkr/Cargo.toml | sed 's/.*= "\(.*\
 TAP     := /opt/homebrew/Library/Taps/einyx/homebrew-tap/Formula/tkr.rb
 
 .PHONY: install build publish publish-cargo _bump-tap \
-        contracts-bootstrap contracts-test contracts-build anvil-fork deploy-local
+        contracts-bootstrap contracts-test contracts-build anvil-fork deploy-local \
+        demo-payment
 
 # ---------- Smart contracts (foundry) ----------
 # One-time bootstrap installs forge-std + openzeppelin into contracts/lib.
@@ -31,6 +32,12 @@ deploy-local:
 	cd contracts && forge create src/MeshEscrow.sol:MeshEscrow \
 		--rpc-url http://127.0.0.1:8545 \
 		--private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+
+# End-to-end mesh+payment demo on a self-contained local anvil node.
+# No real money, no faucets. Runs in ~10s. Requires foundry + a release
+# build of tkr (cargo build --release -p tkr).
+demo-payment:
+	@scripts/demo-payment.sh
 
 
 install:
