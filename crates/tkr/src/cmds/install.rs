@@ -174,7 +174,7 @@ fn uninstall_claude(home: &std::path::Path) -> Result<()> {
     let mut settings: Value = serde_json::from_str(&text)
         .with_context(|| format!("parsing {}", settings_path.display()))?;
 
-    let removed = settings
+    let mut removed = settings
         .get_mut("hooks")
         .and_then(|h| h.get_mut("PreToolUse"))
         .and_then(|p| p.as_array_mut())
@@ -186,6 +186,27 @@ fn uninstall_claude(home: &std::path::Path) -> Result<()> {
                     hooks.retain(|h| {
                         let cmd = h.get("command").and_then(|c| c.as_str()).unwrap_or("");
                         !(cmd.contains("tkr") && cmd.contains("hook claude"))
+                    });
+                    removed += before - hooks.len();
+                }
+            }
+            removed
+        })
+        .unwrap_or(0);
+
+    // Also strip any tkr PostToolUse entries so uninstall is symmetric.
+    removed += settings
+        .get_mut("hooks")
+        .and_then(|h| h.get_mut("PostToolUse"))
+        .and_then(|p| p.as_array_mut())
+        .map(|posttool| {
+            let mut removed = 0usize;
+            for entry in posttool.iter_mut() {
+                if let Some(hooks) = entry.get_mut("hooks").and_then(|h| h.as_array_mut()) {
+                    let before = hooks.len();
+                    hooks.retain(|h| {
+                        let cmd = h.get("command").and_then(|c| c.as_str()).unwrap_or("");
+                        !(cmd.contains("tkr") && cmd.contains("hook post"))
                     });
                     removed += before - hooks.len();
                 }
@@ -353,6 +374,11 @@ fn install_claude(home: &std::path::Path, bin: &str) -> Result<()> {
     }
 
     bash_hooks.push(json!({ "type": "command", "command": hook_command }));
+
+    // PostToolUse hook for Read/Grep/Glob — adds steering notes for
+    // oversized tool results (Phase 1 of MCP migration).
+    ensure_post_hook(root, bin)?;
+
     let serialized = serde_json::to_string_pretty(&settings)?;
     std::fs::write(&settings_path, serialized + "\n")
         .with_context(|| format!("writing {}", settings_path.display()))?;
@@ -361,6 +387,69 @@ fn install_claude(home: &std::path::Path, bin: &str) -> Result<()> {
         "✓ Claude Code: installed into {}\n  Restart Claude Code to activate.",
         settings_path.display()
     );
+    Ok(())
+}
+
+/// Ensure `hooks.PostToolUse` contains a tkr hook entry matching
+/// Read|Grep|Glob. Idempotent: updates the command if a tkr post-hook
+/// already exists, otherwise appends. Operates on the already-mutable
+/// settings root (`root` is `&mut serde_json::Map`).
+fn ensure_post_hook(
+    root: &mut serde_json::Map<String, Value>,
+    bin: &str,
+) -> Result<()> {
+    let hook_command = format!("{bin} hook post");
+    let matcher = "Read|Grep|Glob";
+
+    let hooks = root
+        .entry("hooks")
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .context("hooks must be a JSON object")?;
+    let posttool = hooks
+        .entry("PostToolUse")
+        .or_insert_with(|| json!([]))
+        .as_array_mut()
+        .context("hooks.PostToolUse must be an array")?;
+
+    // Find or create the matcher block.
+    let block_idx = posttool.iter().position(|m| {
+        m.get("matcher")
+            .and_then(|x| x.as_str())
+            .map(|s| s == matcher)
+            .unwrap_or(false)
+    });
+    let block = match block_idx {
+        Some(i) => &mut posttool[i],
+        None => {
+            posttool.push(json!({ "matcher": matcher, "hooks": [] }));
+            posttool.last_mut().unwrap()
+        }
+    };
+    let block_hooks = block
+        .as_object_mut()
+        .context("PostToolUse matcher must be an object")?
+        .entry("hooks")
+        .or_insert_with(|| json!([]))
+        .as_array_mut()
+        .context("PostToolUse hooks must be an array")?;
+
+    // Find an existing tkr post-hook (any binary path) to update in place.
+    let existing_idx = block_hooks.iter().position(|h| {
+        h.get("command")
+            .and_then(|c| c.as_str())
+            .map(|s| s.contains("tkr") && s.contains("hook post"))
+            .unwrap_or(false)
+    });
+
+    match existing_idx {
+        Some(i) => {
+            block_hooks[i] = json!({ "type": "command", "command": hook_command });
+        }
+        None => {
+            block_hooks.push(json!({ "type": "command", "command": hook_command }));
+        }
+    }
     Ok(())
 }
 

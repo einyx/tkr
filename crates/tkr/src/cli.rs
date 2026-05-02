@@ -312,6 +312,13 @@ pub enum HookTarget {
     /// Same JSON response as `claude`; also accepts a top-level `"command"` field
     /// for shells / IDE wrappers that do not nest under `tool_input`.
     Universal,
+    /// Claude Code PostToolUse hook. Reads the full hook payload
+    /// (`{tool_name, tool_input, tool_response, ...}`) on stdin; records
+    /// per-tool size analytics, and emits steering notes via
+    /// `hookSpecificOutput.additionalContext` when a tool result was
+    /// likely-too-large (e.g., a 5000-line Read). Cannot rewrite the
+    /// tool_response itself — that requires an MCP wrapper.
+    Post,
 }
 
 #[derive(Subcommand, Debug)]

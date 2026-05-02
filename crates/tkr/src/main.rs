@@ -217,6 +217,7 @@ fn main() -> anyhow::Result<()> {
         Some(Commands::Hook { target }) => match target {
             HookTarget::Claude => cmds::hook::run_claude(),
             HookTarget::Universal => cmds::hook::run_universal(),
+            HookTarget::Post => cmds::hook::run_post(),
         },
         Some(Commands::Version) => {
             println!("tkr {}", env!("CARGO_PKG_VERSION"));
