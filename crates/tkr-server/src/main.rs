@@ -761,10 +761,60 @@ fn handle_aggregator_pending(req: &Request<Incoming>, state: AppState) -> Respon
     )
 }
 
+// JSON-RPC methods permitted through the chain proxy. Reads are unrestricted;
+// the only write allowed is eth_sendRawTransaction (pre-signed by a user
+// wallet — anvil only accepts valid signatures, the proxy can't forge them).
+//
+// Explicitly rejected: eth_sendTransaction (would use anvil's unlocked
+// prefunded dev accounts), and all anvil_* / evm_* / miner_* / personal_*
+// admin namespaces.
+const CHAIN_RPC_ALLOWED_METHODS: &[&str] = &[
+    "eth_blockNumber",
+    "eth_call",
+    "eth_chainId",
+    "eth_estimateGas",
+    "eth_feeHistory",
+    "eth_gasPrice",
+    "eth_getBalance",
+    "eth_getBlockByHash",
+    "eth_getBlockByNumber",
+    "eth_getCode",
+    "eth_getLogs",
+    "eth_getStorageAt",
+    "eth_getTransactionByHash",
+    "eth_getTransactionCount",
+    "eth_getTransactionReceipt",
+    "eth_sendRawTransaction",
+    "eth_syncing",
+    "net_version",
+    "web3_clientVersion",
+];
+
+fn chain_rpc_methods_allowed(payload: &serde_json::Value) -> bool {
+    let check = |item: &serde_json::Value| -> bool {
+        item.get("method")
+            .and_then(|m| m.as_str())
+            .map(|m| CHAIN_RPC_ALLOWED_METHODS.contains(&m))
+            .unwrap_or(false)
+    };
+    match payload {
+        serde_json::Value::Array(items) => !items.is_empty() && items.iter().all(check),
+        v @ serde_json::Value::Object(_) => check(v),
+        _ => false,
+    }
+}
+
 async fn handle_chain_rpc(req: Request<Incoming>, state: AppState) -> Response<Body> {
     use http_body_util::BodyExt;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpStream;
+
+    // Public endpoint: anonymous visitors can read chain state on the landing
+    // page (jobs, mesh stats, escrow balance). Abuse is bounded by the method
+    // allowlist below — no admin namespaces, no node-side signing — and by
+    // the body-size cap. Writes via eth_sendRawTransaction require a real
+    // signature from a real wallet, so the proxy can't move funds itself.
+    let origin_headers = req.headers().clone();
 
     let upstream = match state.inner.chain_rpc_url.as_deref() {
         Some(u) => u,
@@ -773,7 +823,7 @@ async fn handle_chain_rpc(req: Request<Incoming>, state: AppState) -> Response<B
                 StatusCode::SERVICE_UNAVAILABLE,
                 "chain_rpc_unconfigured",
                 "TKR_CHAIN_RPC_URL is not set on this server",
-                req.headers(),
+                &origin_headers,
             )
         }
     };
@@ -802,7 +852,6 @@ async fn handle_chain_rpc(req: Request<Incoming>, state: AppState) -> Response<B
 
     // Read the body up-front (RPC bodies are small; we cap at 256 KiB
     // defensively even though the standard read_json caps further).
-    let origin_headers = req.headers().clone();
     let body_bytes = match req.into_body().collect().await {
         Ok(b) => b.to_bytes(),
         Err(_) => {
@@ -819,6 +868,27 @@ async fn handle_chain_rpc(req: Request<Incoming>, state: AppState) -> Response<B
             StatusCode::PAYLOAD_TOO_LARGE,
             "body_too_large",
             "RPC body exceeds 256 KiB",
+            &origin_headers,
+        );
+    }
+
+    // Reject anything outside the read-only allowlist before forwarding.
+    let parsed: serde_json::Value = match serde_json::from_slice(&body_bytes) {
+        Ok(v) => v,
+        Err(_) => {
+            return json_error(
+                StatusCode::BAD_REQUEST,
+                "invalid_json",
+                "RPC body must be valid JSON-RPC",
+                &origin_headers,
+            )
+        }
+    };
+    if !chain_rpc_methods_allowed(&parsed) {
+        return json_error(
+            StatusCode::FORBIDDEN,
+            "method_not_allowed",
+            "only read-only JSON-RPC methods are permitted via this proxy",
             &origin_headers,
         );
     }
