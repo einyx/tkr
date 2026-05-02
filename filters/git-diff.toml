@@ -1,6 +1,34 @@
 command = "git"
 subcommands = ["diff", "show"]
 
+# ---------- `git show` commit header (the part `git diff` doesn't emit) ----------
+
+# `commit <40-hex-sha> (refs)` — keep only the short SHA.
+[[rules]]
+type = "truncate_match"
+pattern = "^commit ([0-9a-f]{7})[0-9a-f]+(.*)$"
+replace = "commit $1$2"
+
+# `Author: Name <email>` — drop entirely; rarely useful to a reviewer LLM
+# and the email is noise in nearly every case.
+[[rules]]
+type = "suppress_regex"
+pattern = "^Author: "
+
+# `Date:   Mon Jan 1 12:00:00 2024 +0000` — drop; LLM doesn't need it and
+# git already shows it elsewhere if asked.
+[[rules]]
+type = "suppress_regex"
+pattern = "^Date:   "
+
+# Indented commit message body (`git show` indents the message with 4 spaces).
+# Keep the first 2 lines (subject + first body line) and collapse the rest —
+# many commits paste long PR descriptions / Co-Authored-By blocks here.
+[[rules]]
+type = "collapse_run"
+pattern = "^    "
+keep_first = 2
+
 # `index abc..def 100644` lines — rarely useful for review
 [[rules]]
 type = "suppress_regex"
@@ -40,3 +68,18 @@ pattern = "^similarity index \\d+%"
 [[rules]]
 type = "suppress_regex"
 pattern = "^dissimilarity index"
+
+# Long generated lines (lockfiles, minified JS, vendored data) survive earlier
+# rules and balloon the output. Truncate to 200 chars + ellipsis. Char-based
+# so it doesn't split UTF-8.
+[[rules]]
+type = "truncate_long"
+max_len = 200
+
+# Big single-file diffs: dedupe near-identical changed lines (e.g. a rename
+# that touches the same identifier on hundreds of lines). DedupWithCount
+# keeps one representative + a `×N` suffix for the rest.
+[[rules]]
+type = "dedup_with_count"
+pattern = "^([+-])(.{1,80}).*$"
+key_capture = 0

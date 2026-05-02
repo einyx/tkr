@@ -65,3 +65,21 @@ pattern = "(^|\\s)\\S+\\.egg-info/?$"
 type = "truncate_match"
 pattern = '^([dlcbps-][rwxsStT-]{9})\s+\d+\s+\S+\s+\S+\s+(\d+)\s+(\S+\s+\S+\s+\S+)\s+(.+)$'
 replace = "$1 $2 $3 $4"
+
+# Bucket survivors by extension so a directory full of similar files
+# (e.g. 200 .png assets, 80 .rs files) collapses into a per-extension
+# summary rather than a wall of names. cap_per_key=4 keeps a few
+# representative names per bucket so the LLM still sees the shape.
+[[rules]]
+type = "group_by_capture"
+pattern = "^.*\\.([a-zA-Z0-9]{1,8})$"
+key_capture = 1
+cap_per_key = 4
+total_cap = 60
+header = "files by extension:"
+
+# Defensive line cap. Color-escaped paths and pathologically long names
+# survive the field truncation above.
+[[rules]]
+type = "truncate_long"
+max_len = 200

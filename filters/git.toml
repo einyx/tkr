@@ -120,6 +120,60 @@ type = "truncate_match"
 pattern = "^ (\\d+) files? changed, (\\d+) deletions?\\(-\\)"
 replace = " $1f -$2"
 
+# ---------- `git show` commit-header (subcommands "show", "log") ----------
+
+# `commit <40-hex-sha> (refs)` — keep only the short SHA.
+[[rules]]
+type = "truncate_match"
+pattern = "^commit ([0-9a-f]{7})[0-9a-f]+(.*)$"
+replace = "commit $1$2"
+
+# `Author: Name <email>` and `Date:   ...` — drop, rarely useful to LLM.
+[[rules]]
+type = "suppress_regex"
+pattern = "^Author: "
+[[rules]]
+type = "suppress_regex"
+pattern = "^Date:   "
+
+# Indented commit message body (4-space prefix). Keep first 2 lines
+# (subject + first body line); collapse the rest. Long PR descriptions
+# and Co-Authored-By blocks live here.
+[[rules]]
+type = "collapse_run"
+pattern = "^    "
+keep_first = 2
+
+# `index abc..def 100644` lines — rarely useful for review
+[[rules]]
+type = "suppress_regex"
+pattern = "^index [0-9a-f]+\\.\\.[0-9a-f]+"
+
+# `\\ No newline at end of file` notices
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\\\ No newline at end of file"
+
+# Long unchanged context blocks: keep first context line per run.
+[[rules]]
+type = "collapse_run"
+pattern = "^ "
+keep_first = 1
+
+# `@@ -123,5 +130,8 @@ context` — drop trailing context hint, keep numbers.
+[[rules]]
+type = "truncate_match"
+pattern = "^(@@ -\\d+(,\\d+)? \\+\\d+(,\\d+)? @@) .+"
+replace = "$1"
+
+# similarity / dissimilarity index — rename arrow already conveys it.
+[[rules]]
+type = "suppress_regex"
+pattern = "^similarity index \\d+%"
+[[rules]]
+type = "suppress_regex"
+pattern = "^dissimilarity index"
+
 # Defensive line cap. Generated diffs and merge-conflict markers can
 # produce arbitrarily long lines that survive earlier rules.
 [[rules]]
