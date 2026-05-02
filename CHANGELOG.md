@@ -2,6 +2,102 @@
 
 All notable changes to tkr are documented here.
 
+## [0.3.0] — 2026-05-02
+
+Major: tkr is no longer just a Bash filter. New surfaces extend it into
+peer-messaging, on-chain payments, and structured code-intelligence over MCP.
+
+### Agent mesh (`tkr-mesh` + `tkr mesh` CLI)
+
+- Peer messaging across machines via a public broker
+  (`wss://tkr.prysm.sh/api/v1/mesh/ws`).
+- Identity = secp256k1 keypair (same shape as an Ethereum wallet); the
+  on-mesh address is the EIP-55 Ethereum address.
+- E2E-encrypted DMs (ECDH + AES-256-GCM); the broker only sees ciphertext.
+- EIP-712 invites — wallet-renderable, signature-verified.
+- Five-command CLI: `tkr mesh invite-mint / join / list / whoami / tail / send`.
+- New broker in `tkr-server`: `POST /api/v1/mesh/join`, `GET /api/v1/mesh/ws`,
+  `GET /api/v1/mesh/status` (live peer counts on the dashboard).
+
+### On-chain payments (`tkr pay` + `MeshEscrow.sol`)
+
+- `MeshEscrow.sol` — payment-channel contract on Base. Open with a deposit,
+  recipient claims with EIP-712 receipts, payer reclaims unspent funds after
+  a deadline. 17/17 forge tests passing.
+- `tkr pay receipt-issue` — sign a receipt off-chain.
+- `tkr pay receipt-verify` — verify a receipt locally.
+- `tkr pay claim` — submit on-chain via alloy (rustls-only). Verified against
+  an anvil-fork of Base mainnet end-to-end.
+- `make demo-payment` — full receipt flow on local anvil in ~10 s.
+
+### MCP server (`tkr-mcp` + `tkr mcp`)
+
+- Stdio JSON-RPC 2.0 server registered under `mcpServers.tkr` in
+  `~/.claude/settings.json`.
+- Three tools that return structured summaries instead of raw text:
+  - `tkr_outline_file` — symbol kind/name/range for Rust, Python, Go,
+    TypeScript, JavaScript (~75-95% token reduction on real source files).
+  - `tkr_find_symbol` — definitions of a symbol across the tree, .gitignore-
+    aware.
+  - `tkr_grep_summary` — regex search grouped by file with per-file caps.
+- `~/.claude/tkr.md` fragment installed alongside, included from CLAUDE.md
+  via `@tkr.md`. Steers the model to prefer tkr_* tools for large
+  Reads / broad Greps.
+
+### PostToolUse hook
+
+- New `tkr hook post` for Claude Code's `PostToolUse` event (Read|Grep|Glob).
+  Adds a steering note via `additionalContext` when a tool result was
+  likely-too-large. Cannot rewrite results that already entered context —
+  that's what the MCP path is for.
+- `tkr install --claude` now wires three things at once: the existing
+  Bash PreToolUse hook, the new PostToolUse hook, and the MCP server
+  registration. Idempotent on re-install.
+
+### React dashboard
+
+- New `crates/tkr-server/web/` — React + TypeScript + Vite. Vite's
+  `viteSingleFile` plugin emits a single inlined HTML to
+  `crates/tkr-server/static/index.html`, kept embedded via `include_str!`.
+- 4 views: Landing (public, live mesh stats), Login, Dashboard
+  (Mesh + Sessions panels), Session detail.
+- Dockerfile is now 3-stage: `node:20-slim` builds the bundle,
+  `rust:1.88-slim` builds the binary, `debian:bookworm-slim` runs.
+
+### Filter additions
+
+- New rule types: `truncate_long`, `context_window`, `dedup_with_count`,
+  `empty_result_substitute`, `group_by_capture`, `substitute_words`,
+  plus a `flush_summary` aggregation channel.
+- New filters: `find.toml`, `grep.toml`. Major rewrites of `git.toml`
+  (porcelain `M/A/D/R` short codes — 95% reduction on `git status`),
+  `ls.toml` (drops noisy dirs), `npm.toml` (restored success summary +
+  added empty-result marker), `docker.toml` (log dedup + level filter).
+
+### Server hardening
+
+- `TKR_ADMIN_PASSWORD` env var (≥ 8 chars) now required for non-loopback
+  bind. Loopback retains a dev fallback with a stderr warning. Login
+  uses constant-time comparison.
+- Default `HOST` flipped from `0.0.0.0` to `127.0.0.1` (nginx-on-same-host
+  is the expected deploy shape).
+- `docker-compose.yml` shipped with the recommended deployment, plus a
+  hardened `systemd` unit alternative.
+
+### Operator tools
+
+- `tkr install --with-foundry` — installs the foundry toolchain
+  alongside the AI-tool hook.
+- `deploy/keys/` scaffold for per-network throwaway deploy keys
+  (Sepolia, mainnet, …) with chmod-0600 enforcement and a README.
+
+### Security review
+
+A focused security review of the 33-commit branch landed clean:
+no exploitable vulnerabilities at confidence ≥ 8. Notable sub-threshold
+items (Hello-replay → routing hijack mitigated by E2E ECIES; idempotent
+pre-enrollment; broker-host SSRF excluded by rules) all documented.
+
 ## [Unreleased]
 
 ### CI and releases
