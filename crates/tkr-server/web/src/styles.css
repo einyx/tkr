@@ -323,7 +323,7 @@ pre {
 }
 .lp-jobs-row {
   display: grid;
-  grid-template-columns: 36px 90px 100px 80px 80px 60px 1fr;
+  grid-template-columns: 36px 90px 100px 80px 80px 60px 1fr 90px;
   gap: 12px;
   padding: 8px 16px;
   border-bottom: 1px solid var(--line);
@@ -361,8 +361,76 @@ pre {
   white-space: nowrap;
 }
 @media (max-width: 720px) {
-  .lp-jobs-row { grid-template-columns: 36px 90px 100px 1fr; font-size: 11px; }
+  .lp-jobs-row { grid-template-columns: 36px 90px 100px 1fr 70px; font-size: 11px; }
   .lp-jobs-row > :nth-child(4),
   .lp-jobs-row > :nth-child(5),
   .lp-jobs-row > :nth-child(6) { display: none; }
+}
+
+/* job actions + wallet badge */
+.lp-job-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+.lp-job-btn {
+  font-family: inherit;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 10px;
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  cursor: pointer;
+}
+.lp-job-btn:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--bg);
+}
+.lp-job-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.lp-job-btn-danger {
+  color: var(--error);
+  border-color: var(--error);
+}
+.lp-job-btn-danger:hover:not(:disabled) {
+  background: var(--error);
+  color: var(--bg);
+}
+.lp-job-btn-warn {
+  color: #f3b562;
+  border-color: #f3b562;
+}
+.lp-job-btn-warn:hover:not(:disabled) {
+  background: #f3b562;
+  color: var(--bg);
+}
+.lp-wallet {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 12px;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--muted);
+}
+.lp-wallet code {
+  font-size: 11px;
+  color: var(--fg);
+}
+.lp-wallet-net {
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.lp-wallet-ok {
+  color: var(--accent);
+  border-color: var(--accent);
 }
