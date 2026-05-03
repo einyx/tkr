@@ -53,6 +53,25 @@ has_code() {
 }
 
 if has_code "$ESCROW_ADDR" && has_code "$JOBBOARD_ADDR"; then
+  # Contracts present — only open the demo channel if it isn't already
+  # there, so the dashboard stat stays non-zero across re-runs.
+  SESSION_ID="0x$(printf 'demo-channel-1' | "$CAST" keccak | sed 's/^0x//')"
+  # Channel exists iff its payer (first tuple field) is non-zero. The token
+  # field is also a zero-address for ETH channels, so a substring match on
+  # 0x0000…0000 isn't enough — extract the first address explicitly.
+  PAYER=$("$CAST" call --rpc-url "$RPC_URL" "$ESCROW_ADDR" \
+    "getChannel(bytes32)((address,address,address,uint256,uint256,uint64))" \
+    "$SESSION_ID" 2>/dev/null | grep -oE '0x[0-9a-fA-F]{40}' | head -1 || echo "")
+  if [ "$PAYER" = "0x0000000000000000000000000000000000000000" ] || [ -z "$PAYER" ]; then
+    echo "→ contracts present, opening demo channel…"
+    EXPIRES=$(( $(date +%s) + 7*86400 ))
+    "$CAST" send --rpc-url "$RPC_URL" --private-key "$DEPLOYER_KEY" \
+      "$ESCROW_ADDR" "open(bytes32,address,address,uint256,uint64)" \
+      "$SESSION_ID" "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" \
+      "0x0000000000000000000000000000000000000000" "2500000000000000000" "$EXPIRES" \
+      --value 2500000000000000000 >/dev/null
+    echo "  ✓ 2.5 ETH locked"
+  fi
   echo "✓ devnet already seeded"
   echo "  MeshEscrow: $ESCROW_ADDR"
   echo "  JobBoard:   $JOBBOARD_ADDR"
@@ -115,8 +134,23 @@ post_job "find all callers of broker::BrokerState::route in tkr-server"      150
 post_job "add a /api/v1/mesh/peers endpoint listing connected addrs"         500000000000000000   #  0.50 ETH
 
 echo
+echo "=== opening sample 2.5 ETH escrow channel ==="
+# So the dashboard's "ETH locked in MeshEscrow" stat is non-zero. Channel
+# pays anvil[1] (deterministic, no risk to anyone). 7-day expiry.
+SESSION_ID="0x$(printf 'demo-channel-1' | "$CAST" keccak | sed 's/^0x//')"
+RECIPIENT=0x70997970C51812dc3A010C7d01b50e0d17dc79C8       # anvil account[1]
+EXPIRES=$(( $(date +%s) + 7*86400 ))
+"$CAST" send --rpc-url "$RPC_URL" --private-key "$DEPLOYER_KEY" \
+  "$ESCROW_ADDR" \
+  "open(bytes32,address,address,uint256,uint64)" \
+  "$SESSION_ID" "$RECIPIENT" "0x0000000000000000000000000000000000000000" \
+  "2500000000000000000" "$EXPIRES" \
+  --value 2500000000000000000 >/dev/null
+echo "  ✓ channel opened (2.5 ETH locked)"
+
+echo
 echo "✓ devnet seeded"
-echo "  MeshEscrow: $ESCROW_ADDR"
+echo "  MeshEscrow: $ESCROW_ADDR  (2.5 ETH locked)"
 echo "  JobBoard:   $JOBBOARD_ADDR  (3 jobs posted)"
 echo
 echo "verify:"
