@@ -25,8 +25,16 @@ LOGDIR=$WORK/logs
 OWNERFILE=$WORK/owner.env
 INVITEFILE=$WORK/invite.url
 PEERS=${PEERS:-3}
-BROKER=${TKR_MESH_BROKER:-wss://tkr.prysm.sh/api/v1/mesh/ws}
 SLUG=${TKR_MESH_SLUG:-demo}
+
+# LOCAL=1 ./scripts/mesh-bot.sh start  → point everything at the local
+# tkr-server (http://127.0.0.1:4000). Useful for self-contained demos and
+# for iterating without affecting the public broker.
+if [ "${LOCAL:-0}" = "1" ]; then
+  : "${TKR_MESH_BROKER:=ws://127.0.0.1:4000/api/v1/mesh/ws}"
+  : "${TKR_MESH_LOGIN_HOST:=http://127.0.0.1:4000}"
+fi
+BROKER=${TKR_MESH_BROKER:-wss://tkr.prysm.sh/api/v1/mesh/ws}
 
 cmd_status() {
   if [ ! -f "$PIDFILE" ]; then
