@@ -14,3 +14,4 @@ docs/superpowers/
 .env
 deploy/keys/*
 !deploy/keys/README.md
+data/

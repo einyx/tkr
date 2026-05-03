@@ -72,7 +72,11 @@ services:
       - "2"
       - "--silent"
     volumes:
-      - tkr-chain-state:/data
+      # Bind-mount instead of named volume so the foundry user inside the
+      # container (UID 1000) can write state.json. With a named volume the
+      # mountpoint inherits root:root from the Docker daemon and anvil
+      # silently fails to snapshot. ./data/anvil is gitignored.
+      - ./data/anvil:/data
     ports:
       # Host loopback only — nginx upstreams to chain.prysm.sh from same box.
       - "127.0.0.1:8545:8545"
@@ -91,5 +95,3 @@ services:
     security_opt:
       - no-new-privileges:true
 
-volumes:
-  tkr-chain-state:

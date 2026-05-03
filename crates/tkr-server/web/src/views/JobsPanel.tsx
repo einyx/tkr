@@ -98,6 +98,10 @@ function decodeJob(id: number, raw: string): Job {
 
 async function fetchJobs(): Promise<Job[]> {
   const countHex = await ethCall(JOB_BOARD, SEL_JOB_COUNT);
+  // Empty `0x` response means the contract isn't deployed at this address —
+  // happens after a chain wipe before re-seeding. Treat it as "no jobs"
+  // rather than crashing the panel.
+  if (!countHex || countHex === "0x") return [];
   const count = Number(BigInt(countHex));
   if (count === 0) return [];
   // Cap to last 8 jobs for screen sanity; reverse-iterate so newest first.
