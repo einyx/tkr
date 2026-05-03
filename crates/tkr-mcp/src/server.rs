@@ -8,6 +8,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 
 use crate::jobs;
+use crate::mesh;
 use crate::outline;
 use crate::protocol::{
     initialize_result, text_result, tools_catalog, Request, Response,
@@ -140,6 +141,7 @@ fn handle_tools_call(id: Value, params: &Value) -> Response {
         "tkr_find_symbol" => call_find_symbol(&args),
         "tkr_grep_summary" => call_grep_summary(&args),
         "tkr_jobs_list" => call_jobs_list(&args),
+        "tkr_mesh_status" => call_mesh_status(&args),
         _ => return Response::err(id, METHOD_NOT_FOUND, format!("unknown tool: {name}")),
     };
     match result {
@@ -179,14 +181,26 @@ fn call_find_symbol(args: &Value) -> Result<String> {
     search::find_symbol(name, &root)
 }
 
+fn call_mesh_status(_args: &Value) -> Result<String> {
+    // Same prompt-injection concern as call_jobs_list: don't let the LLM
+    // pick the host. Operators override via TKR_MESH_HOST.
+    let host = std::env::var("TKR_MESH_HOST").ok();
+    mesh::status(host.as_deref())
+}
+
 fn call_jobs_list(args: &Value) -> Result<String> {
-    let board = args.get("board").and_then(|v| v.as_str());
-    let rpc_url = args.get("rpc_url").and_then(|v| v.as_str());
+    // board/rpc_url are intentionally NOT exposed in the MCP schema: a
+    // prompt-injected LLM could otherwise be steered to point them at
+    // internal services (cloud metadata, localhost) and exfiltrate the
+    // upstream's response/stderr through the tool result. Operators set
+    // these via env vars at server start; env is trusted, LLM args are not.
+    let board = std::env::var("TKR_JOB_BOARD").ok();
+    let rpc_url = std::env::var("TKR_JOB_RPC_URL").ok();
     let limit = args
         .get("limit")
         .and_then(|v| v.as_u64())
         .map(|n| n as usize);
-    jobs::list(board, rpc_url, limit)
+    jobs::list(board.as_deref(), rpc_url.as_deref(), limit)
 }
 
 fn call_grep_summary(args: &Value) -> Result<String> {
@@ -234,6 +248,7 @@ mod tests {
         assert!(names.contains(&"tkr_find_symbol"));
         assert!(names.contains(&"tkr_grep_summary"));
         assert!(names.contains(&"tkr_jobs_list"));
+        assert!(names.contains(&"tkr_mesh_status"));
     }
 
     #[test]

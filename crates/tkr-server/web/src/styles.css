@@ -434,3 +434,39 @@ pre {
   color: var(--accent);
   border-color: var(--accent);
 }
+
+/* Post-job inline form */
+.lp-post-form {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  padding: 10px 12px;
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lp-post-input {
+  font-family: inherit;
+  font-size: 12px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  padding: 6px 8px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.lp-post-input:focus {
+  outline: 1px solid var(--accent);
+}
+.lp-post-input-num {
+  width: 90px;
+  margin-left: 6px;
+}
+.lp-post-row {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--muted);
+}

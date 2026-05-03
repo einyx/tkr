@@ -150,18 +150,10 @@ pub fn tools_catalog() -> Value {
             },
             {
                 "name": "tkr_jobs_list",
-                "description": "List jobs on the tkr JobBoard contract: id, status (Open/Taken/Completed/Accepted/Cancelled/TimedOut), reward in wei, deadline, and a short preview of the spec. Read-only — no key required, no on-chain writes. Defaults to the public tkr devnet board if board/rpc_url are omitted. Use this to see what work is available before suggesting `tkr job take <id>` to the user.",
+                "description": "List jobs on the tkr JobBoard contract: id, status (Open/Taken/Completed/Accepted/Cancelled/TimedOut), reward in wei, deadline, and a short preview of the spec. Read-only — no key required, no on-chain writes. Targets the tkr devnet board by default; operators can override via the TKR_JOB_BOARD / TKR_JOB_RPC_URL env vars on the MCP server.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "board": {
-                            "type": "string",
-                            "description": "JobBoard contract address (0x…). Defaults to the tkr devnet board."
-                        },
-                        "rpc_url": {
-                            "type": "string",
-                            "description": "EVM JSON-RPC endpoint. Defaults to the tkr devnet RPC."
-                        },
                         "limit": {
                             "type": "integer",
                             "description": "Max jobs returned. Default 50.",
@@ -169,6 +161,14 @@ pub fn tools_catalog() -> Value {
                             "maximum": 500
                         }
                     }
+                }
+            },
+            {
+                "name": "tkr_mesh_status",
+                "description": "Show live mesh broker status — how many peers are connected to each mesh on the tkr broker. Read-only HTTP GET against /api/v1/mesh/status. Targets the public broker at https://tkr.prysm.sh by default; operators can override via the TKR_MESH_HOST env var on the MCP server.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {}
                 }
             }
         ]

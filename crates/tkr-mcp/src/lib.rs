@@ -18,6 +18,7 @@
 //!                       JSON result. Useful for testing.
 
 pub mod jobs;
+pub mod mesh;
 pub mod outline;
 pub mod protocol;
 pub mod search;

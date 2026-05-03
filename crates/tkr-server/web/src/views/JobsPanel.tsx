@@ -9,18 +9,20 @@ const JOB_BOARD =
   "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
 
 // Function selectors (4-byte keccak prefixes), precomputed via `cast sig`:
-//   jobCount()                         → 0x4c5d8a0f
-//   getJob(uint256)                    → 0xbf22c457
-//   takeJob(uint256)                   → 0x9330d9bc
-//   completeJob(uint256,bytes32)       → 0xebb59fad
-//   acceptCompletion(uint256)          → 0xffe27734
-//   cancelJob(uint256)                 → 0x1dffa3dc
+//   jobCount()                                              → 0x4c5d8a0f
+//   getJob(uint256)                                         → 0xbf22c457
+//   takeJob(uint256)                                        → 0x9330d9bc
+//   completeJob(uint256,bytes32)                            → 0xebb59fad
+//   acceptCompletion(uint256)                               → 0xffe27734
+//   cancelJob(uint256)                                      → 0x1dffa3dc
+//   postJob(bytes32,string,uint256,address,uint64)          → 0x601e8d4a
 const SEL_JOB_COUNT = "0x4c5d8a0f";
 const SEL_GET_JOB = "0xbf22c457";
 const SEL_TAKE = "0x9330d9bc";
 const SEL_COMPLETE = "0xebb59fad";
 const SEL_ACCEPT = "0xffe27734";
 const SEL_CANCEL = "0x1dffa3dc";
+const SEL_POST = "0x601e8d4a";
 
 const STATUS_NAMES = ["Open", "Taken", "Completed", "Accepted", "Cancelled", "TimedOut"] as const;
 type StatusName = (typeof STATUS_NAMES)[number];
@@ -54,6 +56,53 @@ async function ethCall(to: string, data: string): Promise<string> {
 
 function pad32Hex(n: bigint): string {
   return n.toString(16).padStart(64, "0");
+}
+
+// SubtleCrypto SHA-256 → 32-byte hex (no 0x). Used as the postJob specHash.
+// The contract only requires non-zero; doesn't verify hash matches preview.
+async function sha256Hex(input: string): Promise<string> {
+  const buf = new TextEncoder().encode(input);
+  const out = await crypto.subtle.digest("SHA-256", buf);
+  return Array.from(new Uint8Array(out))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+// Right-pad bytes to a 32-byte boundary, in hex (no 0x).
+function padRight32(hexNoPrefix: string): string {
+  const len = hexNoPrefix.length;
+  const rem = len % 64;
+  return rem === 0 ? hexNoPrefix : hexNoPrefix + "0".repeat(64 - rem);
+}
+
+// Encode calldata for postJob(bytes32,string,uint256,address,uint64).
+// Layout: selector + 5 static slots + dynamic string area.
+//   slot 0: specHash
+//   slot 1: offset to string (always 0xa0 = 5 * 32)
+//   slot 2: reward
+//   slot 3: token (right-aligned 20-byte address)
+//   slot 4: deadline (right-aligned uint64)
+// Then: stringLen (u256) + utf8 bytes padded to 32.
+function encodePostJob(
+  specHashHex: string,
+  preview: string,
+  rewardWei: bigint,
+  token: string,
+  deadline: bigint,
+): string {
+  const previewBytes = new TextEncoder().encode(preview);
+  const previewHex = Array.from(previewBytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  const tokenLower = token.toLowerCase().replace(/^0x/, "");
+  const slots =
+    specHashHex.replace(/^0x/, "").padStart(64, "0") +
+    pad32Hex(0xa0n) +
+    pad32Hex(rewardWei) +
+    tokenLower.padStart(64, "0") +
+    pad32Hex(deadline);
+  const dynamic = pad32Hex(BigInt(previewBytes.length)) + padRight32(previewHex);
+  return SEL_POST + slots + dynamic;
 }
 
 function decodeAddress(slot: string): string {
@@ -162,6 +211,12 @@ export function JobsPanel() {
   });
 
   const [action, setAction] = useState<ActionState>({ jobId: null, pending: null, error: null, txHash: null });
+  const [postOpen, setPostOpen] = useState(false);
+  const [postPreview, setPostPreview] = useState("");
+  const [postRewardEth, setPostRewardEth] = useState("0.1");
+  const [postDeadlineHrs, setPostDeadlineHrs] = useState("24");
+  const [postBusy, setPostBusy] = useState(false);
+  const [postError, setPostError] = useState<string | null>(null);
 
   const runAction = async (
     jobId: number,
@@ -183,6 +238,55 @@ export function JobsPanel() {
       // user rejection: code 4001 / "User rejected" — render shorter
       const short = msg.length > 140 ? msg.slice(0, 137) + "…" : msg;
       setAction({ jobId, pending: null, error: short, txHash: null });
+    }
+  };
+
+  const onPostJob = async () => {
+    setPostError(null);
+    const preview = postPreview.trim();
+    if (!preview) {
+      setPostError("preview is required");
+      return;
+    }
+    if (preview.length > 256) {
+      setPostError("preview too long (max 256 chars)");
+      return;
+    }
+    const rewardEthNum = Number(postRewardEth);
+    if (!Number.isFinite(rewardEthNum) || rewardEthNum <= 0) {
+      setPostError("reward must be > 0 ETH");
+      return;
+    }
+    const hrs = Number(postDeadlineHrs);
+    if (!Number.isFinite(hrs) || hrs <= 0) {
+      setPostError("deadline must be > 0 hours");
+      return;
+    }
+    setPostBusy(true);
+    try {
+      if (!wallet.onTkrDevnet) await wallet.switchToTkr();
+      const rewardWei = BigInt(Math.floor(rewardEthNum * 1e18));
+      const deadline = BigInt(Math.floor(Date.now() / 1000) + Math.floor(hrs * 3600));
+      const specHash = "0x" + (await sha256Hex(preview));
+      const data = encodePostJob(
+        specHash,
+        preview,
+        rewardWei,
+        "0x0000000000000000000000000000000000000000", // ETH
+        deadline,
+      );
+      const txHash = await wallet.sendTx(JOB_BOARD, data, rewardWei);
+      const r = await wallet.waitForReceipt(txHash);
+      if (!r.status) throw new Error("transaction reverted");
+      // success — close form, refetch jobs
+      setPostOpen(false);
+      setPostPreview("");
+      qc.invalidateQueries({ queryKey: ["jobs-list"] });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setPostError(msg.length > 200 ? msg.slice(0, 197) + "…" : msg);
+    } finally {
+      setPostBusy(false);
     }
   };
 
@@ -242,7 +346,68 @@ export function JobsPanel() {
       <div className="lp-section-title" style={{ marginTop: 18 }}>
         agent jobs · live on the devnet
         <WalletBadge wallet={wallet} />
+        {wallet.account && !postOpen && (
+          <button className="lp-job-btn" style={{ marginLeft: 8 }} onClick={() => setPostOpen(true)}>
+            + Post job
+          </button>
+        )}
       </div>
+      {postOpen && (
+        <div className="lp-post-form">
+          <textarea
+            className="lp-post-input"
+            placeholder="job preview (what you want done)"
+            rows={2}
+            maxLength={256}
+            value={postPreview}
+            onChange={(e) => setPostPreview(e.target.value)}
+          />
+          <div className="lp-post-row">
+            <label>
+              reward (ETH){" "}
+              <input
+                className="lp-post-input lp-post-input-num"
+                type="number"
+                step="0.01"
+                min="0.001"
+                value={postRewardEth}
+                onChange={(e) => setPostRewardEth(e.target.value)}
+              />
+            </label>
+            <label>
+              deadline (hrs){" "}
+              <select
+                className="lp-post-input lp-post-input-num"
+                value={postDeadlineHrs}
+                onChange={(e) => setPostDeadlineHrs(e.target.value)}
+              >
+                <option value="1">1</option>
+                <option value="6">6</option>
+                <option value="24">24</option>
+                <option value="168">168 (7d)</option>
+              </select>
+            </label>
+            <button className="lp-job-btn" disabled={postBusy} onClick={onPostJob}>
+              {postBusy ? "posting…" : "Submit"}
+            </button>
+            <button
+              className="lp-job-btn lp-job-btn-warn"
+              disabled={postBusy}
+              onClick={() => {
+                setPostOpen(false);
+                setPostError(null);
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+          {postError && (
+            <div className="err" style={{ padding: "6px 0", marginTop: 4 }}>
+              {postError}
+            </div>
+          )}
+        </div>
+      )}
       {error ? (
         <div className="err" style={{ padding: "12px" }}>
           {String(error)}
