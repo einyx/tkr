@@ -1,5 +1,5 @@
 use crate::config::Config;
-use crate::stream::chars_to_tokens;
+use crate::stream::{chars_to_tokens, PipelineResult};
 use anyhow::Result;
 
 /// Flags whose argument is the next token (so we skip both).
@@ -78,9 +78,16 @@ pub fn run(cfg: Config, args: &[String]) -> Result<()> {
     // Fast boot: filter-only, no keychain/vault/analytics.
     let host = crate::host::boot::ensure()?;
 
-    // Load only the per-command filter TOML (lazy, cached).
-    // This is the key optimization: instead of parsing all ~90 bundled TOML files
-    // at boot, we load only the one relevant to the current command.
+    // RTK-style native handlers: full output capture + structured compression
+    // for grep/rg (see `native::try_run`). Disable with `TKR_NATIVE_GREP=0`.
+    if let Some(native) = crate::native::try_run(cmd, cmd_args)? {
+        let subcmd = first_positional(cmd_args);
+        let key = format!("{cmd_name} {subcmd}").trim().to_string();
+        record_pipeline_stats(&sess, host, &key, &native.pipeline);
+        crate::native::log_session_line(cmd, cmd_args, &native.pipeline, native.exit_code);
+        std::process::exit(native.exit_code);
+    }
+
     let filter_arc = crate::host::boot::filter_for_command(cmd_name);
     let mut filter_guard = filter_arc.lock().unwrap();
 
@@ -91,55 +98,47 @@ pub fn run(cfg: Config, args: &[String]) -> Result<()> {
     // bypassing the registry's (empty) filter plugin.
     let result = crate::stream::run_pipeline_direct(lines, &mut filter_guard, cmd, &cmd_args_str);
 
+    let subcmd = first_positional(cmd_args);
+    let key = format!("{cmd_name} {subcmd}").trim().to_string();
+    let buf = crate::stream::take_signature_buffer();
+    let _ = buf;
+
+    record_pipeline_stats(&sess, host, &key, &result);
+
+    Ok(())
+}
+
+/// Session summary + vault analytics row for one proxied command (shared by
+/// native and TOML filter pipelines).
+fn record_pipeline_stats(
+    sess: &crate::session::Session,
+    host: &crate::host::boot::HostHandle,
+    key: &str,
+    result: &PipelineResult,
+) {
     let tokens_in = chars_to_tokens(result.chars_in);
     let tokens_saved = chars_to_tokens(result.chars_suppressed);
     sess.command_end(tokens_in, tokens_saved);
 
-    // Flush the per-run signature buffer into the vault-backed analytics store.
-    let subcmd = first_positional(cmd_args);
-    let key = format!("{cmd_name} {subcmd}").trim().to_string();
-    let buf = crate::stream::take_signature_buffer();
-
-    // Vault-backed analytics writes are age-encrypted per row — doing them
-    // synchronously here adds ~1s per signature in the user-facing path.
-    // Hand the buffer to a detached thread so the command exits immediately.
-    // Analytics are best-effort, not critical to correctness.
-    // The detached thread calls ensure_full() (lazy) to obtain a real vault.
-    // Always upsert command_stats so `tkr gain` shows real numbers without
-    // requiring `tkr watch` to be running. Spawn a detached thread so the
-    // user-facing command exits immediately; analytics are best-effort.
-    {
-        // Detached analytics write. One vault decrypt+re-encrypt costs ~5s,
-        // so doing it inline would regress every command from 15ms to 7s.
-        // Detached, the writer races with process exit — short-lived commands
-        // (`tkr true`, `tkr cargo --version`) may lose one analytics row.
-        // Long-running commands (the ones that move tokens-saved) land
-        let _ = buf; // unused until noise-batching lands
-        let bus = host.bus.clone();
-        let key_owned = key.clone();
-        let chars_in = result.chars_in;
-        let chars_saved = result.chars_suppressed;
-        // Join instead of detach: XChaCha20-Poly1305 vault writes are ~1ms,
-        // so this is safe. Detached threads are killed on process exit before
-        // the write completes, causing 'tkr gain' to always show no data.
-        let handle = std::thread::spawn(move || {
-            let vault = crate::host::boot::vault();
-            let analytics_host = crate::host::RealHost::new("tkr-analytics", vault, bus);
-            if let Err(e) = tkr_analytics::record_command_stat_via_host(
-                &analytics_host,
-                &key_owned,
-                chars_in as u64,
-                chars_saved as u64,
-            ) {
-                eprintln!("tkr: warning: could not save analytics for `{key_owned}`: {e}");
-            }
-        });
-        if let Err(e) = handle.join() {
-            eprintln!("tkr: warning: analytics writer thread panicked: {e:?}");
+    let bus = host.bus.clone();
+    let key_owned = key.to_string();
+    let chars_in = result.chars_in;
+    let chars_saved = result.chars_suppressed;
+    let handle = std::thread::spawn(move || {
+        let vault = crate::host::boot::vault();
+        let analytics_host = crate::host::RealHost::new("tkr-analytics", vault, bus);
+        if let Err(e) = tkr_analytics::record_command_stat_via_host(
+            &analytics_host,
+            &key_owned,
+            chars_in as u64,
+            chars_saved as u64,
+        ) {
+            eprintln!("tkr: warning: could not save analytics for `{key_owned}`: {e}");
         }
+    });
+    if let Err(e) = handle.join() {
+        eprintln!("tkr: warning: analytics writer thread panicked: {e:?}");
     }
-
-    Ok(())
 }
 
 fn sanitize_prefix(raw: &str) -> String {

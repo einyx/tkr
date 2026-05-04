@@ -6,6 +6,7 @@
 //! are identical — no binding attestations needed for payments.
 
 pub mod address;
+pub mod attestation;
 pub mod client;
 pub mod enrollment;
 pub mod envelope;
@@ -18,6 +19,7 @@ pub use client::Client;
 pub use payment::{EscrowDomain, PaidMessage, Receipt};
 
 pub use address::Address;
+pub use attestation::{JoinAttestation, JOIN_ATTESTATION_MAX_SKEW_MS};
 pub use enrollment::{enroll, JoinedMesh};
 pub use envelope::Envelope;
 pub use identity::Identity;

@@ -198,10 +198,16 @@ async fn enroll_with_override(
     // Confirm the invite verifies — same precondition as the real enroll().
     invite.verify(now_secs()).expect("invite verify");
 
+    // Build the joiner attestation the broker now requires.
+    let now_ms = now_secs().saturating_mul(1000);
+    let attestation =
+        tkr_mesh::JoinAttestation::issue(identity, &invite.mesh_id, token, now_ms);
+
     let body = serde_json::json!({
         "invite_token": token,
         "invite_payload": invite,
         "address": identity.address().to_checksum(),
+        "join_attestation": attestation,
         "display_name": display_name,
     });
 

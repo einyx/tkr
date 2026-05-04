@@ -531,7 +531,7 @@ async fn handle_mesh_join(req: Request<Incoming>, state: AppState) -> Response<B
             )
         }
     };
-    match broker::handle_join(&state.inner.broker, body, unix_ts()) {
+    match broker::handle_join(&state.inner.broker, body, unix_ts(), unix_ms()) {
         Ok(resp) => json_response(&origin_headers, StatusCode::OK, resp),
         Err((status, err)) => json_response(
             &origin_headers,
@@ -1187,6 +1187,13 @@ fn unix_ts() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+fn unix_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
 }
 
 fn websocket_text_frame(payload: &[u8]) -> Vec<u8> {

@@ -6282,6 +6282,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "tkr-model"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sha3",
+ "thiserror 1.0.69",
+ "tkr-mesh",
+]
+
+[[package]]
 name = "tkr-providers"
 version = "0.1.0"
 dependencies = [

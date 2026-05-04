@@ -11,6 +11,7 @@ members = [
     "crates/tkr-server",
     "crates/tkr-mesh",
     "crates/tkr-mcp",
+    "crates/tkr-model",
     "crates/tkr",
 ]
 

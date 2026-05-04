@@ -4,7 +4,7 @@
 //! The broker's HTTP base URL is derived from the invite's `broker_url`
 //! by swapping `wss://` → `https://` (and `ws://` → `http://` for dev).
 
-use crate::{Error, Identity, Invite, Result};
+use crate::{attestation::JoinAttestation, Error, Identity, Invite, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::time::Duration;
@@ -108,12 +108,15 @@ impl JoinedMesh {
 }
 
 /// Wire body for `POST /join`. The broker re-verifies the invite signature
-/// against `invite_payload.owner` before accepting.
+/// against `invite_payload.owner` AND verifies the joiner's attestation
+/// (proving they hold the private key for `address` and binding the
+/// signature to this specific invite + a fresh timestamp).
 #[derive(Debug, Serialize)]
 struct JoinRequest<'a> {
     invite_token: &'a str,
     invite_payload: &'a Invite,
     address: String,
+    join_attestation: &'a JoinAttestation,
     #[serde(skip_serializing_if = "Option::is_none")]
     display_name: Option<&'a str>,
 }
@@ -155,11 +158,18 @@ pub fn enroll(
 ) -> Result<JoinedMesh> {
     invite.verify(now)?;
 
+    // Prove key control over `address` and bind the redemption to this
+    // specific invite + a fresh timestamp. Convert the seconds-precision
+    // `now` callers pass to ms (broker compares with `SystemTime::now()`).
+    let attestation =
+        JoinAttestation::issue(identity, &invite.mesh_id, invite_token, now.saturating_mul(1000));
+
     let join_url = http_join_url(&invite.broker_url)?;
     let body = JoinRequest {
         invite_token,
         invite_payload: invite,
         address: identity.address().to_checksum(),
+        join_attestation: &attestation,
         display_name,
     };
 

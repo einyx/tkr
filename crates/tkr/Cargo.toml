@@ -34,6 +34,7 @@ tkr-session-recorder = { path = "../tkr-session-recorder" }
 tkr-mesh = { path = "../tkr-mesh" }
 tkr-mcp = { path = "../tkr-mcp" }
 anyhow = { workspace = true }
+regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }

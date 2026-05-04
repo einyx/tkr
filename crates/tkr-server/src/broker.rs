@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use tkr_mesh::frames::{AckFields, ErrorFields, Frame, PushFields, HELLO_MAX_SKEW_MS};
-use tkr_mesh::{Address, Invite};
+use tkr_mesh::{Address, Invite, JoinAttestation, JOIN_ATTESTATION_MAX_SKEW_MS};
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_tungstenite::WebSocketStream;
@@ -167,6 +167,10 @@ pub struct JoinRequest {
     pub invite_token: String,
     pub invite_payload: Invite,
     pub address: Address,
+    /// Joiner-side proof of key control over `address`. Required since
+    /// invites are bearer tokens — without this an attacker holding a
+    /// leaked invite could enroll arbitrary addresses they don't own.
+    pub join_attestation: JoinAttestation,
     #[serde(default)]
     pub display_name: Option<String>,
 }
@@ -186,10 +190,16 @@ pub struct JoinError {
 
 /// Handle the join HTTP body. Returns the response payload on success or
 /// a (status, JSON) on failure for the caller to render.
+///
+/// `now` is unix seconds (matched against the invite's `expires_at`).
+/// `now_ms` is unix milliseconds (matched against the joiner's attestation
+/// timestamp) — kept separate so existing callers can keep their seconds-
+/// precision clock and tests remain deterministic.
 pub fn handle_join(
     broker: &BrokerState,
     body: JoinRequest,
     now: u64,
+    now_ms: u64,
 ) -> Result<JoinResponse, (u16, JoinError)> {
     if body.invite_payload.verify(now).is_err() {
         return Err((
@@ -200,9 +210,44 @@ pub fn handle_join(
             },
         ));
     }
-    // The invite_token is opaque to the broker but useful for audit logs;
-    // we don't crack it open here — invite_payload is what we trust.
-    let _ = body.invite_token;
+
+    // The joiner must prove control of `address` AND bind the
+    // attestation to this specific invite_token + a fresh timestamp. Any
+    // mismatch (mesh_id, address, invite_token_hash, signature, freshness)
+    // rejects the redemption — without this check, anyone holding a
+    // leaked invite could enroll arbitrary attacker-chosen addresses.
+    let att = &body.join_attestation;
+    if att.mesh_id != body.invite_payload.mesh_id {
+        return Err((
+            403,
+            JoinError {
+                ok: false,
+                error: "join attestation mesh_id mismatch".to_string(),
+            },
+        ));
+    }
+    if att.address != body.address {
+        return Err((
+            403,
+            JoinError {
+                ok: false,
+                error: "join attestation address mismatch".to_string(),
+            },
+        ));
+    }
+    if let Err(e) = att.verify_with_now(
+        &body.invite_token,
+        now_ms,
+        JOIN_ATTESTATION_MAX_SKEW_MS,
+    ) {
+        return Err((
+            403,
+            JoinError {
+                ok: false,
+                error: format!("join attestation rejected: {e}"),
+            },
+        ));
+    }
 
     let record = broker.enroll(
         &body.invite_payload.mesh_id,
@@ -405,27 +450,35 @@ mod tests {
         assert!(broker.lookup("mesh_b", &id.address()).is_none());
     }
 
-    #[test]
-    fn handle_join_happy_path() {
-        let broker = BrokerState::new();
+    fn fixture(now_s: u64, expires_at: u64) -> (BrokerState, Invite, String, Identity, JoinAttestation) {
+        let broker = BrokerState::default();
         let owner = Identity::generate();
         let invite = Invite::issue(
             &owner,
             "mesh_test",
             "test",
             "wss://broker.example/ws",
-            2_000_000_000,
+            expires_at,
             Role::Member,
         );
         let token = invite.to_token().unwrap();
         let joiner = Identity::generate();
+        let attestation = JoinAttestation::issue(&joiner, "mesh_test", &token, now_s * 1000);
+        (broker, invite, token, joiner, attestation)
+    }
+
+    #[test]
+    fn handle_join_happy_path() {
+        let now_s = 1_700_000_000u64;
+        let (broker, invite, token, joiner, attestation) = fixture(now_s, 2_000_000_000);
         let body = JoinRequest {
             invite_token: token,
             invite_payload: invite,
             address: joiner.address(),
+            join_attestation: attestation,
             display_name: Some("alice".into()),
         };
-        let resp = handle_join(&broker, body, 1_700_000_000).expect("ok");
+        let resp = handle_join(&broker, body, now_s, now_s * 1000).expect("ok");
         assert!(resp.ok);
         assert!(resp.member_id.starts_with("member_"));
         assert!(broker.lookup("mesh_test", &joiner.address()).is_some());
@@ -433,25 +486,92 @@ mod tests {
 
     #[test]
     fn handle_join_rejects_expired_invite() {
-        let broker = BrokerState::new();
-        let owner = Identity::generate();
-        let invite = Invite::issue(
-            &owner,
-            "mesh_test",
-            "test",
-            "wss://broker.example/ws",
-            1_000,
-            Role::Member,
-        );
-        let token = invite.to_token().unwrap();
-        let joiner = Identity::generate();
+        let now_s = 2_000u64;
+        let (broker, invite, token, joiner, attestation) = fixture(now_s, 1_000);
         let body = JoinRequest {
             invite_token: token,
             invite_payload: invite,
             address: joiner.address(),
+            join_attestation: attestation,
             display_name: None,
         };
-        let err = handle_join(&broker, body, 2_000).unwrap_err();
+        let err = handle_join(&broker, body, now_s, now_s * 1000).unwrap_err();
+        assert_eq!(err.0, 403);
+    }
+
+    #[test]
+    fn handle_join_rejects_attestation_for_wrong_address() {
+        // Attacker holds a leaked invite. They want to enroll a different
+        // address than the one their key controls — the attestation will
+        // recover to the signer, not to the spoofed `body.address`.
+        let now_s = 1_700_000_000u64;
+        let (broker, invite, token, joiner, attestation) = fixture(now_s, 2_000_000_000);
+        let other = Identity::generate();
+        assert_ne!(other.address(), joiner.address());
+        let body = JoinRequest {
+            invite_token: token,
+            invite_payload: invite,
+            address: other.address(), // <- spoofed
+            join_attestation: attestation, // signed by `joiner`
+            display_name: None,
+        };
+        let err = handle_join(&broker, body, now_s, now_s * 1000).unwrap_err();
+        assert_eq!(err.0, 403);
+        assert!(broker.lookup("mesh_test", &other.address()).is_none());
+        assert!(broker.lookup("mesh_test", &joiner.address()).is_none());
+    }
+
+    #[test]
+    fn handle_join_rejects_attestation_bound_to_different_invite() {
+        // Attestation references a different invite_token than the one
+        // submitted in the body — invite_token_hash mismatch should reject.
+        let now_s = 1_700_000_000u64;
+        let (broker, invite, token, joiner, _) = fixture(now_s, 2_000_000_000);
+        let stale_attestation =
+            JoinAttestation::issue(&joiner, "mesh_test", "different_token", now_s * 1000);
+        let body = JoinRequest {
+            invite_token: token,
+            invite_payload: invite,
+            address: joiner.address(),
+            join_attestation: stale_attestation,
+            display_name: None,
+        };
+        let err = handle_join(&broker, body, now_s, now_s * 1000).unwrap_err();
+        assert_eq!(err.0, 403);
+    }
+
+    #[test]
+    fn handle_join_rejects_stale_attestation() {
+        let now_s = 1_700_000_000u64;
+        let (broker, invite, token, joiner, _) = fixture(now_s, 2_000_000_000);
+        // Attestation is more than JOIN_ATTESTATION_MAX_SKEW_MS old.
+        let old_ts_ms = now_s * 1000 - JOIN_ATTESTATION_MAX_SKEW_MS - 1;
+        let stale_att = JoinAttestation::issue(&joiner, "mesh_test", &token, old_ts_ms);
+        let body = JoinRequest {
+            invite_token: token,
+            invite_payload: invite,
+            address: joiner.address(),
+            join_attestation: stale_att,
+            display_name: None,
+        };
+        let err = handle_join(&broker, body, now_s, now_s * 1000).unwrap_err();
+        assert_eq!(err.0, 403);
+    }
+
+    #[test]
+    fn handle_join_rejects_attestation_with_mismatched_mesh_id() {
+        let now_s = 1_700_000_000u64;
+        let (broker, invite, token, joiner, _) = fixture(now_s, 2_000_000_000);
+        // Attestation signed against a different mesh_id than the invite.
+        let cross_mesh = JoinAttestation::issue(&joiner, "mesh_other", &token, now_s * 1000);
+        let body = JoinRequest {
+            invite_token: token,
+            invite_payload: invite,
+            address: joiner.address(),
+            join_attestation: cross_mesh,
+            display_name: None,
+        };
+        let err = handle_join(&broker, body, now_s, now_s * 1000).unwrap_err();
         assert_eq!(err.0, 403);
     }
 }

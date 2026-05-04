@@ -1,7 +1,11 @@
 use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
-#[command(name = "tkr", about = "Token-optimized CLI proxy")]
+#[command(
+    name = "tkr",
+    about = "Token-optimized CLI proxy",
+    subcommand_precedence_over_arg = true
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,

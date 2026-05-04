@@ -86,7 +86,7 @@ pub fn run() -> Result<()> {
         }
 
         if pct < 25.0 {
-            suggestions.push(format!(
+            let mut line = format!(
                 "  {}{}{}: {}{:.0}%{} cut, {}{}{} unsaved over {} runs.\n     → tighten {}filters/{}*.toml{} — likely candidates: header lines, boilerplate, repetitive prefixes",
                 p(BOLD),
                 row.command,
@@ -101,9 +101,15 @@ pub fn run() -> Result<()> {
                 p(YELLOW),
                 cmd_first,
                 p(RESET),
-            ));
+            );
+            if let Some(h) = extra_command_hint(&row.command, cmd_first) {
+                line.push_str(&format!("\n     → {h}"));
+            }
+            suggestions.push(line);
         }
     }
+
+    print_native_ecosystem_notes(on)?;
 
     if suggestions.is_empty() {
         println!(
@@ -134,9 +140,12 @@ pub fn run() -> Result<()> {
 
     println!();
     println!(
-        "  {}docs: https://github.com/einyx/tkr#custom-filters{}",
+        "  {}docs: https://github.com/einyx/tkr#custom-filters · {}native-handlers.md{} (repo {}docs/native-handlers.md{})",
         p(DIM),
-        p(RESET)
+        p(YELLOW),
+        p(RESET),
+        p(DIM),
+        p(RESET),
     );
     println!();
     Ok(())
@@ -258,4 +267,155 @@ fn bundled_filter_set() -> Vec<String> {
     commands.sort();
     commands.dedup();
     commands
+}
+
+fn print_native_ecosystem_notes(on: bool) -> Result<()> {
+    let p = |c: &'static str| if on { c } else { "" };
+    println!(
+        "  {}{}Native handlers & tooling{}",
+        p(BOLD),
+        p(CYAN),
+        p(RESET)
+    );
+    println!(
+        "  {}grep / rg{} — structured compression is default ({}TKR_NATIVE_GREP=0{} falls back to TOML only).",
+        p(DIM),
+        p(RESET),
+        p(YELLOW),
+        p(RESET),
+    );
+    println!(
+        "  {}git status{} — eligible runs use {}-sb{} ({}TKR_NATIVE_GIT=0{} disables all git natives).",
+        p(DIM),
+        p(RESET),
+        p(DIM),
+        p(RESET),
+        p(YELLOW),
+        p(RESET),
+    );
+    println!(
+        "  {}git diff{} — condenses unified output; {}TKR_NATIVE_GIT_DIFF=0{} for stream+filters; >8MB diffs fall back.",
+        p(DIM),
+        p(RESET),
+        p(YELLOW),
+        p(RESET),
+    );
+    println!(
+        "  {}ls{} — line-capped ({}TKR_NATIVE_LS=0{} for TOML-only).",
+        p(DIM),
+        p(RESET),
+        p(YELLOW),
+        p(RESET),
+    );
+    println!(
+        "  {}cargo test{} — elides `{}test … ok{}` spam ({}TKR_NATIVE_CARGO_TEST=0{}).",
+        p(DIM),
+        p(RESET),
+        p(YELLOW),
+        p(RESET),
+        p(YELLOW),
+        p(RESET),
+    );
+    println!(
+        "  {}session log{} — {}TKR_NATIVE_SESSION_LOG=1{} → {}~/.tkr/native-handlers.jsonl{}",
+        p(DIM),
+        p(RESET),
+        p(YELLOW),
+        p(RESET),
+        p(DIM),
+        p(RESET),
+    );
+    println!(
+        "  {}Editor Grep / Read tools{} often {}bypass{} shell hooks — run {}",
+        p(DIM),
+        p(RESET),
+        p(RED),
+        p(RESET),
+        p(YELLOW),
+    );
+    println!(
+        "  {}`tkr rg`{}, {}`tkr grep`{}, {}`tkr cat`{} so traffic goes through tkr.",
+        p(YELLOW),
+        p(RESET),
+        p(YELLOW),
+        p(RESET),
+        p(YELLOW),
+        p(RESET),
+    );
+    println!(
+        "  {}Heavy test runners{} — {}TKR_MAX_TOKENS{}, tweak {}{}~/.tkr/filters/*.toml{}, or narrower runs.",
+        p(DIM),
+        p(RESET),
+        p(YELLOW),
+        p(RESET),
+        p(DIM),
+        p(YELLOW),
+        p(RESET),
+    );
+    println!();
+    Ok(())
+}
+
+/// Extra one-liners for analytics rows that look like known noisy commands.
+fn extra_command_hint(full_command: &str, cmd_first: &str) -> Option<String> {
+    let f = full_command.to_lowercase();
+    match cmd_first {
+        "grep" | "rg" | "egrep" | "fgrep" => Some(
+            "ensure you invoke search via the shell (`tkr rg …`) so the native handler runs; with `rg --json`, matches are summarized like plain ripgrep output.".into(),
+        ),
+        "cargo" if f.contains("test") => Some(
+            "native `cargo test` elides passing `ok` lines (`TKR_NATIVE_CARGO_TEST=0` for full stream + filters); raise `TKR_NATIVE_CARGO_COMPILE_LINES` if compile noise is still heavy.".into(),
+        ),
+        "go" if f.contains(" test") && !f.contains("help test") => Some(
+            "native `go test` elides verbose `=== RUN` / `--- PASS` lines (`TKR_NATIVE_GO_TEST=0` for full stream); skipped automatically for `-json`/`-bench`/`-fuzz`.".into(),
+        ),
+        "jest" | "vitest" | "mocha" | "playwright" | "cypress" => Some(
+            "standalone test-runner binaries are covered by the same native shrinking as npm-style runs (`TKR_NATIVE_JS_TEST=0` for full output); `playwright` uses `playwright test`, `cypress` uses `cypress run`.".into(),
+        ),
+        "npm" | "pnpm" | "yarn" | "npx" | "bunx" | "corepack"
+            if f.contains("test")
+                || f.contains("vitest")
+                || f.contains("jest")
+                || f.contains("playwright") =>
+        {
+            Some(
+                "native JS/Deno/Bun test runs elide vitest ✓, jest PASS, deno `… ok`, bun `(pass)` (`TKR_NATIVE_JS_TEST=0` for full stream); optionally tighten package-manager filters or cap with `TKR_MAX_TOKENS`.".into(),
+            )
+        }
+        "deno" | "bun" if f.contains("test") => Some(
+            "native test output shrinking (`TKR_NATIVE_JS_TEST=0` for full stream); run via shell so `tkr` sees the command.".into(),
+        ),
+        "git" => {
+            if f.contains("diff") {
+                Some(
+                    "native path condenses unified diff output (`TKR_NATIVE_GIT_DIFF=0` uses stream+filters only); huge diffs fall back automatically.".into(),
+                )
+            } else if f.contains("status") {
+                Some(
+                    "native path rewrites to `git status -sb` unless porcelain/verbose (`TKR_NATIVE_GIT=0` disables all git natives).".into(),
+                )
+            } else {
+                None
+            }
+        }
+        "ls" => Some(
+            "native caps line count (`TKR_NATIVE_LS_MAX_LINES`) — set `TKR_NATIVE_LS=0` to use filter TOML only.".into(),
+        ),
+        "pytest" | "py.test" => Some(
+            "native pytest elides verbose `PASSED` and dot-progress rows (`TKR_NATIVE_PYTEST=0` for the full stream).".into(),
+        ),
+        "uv" | "poetry" | "pipenv" | "pdm"
+            if f.contains("pytest") || f.contains(" -m pytest") =>
+        {
+            Some(
+                "native pytest wrapper (`TKR_NATIVE_PYTEST=0` to disable the native path for poetry/uv-style runs).".into(),
+            )
+        }
+        c if (c.starts_with("python") || c == "py") && f.contains("-m pytest") => {
+            Some(
+                "native pytest elides verbose `PASSED` / dot rows when run as `-m pytest` (`TKR_NATIVE_PYTEST=0` for full output).".into(),
+            )
+        }
+        _ => None,
+    }
 }

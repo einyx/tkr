@@ -7,6 +7,7 @@ mod config;
 mod dispatch;
 mod embedding_ranker;
 mod host;
+mod native;
 mod noise_ranker;
 mod proxy;
 mod runner;
@@ -155,8 +156,38 @@ fn clean_stats(yes: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// If clap did not match a subcommand but the user typed `tkr update …`, run the
+/// self-updater instead of proxying to a non-existent binary named `update`
+/// (builds without the `Update` variant, or rare parser edge cases).
+fn dispatch_update_from_passthrough(cli: &Cli) -> Option<anyhow::Result<()>> {
+    if cli.command.is_some() {
+        return None;
+    }
+    if cli.passthrough.first().map(|s| s.as_str()) != Some("update") {
+        return None;
+    }
+    let mut check = false;
+    let mut force = false;
+    for arg in cli.passthrough.iter().skip(1) {
+        match arg.as_str() {
+            "--check" => check = true,
+            "--force" => force = true,
+            _ => {
+                return Some(Err(anyhow::anyhow!(
+                    "unknown argument to `tkr update`: {arg}"
+                )));
+            }
+        }
+    }
+    Some(cmds::update::run(check, force))
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+
+    if let Some(res) = dispatch_update_from_passthrough(&cli) {
+        return res;
+    }
 
     // Commands that touch the vault/plugins boot the host first.
     // gain/suggest/watch/discover need the full vault boot.

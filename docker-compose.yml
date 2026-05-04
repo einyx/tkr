@@ -5,10 +5,26 @@ services:
       dockerfile: Dockerfile
     container_name: tkr-server
     restart: unless-stopped
-    # Bind only to host loopback. nginx on the host upstreams to 127.0.0.1:4000
-    # for tkr.prysm.sh — no need to expose this port to the public interface.
+    # Local-dev port mapping kept for direct curls against the container.
+    # Public traffic to tkr.prysm.sh reaches us via prysm-traefik on the
+    # `prysm_prysm` network using the labels below — not via this port.
     ports:
       - "127.0.0.1:4000:4000"
+    networks:
+      - default
+      - prysm_prysm
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=prysm_prysm"
+      - "traefik.http.routers.tkr-http.entrypoints=web"
+      - "traefik.http.routers.tkr-http.rule=Host(`tkr.prysm.sh`)"
+      - "traefik.http.routers.tkr-http.middlewares=https-redirect@file"
+      - "traefik.http.routers.tkr-http.service=tkr"
+      - "traefik.http.routers.tkr-https.entrypoints=websecure"
+      - "traefik.http.routers.tkr-https.rule=Host(`tkr.prysm.sh`)"
+      - "traefik.http.routers.tkr-https.tls=true"
+      - "traefik.http.routers.tkr-https.service=tkr"
+      - "traefik.http.services.tkr.loadbalancer.server.port=4000"
     env_file:
       - ./tkr-server.env
     environment:
@@ -94,4 +110,12 @@ services:
           memory: "1G"   # anvil holds full state in memory; growth is bounded by usage.
     security_opt:
       - no-new-privileges:true
+
+networks:
+  # Default compose network — tkr-server ↔ tkr-chain talk over this.
+  default:
+  # Shared edge network owned by the prysm stack. tkr-server joins it so
+  # prysm-traefik can route tkr.prysm.sh to it via Docker labels.
+  prysm_prysm:
+    external: true
 

@@ -4,7 +4,8 @@ use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 
 pub struct LineStream {
-    pub child: Child,
+    /// `None` after [`LineStream::wait_child`] has reaped the process.
+    pub child: Option<Child>,
     rx: mpsc::Receiver<Result<String>>,
     threads: Vec<std::thread::JoinHandle<()>>,
 }
@@ -17,9 +18,25 @@ impl Iterator for LineStream {
     }
 }
 
+impl LineStream {
+    /// Drain remaining lines (if any), wait on the child, then join reader threads.
+    /// Use this instead of relying on [`Drop`] when you need the exit code without
+    /// double-wait issues.
+    pub fn wait_child(mut self) -> std::io::Result<i32> {
+        while let Some(_item) = self.next() {}
+        let code = match self.child.take() {
+            Some(mut c) => c.wait()?.code().unwrap_or(-1),
+            None => -1,
+        };
+        Ok(code)
+    }
+}
+
 impl Drop for LineStream {
     fn drop(&mut self) {
-        let _ = self.child.wait();
+        if let Some(mut c) = self.child.take() {
+            let _ = c.wait();
+        }
         for t in self.threads.drain(..) {
             let _ = t.join();
         }
@@ -63,7 +80,7 @@ pub fn stream_command(cmd: &str, args: &[&str]) -> Result<LineStream> {
     });
 
     Ok(LineStream {
-        child,
+        child: Some(child),
         rx,
         threads: vec![stdout_thread, stderr_thread],
     })
@@ -94,6 +111,13 @@ mod tests {
     fn run_nonexistent_command_errors() {
         let result = stream_command("__tkr_no_such_cmd_xyz", &[]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn wait_child_returns_exit_status() {
+        let s = stream_command("sh", &["-c", "exit 19"]).unwrap();
+        let code = s.wait_child().expect("wait");
+        assert_eq!(code, 19);
     }
 
     #[test]
