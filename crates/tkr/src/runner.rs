@@ -121,6 +121,13 @@ mod tests {
     }
 
     #[test]
+    fn wait_child_false_exit_status() {
+        let s = stream_command("false", &[]).unwrap();
+        let code = s.wait_child().expect("wait");
+        assert_eq!(code, 1);
+    }
+
+    #[test]
     fn merges_stdout_and_stderr() {
         // sh -c "echo to-stdout; echo to-stderr 1>&2" — both should appear
         let lines: Vec<String> =

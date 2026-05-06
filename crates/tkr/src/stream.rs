@@ -486,15 +486,21 @@ fn compact_json_if_possible(body: &str) -> Option<String> {
 ///
 /// Uses a single `FilterPlugin` (pre-loaded for the current command) directly,
 /// avoiding the registry overhead. This is the path taken by `tkr <cmd>`.
-pub fn run_pipeline_direct<I>(
-    lines: I,
+///
+/// `raw_transcript` receives **pre-filter** lines (merged stdout/stderr, one line
+/// per read) when tee capture is enabled — see [`crate::tee`].
+pub fn run_pipeline_direct(
+    mut stream: crate::runner::LineStream,
     filter: &mut FilterPlugin,
     command: &str,
     args: &str,
-) -> PipelineResult
-where
-    I: Iterator<Item = Result<String>>,
-{
+    mut raw_transcript: Option<&mut String>,
+) -> std::io::Result<(PipelineResult, i32)> {
+    let transcript_cap = if raw_transcript.is_some() {
+        crate::tee::transcript_cap()
+    } else {
+        0usize
+    };
     let mut emitted = Vec::new();
     let mut chars_in: u64 = 0;
     let mut chars_suppressed: u64 = 0;
@@ -513,14 +519,24 @@ where
         std::env::var("TKR_OUTPUT_PREFIX").ok().unwrap_or_default()
     };
 
-    for (index, line_result) in lines.enumerate() {
-        let raw = match line_result {
-            Ok(l) => l,
-            Err(e) => {
+    let mut index: u64 = 0;
+    loop {
+        let raw = match stream.next() {
+            None => break,
+            Some(Err(e)) => {
                 eprintln!("tkr: read error: {e}");
                 continue;
             }
+            Some(Ok(l)) => l,
         };
+
+        let line_idx = index;
+        index += 1;
+
+        if let Some(buf) = raw_transcript.as_mut() {
+            crate::tee::append_raw_line(buf, &raw, transcript_cap);
+        }
+
         chars_in += raw.len() as u64;
 
         let line = normalize_line(&raw);
@@ -540,7 +556,7 @@ where
         }
 
         use tkr_api::LegacyPlugin as LegacyTrait;
-        let result = LegacyTrait::filter(filter, &line, command, args, index as u64);
+        let result = LegacyTrait::filter(filter, &line, command, args, line_idx);
         let (suppressed, current) = match result {
             FilterResult::Suppress | FilterResult::SuppressWithNote(_) => (true, line.clone()),
             FilterResult::Pass => (false, line.clone()),
@@ -605,11 +621,16 @@ where
         print_prefixed(&final_body, &prefix);
     }
 
-    PipelineResult {
-        emitted,
-        chars_in,
-        chars_suppressed,
-    }
+    let code = stream.wait_child()?;
+
+    Ok((
+        PipelineResult {
+            emitted,
+            chars_in,
+            chars_suppressed,
+        },
+        code,
+    ))
 }
 
 pub fn chars_to_tokens(chars: u64) -> u64 {
@@ -731,5 +752,14 @@ mod tests {
         // DCS ESC P ... ST. Body should be dropped, surrounding text kept.
         let input = "before\x1bP1$rmsg\x1b\\after";
         assert_eq!(strip_ansi(input), "beforeafter");
+    }
+
+    #[test]
+    fn run_pipeline_direct_propagates_child_exit_false() {
+        let stream = crate::runner::stream_command("false", &[]).unwrap();
+        let mut f = FilterPlugin::new();
+        let (_r, code) =
+            run_pipeline_direct(stream, &mut f, "false", "", None).expect("pipeline");
+        assert_eq!(code, 1, "expected false to exit 1");
     }
 }

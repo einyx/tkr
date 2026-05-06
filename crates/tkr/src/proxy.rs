@@ -1,6 +1,6 @@
 use crate::config::Config;
 use crate::stream::{chars_to_tokens, PipelineResult};
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 /// Flags whose argument is the next token (so we skip both).
 /// Conservative — for unknown flags we treat the next token as the value
@@ -94,9 +94,16 @@ pub fn run(cfg: Config, args: &[String]) -> Result<()> {
     let str_args: Vec<&str> = cmd_args.iter().map(String::as_str).collect();
     let lines = crate::runner::stream_command(cmd, &str_args)?;
 
-    // Run the fast pipeline: uses the per-command FilterPlugin directly,
-    // bypassing the registry's (empty) filter plugin.
-    let result = crate::stream::run_pipeline_direct(lines, &mut filter_guard, cmd, &cmd_args_str);
+    let capture = crate::tee::capture_raw_transcript();
+    let mut raw_transcript = String::new();
+    let (result, code) = crate::stream::run_pipeline_direct(
+        lines,
+        &mut filter_guard,
+        cmd,
+        &cmd_args_str,
+        capture.then_some(&mut raw_transcript),
+    )
+    .context("tkr proxy: filtering subprocess output")?;
 
     let subcmd = first_positional(cmd_args);
     let key = format!("{cmd_name} {subcmd}").trim().to_string();
@@ -105,7 +112,13 @@ pub fn run(cfg: Config, args: &[String]) -> Result<()> {
 
     record_pipeline_stats(&sess, host, &key, &result);
 
-    Ok(())
+    match crate::tee::maybe_save_transcript(cmd, &cmd_args_str, code, &raw_transcript) {
+        Ok(Some(note)) => println!("{note}"),
+        Ok(None) => {}
+        Err(e) => eprintln!("tkr: warning: tee save failed: {e}"),
+    }
+
+    std::process::exit(code);
 }
 
 /// Session summary + vault analytics row for one proxied command (shared by

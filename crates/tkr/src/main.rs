@@ -14,6 +14,7 @@ mod runner;
 mod session;
 mod signature;
 mod stream;
+mod tee;
 mod util;
 
 use clap::Parser;

@@ -15,6 +15,7 @@ tkr can run **structured, RTK-style handlers** for some commands *before* the ge
 | `npm`, …, `deno`, `bun`, **`jest`**, **`vitest`**, **`mocha`**, **`playwright`**, **`cypress`** | `TKR_NATIVE_JS_TEST=0` | **Package managers** (as before); **standalone** **`jest` / `vitest` / `mocha`**; **`playwright test`**, **`cypress run`**. Elides vitest **✓**, jest **PASS**, **`deno` `test … ok`**, **`bun` `(pass)`**. |
 | **`pytest`** / **`python -m pytest`** / **`uv run pytest`** / **`poetry`/`pipenv`/`pdm run pytest`** | `TKR_NATIVE_PYTEST=0` | Elides verbose **`::… PASSED`** lines and long **`.py … dots … [NN%]`** progress rows; keeps failures, errors, skips, xfails. |
 | `git` (`status`) | `TKR_NATIVE_GIT=0` | When eligible, runs `git status -sb` instead of long porcelain. |
+| `git` (`add` / `commit` / `push` / `pull`) | `TKR_NATIVE_GIT_COMPACT=0` | RTK-style **success** summaries (see below). Failures print **full** stdout/stderr unchanged. |
 
 ## Environment variables
 
@@ -22,12 +23,22 @@ tkr can run **structured, RTK-style handlers** for some commands *before* the ge
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `TKR_NATIVE_GIT` | (on) | Set to `0` to disable **all** native `git` shortcuts (status + diff condense). |
+| `TKR_NATIVE_GIT` | (on) | Set to `0` to disable **all** native `git` shortcuts (status + diff condense + compact transactions). |
 | `TKR_NATIVE_GIT_DIFF` | (on) | Set to `0` / `passthrough` so **`git diff`** uses the normal stream + `filters/git.toml` instead of unified-diff condense. |
+| `TKR_NATIVE_GIT_COMPACT` | (on) | Set to `0` so **`git add` / `git commit` / `git push` / `git pull`** use the streaming pipeline + **`filters/git.toml`** instead of one-line success output. |
 
 Native **`git status`** rewrites to **`git status -sb`** when we do not see `--porcelain`, verbose, or stash-only long flags.
 
 Native **`git diff`** runs the real `git diff`, then post-processes **stdout** when practical: drops `index` / similarity lines, collapses repeated unified-diff **context** (` `) lines, and shortens long `@@` headers. Skips when `--stat`, `--word-diff`, `--output`, etc. are present; diffs larger than **8 MiB** fall back to the TOML pipeline.
+
+**Compact transactions** (aligned with [RTK](https://github.com/rtk-ai/rtk)-style summaries):
+
+- **`git add`** — on success: `ok`. Passthrough (full stream + TOML) for `-i` / `-p` / `--patch` / `--interactive` / `--dry-run` / `-n`.
+- **`git commit`** — on success: `ok · <short-sha> · <subject>` when stderr contains the usual `[branch sha] subject` line; otherwise `ok · commit`. Only runs when the invocation is **non-interactive** (e.g. `-m`, `-F`, `--no-edit`, `--reuse-message`, …); bare `git commit` still opens an editor and stays on the TOML path. Passthrough for `-v` / `--verbose` / `--dry-run`.
+- **`git push`** — on success: `ok · <branch>` from ref-update lines, `ok · up to date` when everything is up to date, or `ok · push` if no pattern matched. Passthrough for `--dry-run` / `-n` / `--progress`.
+- **`git pull`** — on success: `ok · Nf +I -D` from the `files changed` summary when present, `ok · up to date` when already up to date, else `ok · pull`. Passthrough for `--dry-run` / `-n` / `--progress`.
+
+Any **non-zero exit** from git prints the **original** stdout and stderr so nothing is lost on failure.
 
 ### ls
 
@@ -94,9 +105,15 @@ Applies when the executable is **`pytest`** / **`py.test`**, **`python*`** / **`
 
 ### All proxied commands
 
-| Variable | Meaning |
-|----------|---------|
-| `TKR_MAX_TOKENS` | Hard cap on emitted tokens (see `tkr --help` proxy flags). Helps long `cargo test`, vitest, docker logs. |
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `TKR_MAX_TOKENS` | (unset) | Hard cap on emitted tokens (see `tkr --help` proxy flags). Helps long `cargo test`, vitest, docker logs. |
+| `TKR_TEE` | `failures` | RTK-style transcript retention under **`~/.tkr/tee/`**. `never` / `0` / `false` / `off`: no capture. **`failures`** (also `on`, `yes`, `true`, `1`): keep a raw merged stdout+stderr transcript only when the child exits **non-zero**, then print `[tkr: full output saved to …]`. **`always`** / **`all`**: save every run. |
+| `TKR_TEE_MAX_BYTES` | `8388608` | Cap on raw transcript size (bytes); longer runs are truncated with a footer marker. |
+
+The **`TKR_TEE`** transcript is captured **before** line filtering (what the subprocess actually wrote). Native shortcuts (`TKR_NATIVE_*`) already surface failures inline where implemented; tee applies to the **streaming** proxy path.
+
+**Child exit status:** On the streaming filter path, **`tkr`** exits with the proxied process’s exit code (same as native handlers), so hooks and CI see real failure statuses.
 
 ## IDE and agent tools
 
