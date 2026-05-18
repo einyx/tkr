@@ -1,64 +1,75 @@
 # tkr
 
-Token-optimized CLI proxy for LLM development workflows.
+**Token-efficient AI dev workflows.** Filter noisy command output, query code structurally instead of reading whole files, run agents in a sandbox — Apache-2.0, self-hosted, no telemetry.
 
-`tkr` filters and compresses command output before it reaches an LLM context window. It cuts 60–90% of tokens off common dev operations (build, test, git, package managers) so your AI assistant spends its context on signal, not noise.
+`tkr` is two complementary halves of the same problem. Your AI coding assistant burns context on two things: (1) verbose command output (build / test / git / package managers), and (2) reading whole source files to find one function. `tkr` cuts both.
 
-## New: agent mesh + on-chain payments
+## The two halves
 
-`tkr` now ships a **peer-messaging mesh** for agents and a **payment
-layer** that lets agents pay each other on Base (Ethereum L2). Public
-broker live at [tkr.prysm.sh](https://tkr.prysm.sh).
+### 1. CLI output filter (`tkr <cmd>`)
 
-```sh
-# 1. mint an invite (owner key signs it)
-tkr mesh invite-mint --slug demo \
-  --broker-url wss://tkr.prysm.sh/api/v1/mesh/ws \
-  --owner-key-file ~/.tkr/owner.env
-
-# 2. share the URL — anyone runs:
-tkr mesh join <invite-url>
-
-# 3. send / receive E2E-encrypted DMs
-tkr mesh tail demo                  # listen
-tkr mesh send demo --to <addr> --recipient-pubkey <pub> 'hello'
-```
-
-Identity is a **secp256k1 keypair** (same shape as an Ethereum wallet) —
-your mesh address and your on-chain wallet address are the same string.
-DMs are end-to-end encrypted (ECDH + AES-256-GCM); the broker only sees
-ciphertext.
-
-### Payments (Phase 3)
-
-`MeshEscrow.sol` runs payment channels: payer opens, recipient claims
-with EIP-712 receipts, payer reclaims unspent funds after a deadline.
-Source: `contracts/src/MeshEscrow.sol` (17 forge tests, all green).
+Wraps shell commands and strips dev-tool noise before it reaches the LLM context window. **60–90% token reduction** on common operations.
 
 ```sh
-tkr pay receipt-issue --session-id 0x... --cumulative N \
-  --chain-id 8453 --contract <MeshEscrow-addr> --key-file ~/.tkr/key.env
-tkr pay claim --receipt receipt.json \
-  --rpc-url https://mainnet.base.org --key-file ~/.tkr/key.env
+tkr cargo test         # only failures
+tkr git status         # filtered
+tkr npm install        # progress noise gone
+tkr gain               # how much you've saved
+tkr watch              # live dashboard (ratatui TUI)
 ```
 
-The off-chain Rust digest (`Receipt::issue`) and the on-chain Solidity
-digest (`MeshEscrow.receiptDigest()`) match byte-for-byte — same EIP-712
-domain, same signature, same ECDSA recovery. Verified end-to-end on a
-Base-mainnet anvil fork.
+Custom per-command filters live in `~/.tkr/filters/*.toml`. Three rule types: `suppress_prefix`, `suppress_regex`, `keep_regex`. See [Custom Filters](#custom-filters) below.
 
-Crates: `tkr-mesh` (client), `tkr-server` (broker + dashboard),
-`contracts/` (Solidity + foundry).
+### 2. Code-intel MCP server (`tkr-mcp`)
+
+Structured code-intelligence tools over MCP. Your agent reads outlines and signatures, not whole files. **1000×+ token reduction** on "find the relevant code" tasks (measured: 5.7 MB of file content collapsed to 4.4 KB of indexed results across 4 realistic questions in this repo).
+
+| tool | what it does |
+|---|---|
+| `tkr_index_build` | One-shot persistent index of a repo (SQLite + tree-sitter, content-hash freshness) |
+| `tkr_index_watch` | Background file watcher — index stays fresh across edits |
+| `tkr_outline_file` | Symbols + line ranges for one file (no body) |
+| `tkr_find_symbol` | All definitions of a name across the repo |
+| `tkr_signature` | One-line declaration of a symbol |
+| `tkr_read_smart` | Ranked search by free-form question → top-K symbols with locations |
+| `tkr_callers_of` / `tkr_callees_of` | Cheap call-graph from the indexed `refs` table |
+| `tkr_grep_summary` | Regex grep with per-file aggregation + caps |
+
+Supports **9 languages**: Rust, Python, Go, TypeScript, JavaScript, Java, C, C++, Ruby. Set `TKR_TOON=1` for compact TOON (Token-Oriented Object Notation) tabular output — ~15% additional savings on top of the structured queries.
+
+Wire it into Claude Code's MCP config:
+
+```json
+{
+  "mcpServers": {
+    "tkr": { "command": "tkr", "args": ["mcp"] }
+  }
+}
+```
+
+Then, on first use in a repo, call `tkr_index_build` once (and optionally `tkr_index_watch` to auto-refresh on file edits). Add a `CLAUDE.md` hint so the agent prefers `tkr_outline_file` / `tkr_read_smart` over `Read` for large files. Example hint:
+
+```markdown
+Prefer tkr MCP tools over native Read/Grep:
+- File > 200 lines: use tkr_outline_file
+- Looking for a symbol: use tkr_find_symbol
+- "Where is X done?" type questions: use tkr_read_smart
+- Recursive search across many files: use tkr_grep_summary
+```
+
+### 3. (Early) sandboxed agent runtime
+
+`tkr-agent` + `tkr-sandbox` run agents with Landlock isolation. Bring your own provider (Anthropic, OpenAI, Ollama). Less mature than (1)/(2) — usable, not yet a headline feature.
+
+---
 
 ## What's different
 
-- **Plugin contract v2** — structured plugin lifecycle (`on_load`, `on_command_begin`, `on_line`, `on_command_end`), typed capability grants, and vault-backed storage. See `docs/superpowers/specs/2026-04-28-tkr-plugin-contract-v2-design.md` for the full spec.
-- **Encrypted vault** — all plugin state lives in `~/.tkr/vault/` encrypted with age (XChaCha20-Poly1305); master key in `~/.tkr/vault/.tkr-vault.key` (0600), with one-time migration from legacy OS-keychain installs. Manage with `tkr vault {status,init,unseal,seal,rotate,export,import,audit}`.
 - **Plugin architecture** — core is thin; filters and analytics are independent plugins on a shared bus (`cli.invoke` routes to plugins that declare CLI subcommands).
-- **Noise analytics & suggestions** — `tkr gain`, `tkr suggest`, and `tkr watch` read vault-backed analytics. Optional **embeddings** (`cargo build --features embeddings`) improves clustering for repeated noisy lines during `tkr suggest`; without it, ranking uses signatures only.
-- **Live dashboard** — `tkr watch` opens a ratatui TUI showing real-time token savings
+- **Encrypted vault** — all plugin state lives in `~/.tkr/vault/` encrypted with age (XChaCha20-Poly1305); master key in `~/.tkr/vault/.tkr-vault.key` (0600). One-time migration from legacy OS-keychain installs. Manage with `tkr vault {status,init,unseal,seal,rotate,export,import,audit}`.
+- **Noise analytics & suggestions** — `tkr gain`, `tkr suggest`, `tkr watch` read vault-backed analytics. Optional embeddings (`--features embeddings`) improve clustering during `tkr suggest`.
+- **Live dashboard** — `tkr watch` opens a ratatui TUI showing real-time token savings.
 - **Hooks** — `tkr hook claude` for Claude Code Bash hooks; `tkr hook universal` for the same JSON reply shape plus a top-level `"command"` field for other wrappers.
-- **Apache-2.0 licensed** — no telemetry, no upstream
 
 ## Install
 
@@ -77,69 +88,20 @@ curl -fsSL https://raw.githubusercontent.com/einyx/tkr/main/install.sh | bash
 
 ### Windows (x86_64)
 
-Download **`tkr-x86_64-pc-windows-msvc.tar.gz`** from [Releases](https://github.com/einyx/tkr/releases). Extract `tkr.exe` using Git Bash, Windows 11 **tar**, or another tar you already use; add that directory to `PATH`, then run `tkr` from PowerShell or CMD. After a manual install, **`tkr update`** pulls the matching **`tkr-<rust-target-triple>.tar.gz`** asset from GitHub Releases.
+Download **`tkr-x86_64-pc-windows-msvc.tar.gz`** from [Releases](https://github.com/einyx/tkr/releases). Extract `tkr.exe` using Git Bash, Windows 11 **tar**, or another tar; add the directory to `PATH`, then run `tkr` from PowerShell or CMD. After a manual install, **`tkr update`** pulls the matching **`tkr-<rust-target-triple>.tar.gz`** asset.
 
 ### From source
 
-Requires **Rust 1.88+** (see **`rust-toolchain.toml`**). Install [rustup](https://rustup.rs/), then **`rustup toolchain install 1.88.0`** (or rely on `rust-toolchain.toml` once rustup’s **`cargo`** is on **`PATH`**).
-
-#### macOS: Homebrew hides rustup
-
-Homebrew puts **`/opt/homebrew/bin`** first. Brew’s **`cargo`** does **not** read **`rust-toolchain.toml`** — you stay on an older **`rustc`** even inside this repo.
-
-1. Put rustup **before** Homebrew in **`PATH`**. In **`~/.zshrc`**, **after** **`brew shellenv`**, add:
-
-   ```sh
-   export PATH="$HOME/.cargo/bin:$PATH"
-   ```
-
-2. Reload the shell (**new terminal** or **`exec zsh`**), then check:
-
-   ```sh
-   command -v cargo
-   ```
-
-   You want **`$HOME/.cargo/bin/cargo`**, not **`/opt/homebrew/bin/cargo`**.
-
-3. Optional: **`brew unlink rust`** (or **`brew uninstall rust`**) if you installed Rust via Homebrew and no longer need it.
-
-4. Without touching **`PATH`**, build from this repo with:
-
-   ```sh
-   ./scripts/rustup-cargo build --release
-   ```
-
-Then clone and build (use **`./scripts/rustup-cargo`** instead of **`cargo`** if **`command -v cargo`** still shows Homebrew):
+Requires **Rust 1.88+** (see `rust-toolchain.toml`).
 
 ```sh
 git clone https://github.com/einyx/tkr
 cd tkr
 cargo build --release
-```
-
-Install into **`~/.cargo/bin`** from the repo root (**`--locked`** uses the workspace **`Cargo.lock`**).
-
-If **`cargo --version`** works but **`rustc --version`** is still **1.87**, you are on **Homebrew’s `cargo`** — **`cargo install …` will always fail MSRV**. Use either:
-
-```sh
-make install
-```
-
-or:
-
-```sh
-./scripts/install-tkr
-```
-
-Both invoke **`~/.cargo/bin/cargo`** directly (same as **`./scripts/rustup-cargo install --path crates/tkr --locked --force`**).
-
-Once **`PATH`** prefers **`~/.cargo/bin`**, plain **`cargo`** is fine:
-
-```sh
 cargo install --path crates/tkr --locked --force
 ```
 
-On Unix, install from `target/release/tkr` (for example `cp target/release/tkr ~/.local/bin/`). On Windows (host triple MSVC), use `target\release\tkr.exe`. If you pass **`--target <triple>`**, the binary is under `target/<triple>/release/` (with `.exe` for Windows targets).
+If `cargo --version` works but `rustc --version` is still 1.87, you're on Homebrew's `cargo` (it ignores `rust-toolchain.toml`). Use `make install` or `./scripts/install-tkr` — both invoke `~/.cargo/bin/cargo` directly. Or put `$HOME/.cargo/bin` ahead of `/opt/homebrew/bin` in `PATH`.
 
 ## Usage
 
@@ -174,7 +136,7 @@ chain = ["tkr-filter"]
 db_path = "~/.tkr/analytics.db"
 ```
 
-Built-in defaults match the above (`tkr-filter` only). If `~/.tkr/analytics.db` still exists from an older release, it is migrated once into `~/.tkr/vault/` and renamed to `analytics.db.migrated`.
+Built-in defaults match the above (`tkr-filter` only). If `~/.tkr/analytics.db` still exists from an older release, it's migrated once into `~/.tkr/vault/` and renamed to `analytics.db.migrated`.
 
 ## Custom Filters
 
@@ -209,11 +171,30 @@ On success both emit the same `hookSpecificOutput` JSON (Claude Code–compatibl
 
 ## Embeddings (optional)
 
-Build with `--features embeddings` for vector clustering support used by `tkr suggest` when indexing noisy lines. Without it, suggestions still work using textual signatures only.
+Build with `--features embeddings` for vector clustering used by `tkr suggest` when indexing noisy lines. Without it, suggestions still work using textual signatures only.
+
+---
+
+## Experimental: agent mesh + on-chain payments
+
+> **Status:** working, tested, **not** part of the v1 product pitch. Lives in the repo because the primitives may serve session sharing / multi-peer features later. If you're trying tkr for the first time, ignore this section.
+
+`tkr` ships a peer-messaging mesh for agents (`tkr-mesh`) and a payment layer that lets agents pay each other on Base (`contracts/MeshEscrow.sol`, `contracts/JobBoard.sol`). Public broker at [tkr.prysm.sh](https://tkr.prysm.sh). Identity is a secp256k1 keypair (same shape as an Ethereum wallet); DMs are end-to-end encrypted (ECDH + AES-256-GCM); payment channels use EIP-712 receipts that match byte-for-byte between the Rust client and the Solidity contract.
+
+```sh
+tkr mesh invite-mint --slug demo \
+  --broker-url wss://tkr.prysm.sh/api/v1/mesh/ws \
+  --owner-key-file ~/.tkr/owner.env
+tkr mesh join <invite-url>
+tkr mesh tail demo
+tkr pay receipt-issue ...
+```
+
+Crates: `tkr-mesh`, `tkr-server` (broker + dashboard), `tkr-model` (IPFS-backed model registry, partial), `tkr-index::bundle` (signed index distribution, protocol-complete + transport-deferred), `contracts/` (Solidity + foundry).
 
 ## License
 
-Licensed under the Apache License, Version 2.0 ([LICENSE](LICENSE) or http://www.apache.org/licenses/LICENSE-2.0).
+Apache-2.0 ([LICENSE](LICENSE) or http://www.apache.org/licenses/LICENSE-2.0).
 
 ### Contribution
 

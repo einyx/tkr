@@ -1,0 +1,30 @@
+[package]
+name = "tkr-index"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+sha2.workspace = true
+hex.workspace = true
+tree-sitter = "0.23"
+tree-sitter-rust = "0.23"
+tree-sitter-python = "0.23"
+tree-sitter-go = "0.23"
+tree-sitter-typescript = "0.23"
+tree-sitter-javascript = "0.23"
+tree-sitter-java = "0.23"
+tree-sitter-c = "0.23"
+tree-sitter-cpp = "0.23"
+tree-sitter-ruby = "0.23"
+serde_json.workspace = true
+flate2.workspace = true
+notify = "6"
+notify-debouncer-full = "0.3"
+ignore = "0.4"
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -164,6 +164,78 @@ pub fn tools_catalog() -> Value {
                 }
             },
             {
+                "name": "tkr_callers_of",
+                "description": "List call sites that invoke a symbol by name. Cheap call-graph lookup from the index. Note: name resolution is unqualified — `foo` matches any call to `foo()` regardless of module/receiver type. Requires tkr_index_build.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string" },
+                        "root": { "type": "string" }
+                    },
+                    "required": ["name"]
+                }
+            },
+            {
+                "name": "tkr_callees_of",
+                "description": "List the unresolved callees referenced inside a symbol (function/method/class). Useful for 'what does this function actually do' triage without reading its body. Requires tkr_index_build.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string" },
+                        "root": { "type": "string" }
+                    },
+                    "required": ["name"]
+                }
+            },
+            {
+                "name": "tkr_signature",
+                "description": "Look up the signature (one-line declaration) of a symbol by name. Tiny output — just kind, name, signature line, file:line. Use when you only need to know a function's shape, not its body. Requires tkr_index_build to have run.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string", "description": "Symbol name." },
+                        "root": { "type": "string", "description": "Repo root. Defaults to CWD." }
+                    },
+                    "required": ["name"]
+                }
+            },
+            {
+                "name": "tkr_read_smart",
+                "description": "Ranked search across all indexed symbols using a natural-language question. Returns the top-K matching symbols with location + signature, NOT the full file contents. Designed to replace 'Read whole file to find the relevant part' with 'jump straight to the relevant ranges'. Requires tkr_index_build to have run.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "question": { "type": "string", "description": "Free-form question or keywords." },
+                        "root": { "type": "string", "description": "Repo root. Defaults to CWD." },
+                        "limit": { "type": "integer", "minimum": 1, "maximum": 50, "description": "Max symbols returned. Default 8." }
+                    },
+                    "required": ["question"]
+                }
+            },
+            {
+                "name": "tkr_index_watch",
+                "description": "Start a background file watcher for a repo. After this, file edits trigger automatic incremental re-indexing (debounced 500ms) — no need to call tkr_index_build again. Idempotent; safe to call multiple times for the same root. The watcher persists for the lifetime of the MCP server process.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "root": { "type": "string", "description": "Repo root. Defaults to CWD." }
+                    }
+                }
+            },
+            {
+                "name": "tkr_index_build",
+                "description": "Build or refresh the persistent code index for a repo. Walks gitignore-aware and re-parses only files whose content changed. Once built, tkr_find_symbol queries the index (millisecond lookups) instead of scanning the tree. Safe to call repeatedly.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "root": {
+                            "type": "string",
+                            "description": "Repo root. Defaults to CWD."
+                        }
+                    }
+                }
+            },
+            {
                 "name": "tkr_mesh_status",
                 "description": "Show live mesh broker status — how many peers are connected to each mesh on the tkr broker. Read-only HTTP GET against /api/v1/mesh/status. Targets the public broker at https://tkr.prysm.sh by default; operators can override via the TKR_MESH_HOST env var on the MCP server.",
                 "inputSchema": {

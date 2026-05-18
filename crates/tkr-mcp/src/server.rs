@@ -7,6 +7,7 @@ use serde_json::Value;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 
+use crate::index_backed;
 use crate::jobs;
 use crate::mesh;
 use crate::outline;
@@ -140,6 +141,12 @@ fn handle_tools_call(id: Value, params: &Value) -> Response {
         "tkr_outline_file" => call_outline(&args),
         "tkr_find_symbol" => call_find_symbol(&args),
         "tkr_grep_summary" => call_grep_summary(&args),
+        "tkr_index_build" => call_index_build(&args),
+        "tkr_index_watch" => call_index_watch(&args),
+        "tkr_signature" => call_signature(&args),
+        "tkr_read_smart" => call_read_smart(&args),
+        "tkr_callers_of" => call_callers_of(&args),
+        "tkr_callees_of" => call_callees_of(&args),
         "tkr_jobs_list" => call_jobs_list(&args),
         "tkr_mesh_status" => call_mesh_status(&args),
         _ => return Response::err(id, METHOD_NOT_FOUND, format!("unknown tool: {name}")),
@@ -178,7 +185,67 @@ fn call_find_symbol(args: &Value) -> Result<String> {
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("missing 'name'"))?;
     let root = resolve_root(args)?;
+    // Prefer the persistent index when one exists; fall back to the
+    // stateless scan otherwise so existing users see no behavior change.
+    if let Some(out) = index_backed::try_find_symbol(name, &root)? {
+        return Ok(out);
+    }
     search::find_symbol(name, &root)
+}
+
+fn call_index_build(args: &Value) -> Result<String> {
+    let root = resolve_root(args)?;
+    index_backed::build(&root)
+}
+
+fn call_index_watch(args: &Value) -> Result<String> {
+    let root = resolve_root(args)?;
+    index_backed::watch_start(&root)
+}
+
+fn call_signature(args: &Value) -> Result<String> {
+    let name = args
+        .get("name")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("missing 'name'"))?;
+    let root = resolve_root(args)?;
+    index_backed::try_signature(name, &root)?
+        .ok_or_else(|| anyhow::anyhow!("no index at {}; run tkr_index_build first", root.display()))
+}
+
+fn call_callers_of(args: &Value) -> Result<String> {
+    let name = args
+        .get("name")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("missing 'name'"))?;
+    let root = resolve_root(args)?;
+    index_backed::try_callers_of(name, &root)?
+        .ok_or_else(|| anyhow::anyhow!("no index at {}; run tkr_index_build first", root.display()))
+}
+
+fn call_callees_of(args: &Value) -> Result<String> {
+    let name = args
+        .get("name")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("missing 'name'"))?;
+    let root = resolve_root(args)?;
+    index_backed::try_callees_of(name, &root)?
+        .ok_or_else(|| anyhow::anyhow!("no index at {}; run tkr_index_build first", root.display()))
+}
+
+fn call_read_smart(args: &Value) -> Result<String> {
+    let question = args
+        .get("question")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("missing 'question'"))?;
+    let root = resolve_root(args)?;
+    let limit = args
+        .get("limit")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as usize)
+        .unwrap_or(8);
+    index_backed::try_read_smart(question, &root, limit)?
+        .ok_or_else(|| anyhow::anyhow!("no index at {}; run tkr_index_build first", root.display()))
 }
 
 fn call_mesh_status(_args: &Value) -> Result<String> {

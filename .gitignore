@@ -19,3 +19,6 @@ docs/superpowers/
 deploy/keys/*
 !deploy/keys/README.md
 data/
+
+# tkr-index local index DB
+.tkr/

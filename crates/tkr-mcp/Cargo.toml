@@ -8,6 +8,12 @@ description = "tkr's MCP (Model Context Protocol) server. Exposes structured cod
 
 [lib]
 
+[[example]]
+name = "bench_find_symbol"
+
+[[example]]
+name = "bench_read_smart"
+
 [dependencies]
 anyhow = { workspace = true }
 serde = { workspace = true }
@@ -21,3 +27,5 @@ tree-sitter-javascript = "0.23"
 walkdir = "2"
 ignore = "0.4"
 regex = { workspace = true }
+tkr-index = { path = "../tkr-index" }
+rusqlite = { workspace = true }

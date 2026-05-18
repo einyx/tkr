@@ -17,6 +17,8 @@
 //!   * [`handle_call`] — pure function from a `tools/call` payload to a
 //!                       JSON result. Useful for testing.
 
+pub mod index_backed;
+pub mod toon;
 pub mod jobs;
 pub mod mesh;
 pub mod outline;
