@@ -33,6 +33,7 @@ tkr-analytics = { path = "../tkr-analytics" }
 tkr-session-recorder = { path = "../tkr-session-recorder" }
 tkr-mesh = { path = "../tkr-mesh" }
 tkr-mcp = { path = "../tkr-mcp" }
+tkr-sandbox = { path = "../tkr-sandbox" }
 anyhow = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }

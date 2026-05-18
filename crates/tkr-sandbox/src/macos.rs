@@ -1,5 +1,6 @@
 use crate::error::SandboxError;
-use crate::exec::SandboxOutput;
+use crate::exec::{spawn_and_collect, SandboxOutput};
+use std::process::Stdio;
 use crate::policy::SandboxPolicy;
 use std::io::Write;
 use std::path::PathBuf;
@@ -34,14 +35,8 @@ pub fn run(
             cmd.env(name, value);
         }
     }
-    let out = cmd
-        .output()
-        .map_err(|e| SandboxError::Backend(e.to_string()))?;
-    Ok(SandboxOutput {
-        stdout: out.stdout,
-        stderr: out.stderr,
-        exit: out.status.code().unwrap_or(-1),
-    })
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    spawn_and_collect(cmd, &policy.limits)
 }
 
 /// Resolve a path to its canonical form, falling back to the original if canonicalization fails.

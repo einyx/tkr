@@ -158,11 +158,61 @@ pub enum Commands {
     /// summaries instead of raw file contents. Registered automatically
     /// by `tkr install`.
     Mcp,
+    /// Run a command in a tkr sandbox (landlock on Linux, sandbox-exec on
+    /// macOS). Defaults to deny-all: empty env, no fs access. Pass --read /
+    /// --write / --env to grant explicit access, --memory / --cpu / --timeout
+    /// to cap resources, --max-output to cap captured output bytes.
+    Sandbox {
+        #[command(subcommand)]
+        cmd: SandboxCmd,
+    },
     /// JobBoard — agent job marketplace. Post tasks with a locked reward,
     /// take open tasks, complete them, accept results.
     Job {
         #[command(subcommand)]
         cmd: JobCmd,
+    },
+}
+
+#[derive(clap::Subcommand, Debug)]
+pub enum SandboxCmd {
+    /// Run `<cmd> [args...]` under the sandbox. Output is captured; exit
+    /// code is propagated to tkr's exit code.
+    Run {
+        /// Absolute paths the child may read.
+        #[arg(long = "read", value_name = "PATH")]
+        read: Vec<std::path::PathBuf>,
+        /// Absolute paths the child may write.
+        #[arg(long = "write", value_name = "PATH")]
+        write: Vec<std::path::PathBuf>,
+        /// Environment variable names to forward from the parent. Default: none.
+        #[arg(long = "env", value_name = "NAME")]
+        env: Vec<String>,
+        /// Max virtual memory in bytes (Linux RLIMIT_AS).
+        #[arg(long = "memory", value_name = "BYTES")]
+        memory: Option<u64>,
+        /// Max CPU seconds (Linux RLIMIT_CPU).
+        #[arg(long = "cpu", value_name = "SECONDS")]
+        cpu: Option<u64>,
+        /// Wall-clock timeout in milliseconds.
+        #[arg(long = "timeout", value_name = "MS")]
+        timeout_ms: Option<u64>,
+        /// Cap total stdout+stderr bytes captured. Default 16 MiB.
+        #[arg(long = "max-output", value_name = "BYTES")]
+        max_output: Option<u64>,
+        /// Block all outbound TCP connect + listen (landlock V4 / Linux 6.7+).
+        /// UDP and raw sockets are NOT covered.
+        #[arg(long = "no-network", conflicts_with_all = ["allow_connect", "allow_bind"])]
+        no_network: bool,
+        /// Allow outbound TCP connect to this port. Implies block-everything-else.
+        #[arg(long = "allow-connect", value_name = "PORT")]
+        allow_connect: Vec<u16>,
+        /// Allow TCP bind/listen on this port. Implies block-everything-else.
+        #[arg(long = "allow-bind", value_name = "PORT")]
+        allow_bind: Vec<u16>,
+        /// The command + args to run. Use `--` before it if any flags collide.
+        #[arg(trailing_var_arg = true, required = true)]
+        argv: Vec<String>,
     },
 }
 

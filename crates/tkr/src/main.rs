@@ -18,7 +18,9 @@ mod tee;
 mod util;
 
 use clap::Parser;
-use cli::{AdminCmd, AgentCmd, Cli, Commands, HookTarget, JobCmd, MeshCmd, PayCmd, VaultCmd};
+use cli::{
+    AdminCmd, AgentCmd, Cli, Commands, HookTarget, JobCmd, MeshCmd, PayCmd, SandboxCmd, VaultCmd,
+};
 use std::io::IsTerminal;
 
 fn vault_main(cmd: Option<VaultCmd>) -> ! {
@@ -249,6 +251,33 @@ fn main() -> anyhow::Result<()> {
             }
         },
         Some(Commands::Mcp) => tkr_mcp::Server::run(),
+        Some(Commands::Sandbox { cmd }) => match cmd {
+            SandboxCmd::Run {
+                read,
+                write,
+                env,
+                memory,
+                cpu,
+                timeout_ms,
+                max_output,
+                no_network,
+                allow_connect,
+                allow_bind,
+                argv,
+            } => cmds::sandbox::run(
+                read,
+                write,
+                env,
+                memory,
+                cpu,
+                timeout_ms,
+                max_output,
+                no_network,
+                allow_connect,
+                allow_bind,
+                argv,
+            ),
+        },
         Some(Commands::Job { cmd }) => match cmd {
             JobCmd::Post { preview, spec_hash, reward, token, deadline, board, rpc_url, key_file } => {
                 cmds::jobs::post(&preview, &spec_hash, &reward, &token, deadline, &board, &rpc_url, &key_file)

@@ -10,6 +10,10 @@ pub enum SandboxError {
     Backend(String),
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
+    #[error("child exceeded {0}ms wall-clock timeout")]
+    Timeout(u64),
+    #[error("child exceeded {0}-byte output cap (truncated and killed)")]
+    OutputCapExceeded(u64),
 }
 
 #[cfg(test)]

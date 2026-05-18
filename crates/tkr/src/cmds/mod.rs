@@ -8,6 +8,7 @@ pub mod jobs;
 pub mod mesh;
 pub mod pay;
 pub mod rewrite;
+pub mod sandbox;
 pub mod suggest;
 pub mod update;
 pub mod watch;
