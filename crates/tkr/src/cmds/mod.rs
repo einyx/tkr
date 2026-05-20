@@ -5,6 +5,7 @@ pub mod gain;
 pub mod hook;
 pub mod install;
 pub mod jobs;
+pub mod login;
 pub mod mesh;
 pub mod pay;
 pub mod rewrite;

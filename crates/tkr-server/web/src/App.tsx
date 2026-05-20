@@ -24,15 +24,7 @@ export function App() {
 
   // Explicit route picks take precedence.
   if (route.name === "login") {
-    return (
-      <LoginView
-        onSignedIn={() => {
-          meQuery.refetch();
-          setRoute({ name: "auto" });
-        }}
-        onCancel={() => setRoute({ name: "auto" })}
-      />
-    );
+    return <LoginView />;
   }
 
   // Authenticated paths.

@@ -2,6 +2,108 @@
 
 All notable changes to tkr are documented here.
 
+## [Unreleased] — AI gateway
+
+Tkr-server grew from "Anthropic proxy + mesh dashboard" into a full
+AI gateway. New surfaces share the same Logto-SSO identity, the same
+`SseUsageAccumulator` for usage extraction, the same `RedactionEngine`
+for pre-flight + response-side credential scrubbing, and the same
+`tkr-sandbox` crate the CLI agents already used. See `docs/operations.md`
+and `docs/integration.md` for end-user docs.
+
+### Proxy
+
+- **`/v1/messages`** (Anthropic-wire) — passthrough proxy with TLS
+  upstream (`ureq`+rustls), streaming SSE, header preservation,
+  receipt + usage extraction.
+- **`/v1/chat/completions`** (OpenAI-wire) — same shape, OpenAI auth
+  headers.
+- **`ProviderProxy` consts** collapse both handler shapes into one
+  shared `proxy_llm_request` + `proxy_llm_streaming`. Adding a third
+  provider is now a few lines.
+- **Concurrency cap** (`TKR_UPSTREAM_MAX_CONCURRENT`, default 64) —
+  semaphore-bounded; over-cap returns 429 + `Retry-After: 1`.
+
+### Filter
+
+- **Pre-flight redaction** (`RedactionEngine`) — AWS keys, GitHub PATs
+  (classic + fine-grained), OpenAI / Anthropic keys, Slack tokens,
+  JWTs. Counters on `/api/v1/filter/stats`.
+- **Response-side redaction** — non-streaming + streaming (`SseRewriter`
+  buffers events, JSON-parses `data:` lines, scrubs known delta paths,
+  re-serialises).
+- **Prompt-injection heuristic** (`InjectionEngine`) — log-by-default
+  rules: `ignore-previous`, `disregard-above`, `dan-jailbreak`,
+  `system-role-inject`, `assistant-role-inject`. Opt-in `Block` returns
+  400.
+
+### Receipts
+
+- **Signed audit receipts** — every LLM call gets a secp256k1 ECDSA
+  signature over a canonical message
+  (`v1\nts=…\nprovider=…\n…`). Key persists at
+  `TKR_RECEIPT_SIGNING_KEY_PATH`. Public-landing `VerifyReceipt`
+  tool reconstructs canonical bytes for offline verification.
+- **Audit drain queue** — FIFO with cap + drop counter (loud signal
+  when the relayer falls behind). `POST /api/v1/llm/receipts/drain`
+  + dashboard "drain now" button.
+- **Optional body capture** (`TKR_CAPTURE_BODIES=true`, off-default) —
+  rolling ring of scrubbed bodies, dashboard `CapturedPanel` with
+  download-as-JSONL.
+
+### Sandbox
+
+- **`POST /api/v1/sandbox/exec`** (`TKR_SANDBOX_EXEC=true`, off-default,
+  Logto-auth-gated) — wraps `tkr_sandbox::run_sandboxed`. Hardcoded
+  binary allowlist; per-request policy (no network, empty env,
+  read-only loader paths). `/sandbox/stats` + `/sandbox/recent`.
+
+### Identity
+
+- **Logto OIDC code-flow** — `/auth/logto/{start,callback}` mint
+  `tkr_session` cookies. Pending PKCE state in Redis or in-memory.
+- **Login auto-redirect** — `/login` goes straight to
+  `/auth/logto/start`.
+
+### Persistence
+
+- **Postgres + Redis** in docker-compose with volumes. `DATABASE_URL`
+  + `REDIS_URL` env vars. Pools init at startup, missing-env loudly
+  logged but Option-typed so tests + dev work without.
+- **Migrations** (`crates/tkr-server/migrations/`) — schema for
+  `sessions`, `receipts_queue`, `llm_recent`, `sandbox_recent`.
+
+### Dashboard + landing
+
+- **Dashboard** rebuilt as the AI gateway control surface — identity
+  header, status banner (capture/sandbox/drainer chips), token-usage
+  hero with sparkline, filter, receipts, sandbox, captured calls,
+  receipt-verify tool, mesh + ingested sessions kept as secondary.
+- **Landing** rewritten in Prysm voice — pillar cards
+  (01 proxy / 02 filter / 03 sandbox / 04 receipts), thesis block,
+  live-gateway stats, public receipt-verify tool, primitives.
+- **Component split** — `views/{Dashboard,Landing}.tsx` are thin
+  orchestrators; per-panel + per-section components live under
+  `components/{dashboard,landing}/`.
+
+### Docs
+
+- **`docs/integration.md`** — IDE-by-IDE setup, security model,
+  filter/injection behaviour, edge-ratelimit snippet.
+- **`docs/operations.md`** — env-flag matrix, two-sandbox explainer
+  (CLI vs server-side HTTP), receipt verification protocol, dashboard
+  panel reference.
+
+### Known gaps (queued)
+
+- CLI agent → server sandbox ingest path.
+- Persistence layer INSERTs for receipts / sandbox runs (pools wired,
+  not yet on the proxy path).
+- Persistent signing-key volume mount (defaults to ephemeral
+  in-memory key with startup warning).
+
+---
+
 ## [Unreleased] — security hardening
 
 Pre-deployment security review fixes. Issues identified in a four-agent

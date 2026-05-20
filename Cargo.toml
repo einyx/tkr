@@ -46,6 +46,15 @@ sha2 = "0.10"
 hkdf = "0.12"
 rusqlite = { version = "0.31", features = ["bundled", "serialize"] }
 sqlite-vec = "0.1"
+# Server-side persistence (tkr-server only):
+#   * Postgres for durable, queryable state — sessions, receipts queue,
+#     audit rings.
+#   * Redis for ephemeral hot state with TTLs — OAuth login state,
+#     and (future) rate-limit / proxy-dedupe counters.
+# Not pulled into CLI crates: keeps the agent build lean.
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "macros", "migrate", "json", "chrono", "uuid"] }
+deadpool-redis = { version = "0.18", features = ["rt_tokio_1"] }
+redis = { version = "0.27", default-features = false, features = ["tokio-comp"] }
 tar = "0.4"
 flate2 = "1"
 # Below 1.52: 1.52.x pulls tokio-macros ~2.7; stale crates.io mirrors sometimes lack it.

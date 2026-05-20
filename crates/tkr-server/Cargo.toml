@@ -1,5 +1,6 @@
 [package]
 name = "tkr-server"
+publish = false
 version = "0.1.0"
 edition = "2021"
 rust-version.workspace = true
@@ -23,10 +24,31 @@ serde_json = { workspace = true }
 tokio = { workspace = true }
 tokio-tungstenite = { version = "0.24", default-features = false }
 tkr-mesh = { path = "../tkr-mesh" }
+# Sandboxed exec primitive — Landlock on Linux, sandbox-exec on macOS.
+# Exposed via POST /api/v1/sandbox/exec when TKR_SANDBOX_EXEC=true.
+tkr-sandbox = { path = "../tkr-sandbox" }
 rand = { workspace = true }
 hex = { workspace = true }
+# ureq drives the upstream-LLM proxy (https + http via rustls). Sync API
+# is called from `tokio::task::spawn_blocking` in `handle_anthropic_messages`.
+ureq = { workspace = true }
+# Logto OIDC code-flow: SHA-256 for the PKCE code_challenge.
+sha2 = { workspace = true }
+# Redaction filter: regex scan of request bodies before they leave for
+# the upstream LLM. Compiled once at startup, applied per request.
+regex = { workspace = true }
+# secp256k1 signing for LLM-call receipts. Keypair persists to disk
+# (TKR_RECEIPT_SIGNING_KEY_PATH) so signatures stay verifiable across
+# restarts. Same curve as the on-chain MeshEscrow flow uses for
+# EIP-712 claims, leaving the door open for a future settlement path.
+k256 = { version = "0.13", features = ["ecdsa", "ecdh", "sha256"] }
+# Persistence layer: Postgres for durable state (sessions, receipts,
+# audit rings) and Redis for ephemeral hot state (OAuth login state,
+# rate-limit counters). Pools live on `AppState`; missing env vars
+# degrade to a startup error rather than silent in-memory fallback.
+sqlx = { workspace = true }
+deadpool-redis = { workspace = true }
+redis = { workspace = true }
 
 [dev-dependencies]
-k256 = { version = "0.13", features = ["ecdsa", "ecdh", "sha256"] }
 tokio = { workspace = true, features = ["macros"] }
-ureq = { workspace = true }

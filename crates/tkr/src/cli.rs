@@ -166,6 +166,26 @@ pub enum Commands {
         #[command(subcommand)]
         cmd: SandboxCmd,
     },
+    /// Sign in to a tkr-server. Stores a per-user CLI bearer token
+    /// in the OS keychain so sandboxed runs (and future CLI-authed
+    /// endpoints) can report into your dashboard without a shared
+    /// env-var secret. The token is minted server-side from your
+    /// Logto session — log in to the dashboard first, then run this.
+    Login {
+        /// tkr-server base URL (e.g. https://tkr.prysm.sh).
+        #[arg(long, default_value = "https://tkr.prysm.sh")]
+        url: String,
+        /// Paste a pre-minted token instead of opening the dashboard.
+        #[arg(long)]
+        token: Option<String>,
+        /// Don't open the browser; just print the URL to visit.
+        #[arg(long)]
+        no_browser: bool,
+    },
+    /// Show the currently-active tkr-server URL and token status.
+    Whoami,
+    /// Remove the stored CLI token from the OS keychain.
+    Logout,
     /// JobBoard — agent job marketplace. Post tasks with a locked reward,
     /// take open tasks, complete them, accept results.
     Job {
@@ -179,6 +199,11 @@ pub enum SandboxCmd {
     /// Run `<cmd> [args...]` under the sandbox. Output is captured; exit
     /// code is propagated to tkr's exit code.
     Run {
+        /// Auto-include `/bin /usr /lib /lib64 /etc` in --read so the
+        /// child can actually exec the binary you asked for. Defaults to on;
+        /// pass `--system=false` for full deny-all and explicit grants only.
+        #[arg(long = "system", default_value_t = true, action = clap::ArgAction::Set)]
+        system: bool,
         /// Absolute paths the child may read.
         #[arg(long = "read", value_name = "PATH")]
         read: Vec<std::path::PathBuf>,
@@ -212,6 +237,41 @@ pub enum SandboxCmd {
         allow_bind: Vec<u16>,
         /// The command + args to run. Use `--` before it if any flags collide.
         #[arg(trailing_var_arg = true, required = true)]
+        argv: Vec<String>,
+    },
+    /// Launch Claude Code (or any agent CLI) inside a tkr sandbox with
+    /// agent-friendly defaults: the current working directory is the
+    /// only writable filesystem path; system libraries + the user's
+    /// ~/.claude config are read-only; auth + locale env vars are
+    /// forwarded automatically. The agent (and any subprocess it
+    /// spawns, including its built-in Bash tool) inherits the
+    /// Landlock/sandbox-exec restrictions and cannot escape them
+    /// without kernel-level privilege escalation.
+    ///
+    /// Defaults can be widened with --read / --write / --env (same
+    /// semantics as `sandbox run`) or replaced with --no-defaults.
+    /// Override the binary with --bin (default: `claude`).
+    Claude {
+        /// Extra paths the agent may read on top of the defaults.
+        #[arg(long = "read", value_name = "PATH")]
+        read: Vec<std::path::PathBuf>,
+        /// Extra paths the agent may write on top of the defaults.
+        #[arg(long = "write", value_name = "PATH")]
+        write: Vec<std::path::PathBuf>,
+        /// Extra env var names to forward on top of the defaults.
+        #[arg(long = "env", value_name = "NAME")]
+        env: Vec<String>,
+        /// Skip the built-in defaults entirely — opt back in to
+        /// individual --read/--write/--env grants.
+        #[arg(long = "no-defaults")]
+        no_defaults: bool,
+        /// Override the agent binary. Defaults to `claude`. Resolved
+        /// against PATH at launch.
+        #[arg(long = "bin", value_name = "BIN", default_value = "claude")]
+        bin: String,
+        /// Args forwarded verbatim to the agent. Use `--` before any
+        /// agent-side flag that collides with sandbox flags.
+        #[arg(trailing_var_arg = true)]
         argv: Vec<String>,
     },
 }

@@ -69,3 +69,78 @@ export interface SessionEvent {
   duration_ms: number;
   exit_code?: number;
 }
+
+// Mirror of tkr-server::LlmCallReceipt. Populated by every call that
+// flows through the /v1/messages Anthropic-wire proxy (and, future,
+// the OpenAI ingress). Surfaced on the landing's "live gateway" panel.
+export interface LlmCallReceipt {
+  ts: number;          // unix seconds
+  provider: string;    // "anthropic" today
+  model: string;
+  status: number;      // upstream HTTP status
+  input_tokens: number;
+  output_tokens: number;
+  duration_ms: number;
+}
+
+export interface LlmRecentResponse {
+  entries: LlmCallReceipt[];
+  capacity: number;
+}
+
+// /api/v1/filter/stats — pre-flight redaction + injection hit counts.
+// Redactions rewrite content; injections only log (or, opt-in, block).
+// `total` is the redaction total kept for backward compatibility.
+export interface FilterStats {
+  redactions: Record<string, number>;
+  total: number;
+  injections: Record<string, number>;
+  injections_total: number;
+  injections_blocked: number;
+}
+
+// /api/v1/sandbox/recent — newest-first ring of finished runs.
+// Server-capped at 64 entries; reducers run on bounded input.
+export interface SandboxRunRecord {
+  ts: number;
+  command: string;
+  exit: number;
+  truncated: boolean;
+  duration_ms: number;
+}
+export interface SandboxRecentResponse {
+  entries: SandboxRunRecord[];
+}
+
+// /api/v1/sandbox/stats — whether the sandboxed-exec endpoint is
+// enabled + counters + last-run snapshot. Counters are always
+// returned (zero when disabled) so the dashboard can render the
+// same shape regardless of feature flag state.
+export interface SandboxStats {
+  enabled: boolean;
+  total: number;
+  failed: number;
+  denied: number;
+  success_rate_pct: number | null;
+  allowed_commands: string[];
+  last: {
+    ts: number;
+    command: string;
+    exit: number;
+    truncated: boolean;
+    duration_ms: number;
+  } | null;
+}
+
+// /api/v1/llm/receipts/stats — audit drain queue depth + readiness.
+// Fed by every successful LLM proxy call; drained by an external
+// relayer via POST /api/v1/llm/receipts/drain.
+export interface LlmReceiptStats {
+  total: number;
+  oldestQueuedAt: number | null;
+  readyToDrain: boolean;
+  batchSize: number;
+  maxAgeSecs: number;
+  queueCap: number;
+  totalDropped: number;
+}

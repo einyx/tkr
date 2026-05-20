@@ -49,7 +49,9 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl \
  && rm -rf /var/lib/apt/lists/* \
  && groupadd --system --gid 1000 tkr \
- && useradd  --system --uid 1000 --gid tkr --home-dir /home/tkr --create-home tkr
+ && useradd  --system --uid 1000 --gid tkr --home-dir /home/tkr --create-home tkr \
+ && mkdir -p /var/lib/tkr \
+ && chown tkr:tkr /var/lib/tkr
 
 COPY --from=builder /usr/local/bin/tkr-server /usr/local/bin/tkr-server
 

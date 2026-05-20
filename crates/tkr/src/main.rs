@@ -253,6 +253,7 @@ fn main() -> anyhow::Result<()> {
         Some(Commands::Mcp) => tkr_mcp::Server::run(),
         Some(Commands::Sandbox { cmd }) => match cmd {
             SandboxCmd::Run {
+                system,
                 read,
                 write,
                 env,
@@ -265,6 +266,7 @@ fn main() -> anyhow::Result<()> {
                 allow_bind,
                 argv,
             } => cmds::sandbox::run(
+                system,
                 read,
                 write,
                 env,
@@ -277,7 +279,20 @@ fn main() -> anyhow::Result<()> {
                 allow_bind,
                 argv,
             ),
+            SandboxCmd::Claude {
+                read,
+                write,
+                env,
+                no_defaults,
+                bin,
+                argv,
+            } => cmds::sandbox::claude(read, write, env, no_defaults, bin, argv),
         },
+        Some(Commands::Login { url, token, no_browser }) => {
+            cmds::login::login(&url, token.as_deref(), no_browser)
+        }
+        Some(Commands::Whoami) => cmds::login::whoami(),
+        Some(Commands::Logout) => cmds::login::logout(),
         Some(Commands::Job { cmd }) => match cmd {
             JobCmd::Post { preview, spec_hash, reward, token, deadline, board, rpc_url, key_file } => {
                 cmds::jobs::post(&preview, &spec_hash, &reward, &token, deadline, &board, &rpc_url, &key_file)
