@@ -20,8 +20,9 @@ jobs:
             os: macos-latest
             archive: tkr-aarch64-apple-darwin.tar.gz
             use_cross: false
+          # Build Intel macOS on Apple Silicon runners (macos-13 queue often stalls).
           - target: x86_64-apple-darwin
-            os: macos-13
+            os: macos-latest
             archive: tkr-x86_64-apple-darwin.tar.gz
             use_cross: false
           - target: x86_64-unknown-linux-gnu
