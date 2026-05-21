@@ -1,4 +1,5 @@
 use serde_json::json;
+#[cfg(unix)]
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -26,7 +27,7 @@ impl Session {
         #[cfg(not(unix))]
         {
             let _ = path;
-            Self
+            Self {}
         }
     }
 
