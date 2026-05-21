@@ -14,10 +14,13 @@ use ratatui::{
 };
 use serde_json::Value;
 use std::collections::VecDeque;
-use std::io::{BufRead, BufReader};
-use std::os::unix::net::UnixListener;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+#[cfg(unix)]
+use std::io::{BufRead, BufReader};
+#[cfg(unix)]
+use std::os::unix::net::UnixListener;
 
 #[derive(Clone)]
 struct SessionState {
@@ -49,37 +52,49 @@ impl Default for SessionState {
 }
 
 pub fn run() -> Result<()> {
+    #[cfg(not(unix))]
+    anyhow::bail!("tkr watch requires Unix domain sockets (not available on Windows)");
+
+    #[cfg(unix)]
+    run_unix()
+}
+
+#[cfg(unix)]
+fn run_unix() -> Result<()> {
     let home = dirs::home_dir().unwrap_or_default();
     let sock_path = home.join(".tkr/session.sock");
 
-    let _ = std::fs::remove_file(&sock_path);
-    std::fs::create_dir_all(sock_path.parent().unwrap())?;
-
-    let listener = UnixListener::bind(&sock_path)?;
-    listener.set_nonblocking(true)?;
-
     let state = Arc::new(Mutex::new(SessionState::default()));
-    let state_bg = state.clone();
 
-    std::thread::spawn(move || loop {
-        match listener.accept() {
-            Ok((stream, _)) => {
-                let state = state_bg.clone();
-                std::thread::spawn(move || {
-                    let reader = BufReader::new(stream);
-                    for line in reader.lines().map_while(Result::ok) {
-                        if let Ok(val) = serde_json::from_str::<Value>(&line) {
-                            handle_event(&state, &val);
+    {
+        let _ = std::fs::remove_file(&sock_path);
+        std::fs::create_dir_all(sock_path.parent().unwrap())?;
+
+        let listener = UnixListener::bind(&sock_path)?;
+        listener.set_nonblocking(true)?;
+
+        let state_bg = state.clone();
+
+        std::thread::spawn(move || loop {
+            match listener.accept() {
+                Ok((stream, _)) => {
+                    let state = state_bg.clone();
+                    std::thread::spawn(move || {
+                        let reader = BufReader::new(stream);
+                        for line in reader.lines().map_while(Result::ok) {
+                            if let Ok(val) = serde_json::from_str::<Value>(&line) {
+                                handle_event(&state, &val);
+                            }
                         }
-                    }
-                });
+                    });
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(_) => break,
             }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                std::thread::sleep(Duration::from_millis(50));
-            }
-            Err(_) => break,
-        }
-    });
+        });
+    }
 
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
