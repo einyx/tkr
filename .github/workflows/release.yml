@@ -39,7 +39,7 @@ jobs:
             use_cross: false
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@v1
@@ -147,7 +147,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download artifacts
         uses: actions/download-artifact@v8
@@ -190,7 +190,7 @@ jobs:
           done
 
       - name: Check out tap
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ vars.HOMEBREW_TAP_REPO || 'einyx/homebrew-tap' }}
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
