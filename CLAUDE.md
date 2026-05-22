@@ -15,6 +15,8 @@ make build                                # same as cargo build, with rustup-car
 
 For per-test debugging: `cargo test -p <crate> <test_name_substring> -- --nocapture`.
 
+Token-cost measurement: `cargo run -p tkr-mcp --release --example bench_token_cost -- <repo>` runs every index-backed MCP tool against a representative query set and prints per-tool byte counts. Current baseline on this repo: ~9KB / ~2.5K tokens for a 17-call session. Run before/after any shape change in `crates/tkr-mcp/src/index_backed.rs` to confirm direction.
+
 The Makefile's `publish-darwin` is hardcoded to Apple Silicon paths (`RUSTUP := $(HOME)/.rustup/toolchains/1.88.0-aarch64-apple-darwin/bin`); on Intel Mac, invoke cargo directly instead. Release flow ships via `scripts/release.sh` → `make publish`, which `uname -s`-routes to `publish-darwin` (Mac) or `publish-linux` (Linux); only `publish-darwin` calls `_bump-tap` to push the homebrew formula update.
 
 Web/contracts/mesh-devnet targets live in `Makefile` too — `contracts-test`, `anvil-fork`, `deploy-local`, `demo-payment`, `deploy-mesh`, `web-{install,dev,build}`. These exist because the JobBoard marketplace and mesh broker are part of the workspace.
@@ -50,11 +52,17 @@ Top-level MCP tool families:
 - `tkr_index_build` / `tkr_index_watch` — index lifecycle
 - `tkr_outline_file` / `tkr_find_symbol` / `tkr_signature` — symbol lookup
 - `tkr_read_smart` — FTS-ranked free-form question → top-K symbols
-- `tkr_callers_of` / `tkr_callees_of` — direct call-graph via `refs` table
+- `tkr_callers_of` / `tkr_callees_of` — direct call-graph (1 hop) via `refs` table
+- `tkr_call_path` — shortest transitive path between two symbols (BFS, bounded depth, cycle-safe)
 - `tkr_grep_summary` — regex grep with per-file aggregation + caps
 - `tkr_jobs_list` / `tkr_mesh_status` — read-only views into the JobBoard contract and mesh broker state
 
-`TKR_TOON=1` switches MCP tool responses to TOON (Token-Oriented Object Notation) — tabular shape, ~15% smaller than the JSON. Code lives in `tkr-mcp/src/toon.rs`.
+**Response shape conventions** (locked in by `response_shapes_stay_tight` + `path_dedup_*` tests in `index_backed.rs`):
+- No column padding (`{:<8} {:<40}` was burning ~30-40 chars/row for visual alignment a tokenizer doesn't use).
+- No didactic footers (agents already on a `tkr_*` call know how to use `Read`).
+- Path-dedup: when a response has ≥3 rows and at least one path repeats, an `@P` header lists each unique path once and rows reference paths by short ID (`@1:line`, `@2:line`). Agents must parse `@N:` prefixes the same way as `path:` prefixes. Implementation: `maybe_path_table()` in `index_backed.rs`.
+
+`TKR_TOON=1` switches MCP tool responses to TOON (Token-Oriented Object Notation) — tabular shape, ~15% smaller than the JSON. Code lives in `tkr-mcp/src/toon.rs`. TOON path is independent of the plain-text path-dedup; agents typically use one or the other.
 
 ### Sandbox
 
