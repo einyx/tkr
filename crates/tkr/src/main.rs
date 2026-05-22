@@ -19,7 +19,7 @@ mod util;
 
 use clap::Parser;
 use cli::{
-    AdminCmd, AgentCmd, Cli, Commands, HookTarget, JobCmd, MeshCmd, PayCmd, SandboxCmd, VaultCmd,
+    AdminCmd, AgentCmd, Cli, Commands, HookTarget, JobCmd, McpCmd, MeshCmd, PayCmd, SandboxCmd, VaultCmd,
 };
 use std::io::IsTerminal;
 
@@ -250,7 +250,14 @@ fn main() -> anyhow::Result<()> {
                 cmds::mesh::invite_mint(&slug, &broker_url, &owner_key_file, ttl_hours)
             }
         },
-        Some(Commands::Mcp) => tkr_mcp::Server::run(),
+        Some(Commands::Mcp { cmd }) => match cmd {
+            None => tkr_mcp::Server::run(),
+            Some(McpCmd::Install {
+                scope,
+                print,
+                force,
+            }) => cmds::mcp_install::run(scope, print, force),
+        },
         Some(Commands::Sandbox { cmd }) => match cmd {
             SandboxCmd::Run {
                 system,

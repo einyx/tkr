@@ -153,11 +153,14 @@ pub enum Commands {
         #[command(subcommand)]
         cmd: MeshCmd,
     },
-    /// Run tkr's MCP server on stdio. Exposes tkr_outline_file,
-    /// tkr_find_symbol, tkr_grep_summary so AI agents read structured
-    /// summaries instead of raw file contents. Registered automatically
-    /// by `tkr install`.
-    Mcp,
+    /// Run tkr's MCP server on stdio (default), or manage MCP wire-up.
+    /// `tkr mcp` (no subcommand) runs the server — that's what the entries
+    /// in `.mcp.json` / `~/.claude.json` invoke. `tkr mcp install` writes
+    /// those entries for you.
+    Mcp {
+        #[command(subcommand)]
+        cmd: Option<McpCmd>,
+    },
     /// Run a command in a tkr sandbox (landlock on Linux, sandbox-exec on
     /// macOS). Defaults to deny-all: empty env, no fs access. Pass --read /
     /// --write / --env to grant explicit access, --memory / --cpu / --timeout
@@ -192,6 +195,33 @@ pub enum Commands {
         #[command(subcommand)]
         cmd: JobCmd,
     },
+}
+
+#[derive(clap::Subcommand, Debug)]
+pub enum McpCmd {
+    /// Wire up the tkr MCP server in Claude Code's config so agents in
+    /// this project can call `mcp__tkr__*` tools. By default writes
+    /// `./.mcp.json` (project-scope); pass `--scope=user` for
+    /// `~/.claude.json`. Idempotent — re-running updates the existing
+    /// `tkr` entry without touching other servers.
+    Install {
+        /// project: write ./.mcp.json (shared via git, applies to this repo).
+        /// user: update ~/.claude.json so tkr is available in every project.
+        #[arg(long = "scope", default_value = "project")]
+        scope: McpScope,
+        /// Print the config snippet that would be written, but don't touch any file.
+        #[arg(long = "print")]
+        print: bool,
+        /// Overwrite an existing `tkr` entry (otherwise the command no-ops if one is already present).
+        #[arg(long = "force")]
+        force: bool,
+    },
+}
+
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+pub enum McpScope {
+    Project,
+    User,
 }
 
 #[derive(clap::Subcommand, Debug)]

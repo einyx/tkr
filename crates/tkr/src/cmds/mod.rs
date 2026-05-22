@@ -4,6 +4,7 @@ pub mod explain;
 pub mod gain;
 pub mod hook;
 pub mod install;
+pub mod mcp_install;
 pub mod jobs;
 pub mod login;
 pub mod mesh;
