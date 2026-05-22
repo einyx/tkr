@@ -2381,7 +2381,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5600,7 +5600,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5679,7 +5679,7 @@ dependencies = [
  "security-framework 3.7.0",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6595,7 +6595,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6770,7 +6770,7 @@ dependencies = [
  "tkr-session-recorder",
  "tokio",
  "toml 0.8.23",
- "ureq 2.12.1",
+ "ureq 3.3.0",
  "uuid",
  "zeroize",
 ]
@@ -6893,7 +6893,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tokio-tungstenite",
- "ureq 2.12.1",
+ "ureq 3.3.0",
 ]
 
 [[package]]
@@ -6921,7 +6921,7 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tkr-agent",
- "ureq 2.12.1",
+ "ureq 3.3.0",
 ]
 
 [[package]]
@@ -6963,7 +6963,7 @@ dependencies = [
  "tkr-sandbox",
  "tokio",
  "tokio-tungstenite",
- "ureq 2.12.1",
+ "ureq 3.3.0",
 ]
 
 [[package]]
