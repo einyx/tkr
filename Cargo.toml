@@ -58,7 +58,7 @@ redis = { version = "0.27", default-features = false, features = ["tokio-comp"] 
 tar = "0.4"
 flate2 = "1"
 # Below 1.52: 1.52.x pulls tokio-macros ~2.7; stale crates.io mirrors sometimes lack it.
-tokio = { version = ">=1.51.1, <1.52", features = ["rt-multi-thread", "net", "time", "io-util", "sync"] }
+tokio = { version = ">=1.51.1, <1.53", features = ["rt-multi-thread", "net", "time", "io-util", "sync"] }
 hyper = { version = "=1.9.0", features = ["server", "http1"] }
 hyper-util = { version = "=0.1.20", features = ["tokio"] }
 http = "=1.4.0"
