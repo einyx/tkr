@@ -1,0 +1,14 @@
+command = "vault"
+subcommands = ["read", "list", "kv"]
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Key\\s+Value$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^---\\s+-----$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Refresh interval"

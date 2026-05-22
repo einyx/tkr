@@ -1,0 +1,4 @@
+command = "lsblk"
+[[rules]]
+type = "suppress_regex"
+pattern = "^loop\\d+\\s"

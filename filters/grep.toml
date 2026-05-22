@@ -1,0 +1,60 @@
+command = "grep"
+
+# For `tkr grep` / `tkr rg`, the proxy may use the native RTK-style handler
+# (capture + group-by-file caps) when `TKR_NATIVE_GREP` is unset; set
+# `TKR_NATIVE_GREP=0` to force this TOML pipeline only.
+
+# Drop matches whose path is inside a noisy directory. `grep -r` is a
+# common LLM tool call; without this filter, results are dominated by
+# matches in target/ / node_modules/ / .git/ blobs.
+[[rules]]
+type = "suppress_regex"
+pattern = "(^|/)(node_modules|target|dist|build|coverage|vendor|venv|htmlcov|__pycache__|buck-out)(/|:)"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "(^|/)\\.(git|next|cache|venv|tox|nyc_output|pytest_cache|mypy_cache|ruff_cache|gradle|idea|vscode|eggs)(/|:)"
+
+# Drop "Binary file ... matches" noise — `grep` reports binary hits but
+# the LLM almost never wants that thread to continue.
+[[rules]]
+type = "suppress_regex"
+pattern = "^Binary file .* matches$"
+
+# Drop the `grep: <path>: Permission denied` and "No such file" warnings.
+[[rules]]
+type = "suppress_regex"
+pattern = "^grep: .*: Permission denied"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^grep: .*: No such file or directory"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^grep: .*: Is a directory"
+
+# Truncate over-long match lines (minified JS, JSON blobs, generated
+# code) before grouping. ContextWindow would be ideal but needs the
+# user's search pattern — which filter rules can't see — so a hard cap
+# is the practical equivalent of rtk's max_line_len.
+[[rules]]
+type = "truncate_long"
+max_len = 200
+
+# Group remaining matches by file (the "path:" prefix grep emits).
+# Caps at 2 lines per file, 50 total — beyond which we emit "(+N more)"
+# rather than streaming everything. This is the single biggest win on
+# repos with thousands of hits.
+[[rules]]
+type = "group_by_capture"
+pattern = "^([^:]+):"
+key_capture = 1
+cap_per_key = 2
+total_cap = 50
+header = "grep matches by file:"
+
+# Empty-result marker. Must be the final rule in this group.
+[[rules]]
+type = "empty_result_substitute"
+message = "0 grep matches"

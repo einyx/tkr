@@ -1,0 +1,4 @@
+command = "mount"
+[[rules]]
+type = "suppress_regex"
+pattern = "type (proc|cgroup|cgroup2|tmpfs|devpts|sysfs|securityfs|pstore|bpf|debugfs|tracefs|configfs|fusectl|hugetlbfs|mqueue|nsfs|autofs)"

@@ -1,0 +1,22 @@
+command = "next"
+subcommands = ["build", "dev", "start"]
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*▲ Next\\.js"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*-( Local|  Local|  Network):"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*✓ Compiled"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*✓ Ready"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Creating an optimized production build"

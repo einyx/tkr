@@ -1,0 +1,18 @@
+command = "pulumi"
+subcommands = ["up", "preview", "destroy"]
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Type\\s+Name\\s+Status"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*\\+\\s+pulumi:pulumi:Stack"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Resources:$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*\\d+ unchanged$"

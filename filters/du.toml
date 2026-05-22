@@ -1,0 +1,6 @@
+command = "du"
+
+# du with --max-depth=1 etc — drop "0" sized entries
+[[rules]]
+type = "suppress_regex"
+pattern = "^0\\s+\\."

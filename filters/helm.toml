@@ -1,0 +1,22 @@
+command = "helm"
+subcommands = ["install", "upgrade", "list", "status"]
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^NAME: "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^LAST DEPLOYED: "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^NAMESPACE: "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^STATUS: deployed"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^REVISION: "

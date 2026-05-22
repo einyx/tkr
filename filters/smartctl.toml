@@ -1,0 +1,10 @@
+command = "smartctl"
+[[rules]]
+type = "suppress_regex"
+pattern = "^smartctl \\d"
+[[rules]]
+type = "suppress_regex"
+pattern = "^Copyright \\("
+[[rules]]
+type = "suppress_regex"
+pattern = "^=== START OF "

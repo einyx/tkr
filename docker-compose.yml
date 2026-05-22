@@ -1,0 +1,218 @@
+services:
+  tkr-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tkr-server
+    restart: unless-stopped
+    # Local-dev port mapping kept for direct curls against the container.
+    # Public traffic to tkr.prysm.sh reaches us via prysm-traefik on the
+    # `prysm_prysm` network using the labels below — not via this port.
+    ports:
+      - "127.0.0.1:4000:4000"
+    networks:
+      - default
+      - prysm_prysm
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=prysm_prysm"
+      - "traefik.http.routers.tkr-http.entrypoints=web"
+      - "traefik.http.routers.tkr-http.rule=Host(`tkr.prysm.sh`)"
+      - "traefik.http.routers.tkr-http.middlewares=https-redirect@file"
+      - "traefik.http.routers.tkr-http.service=tkr"
+      - "traefik.http.routers.tkr-https.entrypoints=websecure"
+      - "traefik.http.routers.tkr-https.rule=Host(`tkr.prysm.sh`)"
+      - "traefik.http.routers.tkr-https.tls=true"
+      - "traefik.http.routers.tkr-https.service=tkr"
+      - "traefik.http.services.tkr.loadbalancer.server.port=4000"
+    env_file:
+      - ./tkr-server.env
+    environment:
+      # Container always binds 0.0.0.0 internally; the host port mapping is
+      # what enforces the loopback-only exposure.
+      HOST: "0.0.0.0"
+      PORT: "4000"
+      # tkr-server proxies POST /api/v1/chain/rpc → this URL. The
+      # `tkr-chain` service (anvil) sits on the same compose network, so
+      # the service name resolves to its container IP.
+      TKR_CHAIN_RPC_URL: "http://tkr-chain:8545"
+      # Enables POST /api/v1/sandbox/exec — runs allowlisted binaries
+      # inside the tkr-sandbox jail and surfaces counters in the
+      # dashboard's sandbox panel. Off by default upstream; on here
+      # so the panel ships live metrics out of the box.
+      TKR_SANDBOX_EXEC: "true"
+      # Stash the scrubbed request + response bodies of every proxied
+      # LLM call in a 64-entry ring (64 KiB cap per side) so the
+      # dashboard's "captured calls" panel has data to render. Off
+      # upstream so stock deploys keep the "your prompts never leave"
+      # default — flip per-deployment when you want on-instance audit.
+      TKR_CAPTURE_BODIES: "true"
+      # Persistence layer endpoints. Postgres owns durable state
+      # (sessions, receipts, audit rings); Redis owns ephemeral
+      # hot state (OAuth login state, rate-limit counters). Both
+      # are on the compose network, so service-name DNS works.
+      DATABASE_URL: "postgres://tkr:tkr@tkr-postgres:5432/tkr"
+      REDIS_URL: "redis://tkr-redis:6379/0"
+    depends_on:
+      tkr-chain:
+        condition: service_started
+      tkr-postgres:
+        condition: service_healthy
+      tkr-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    # Resource ceilings — adjust if you push real load.
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "256M"
+    # Read-only rootfs + tmpfs for /tmp keeps the attack surface tight.
+    # `/var/lib/tkr` is the one writable path — receipt-signing key
+    # persists there so previously-signed receipts stay verifiable
+    # across restarts. Sessions and the receipt queue still live in
+    # memory by design; a SQLite/sled layer is the next persistence
+    # slice.
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - tkr-state:/var/lib/tkr
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  # tkr-chain — long-lived anvil node serving as a "demo chain". Real EVM
+  # execution, persistent state across restarts via the named volume, BUT
+  # NOT a real rollup: no L1 settlement, no consensus, no security model
+  # beyond "I trust the host." Frame it as "tkr devnet" in any user-facing
+  # docs.
+  tkr-chain:
+    image: ghcr.io/foundry-rs/foundry:latest
+    container_name: tkr-chain
+    restart: unless-stopped
+    entrypoint: ["anvil"]
+    command:
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8545"
+      - "--chain-id"
+      - "31337420"   # arbitrary; pick whatever you like (not 1, 8453, etc.)
+      - "--state"
+      - "/data/state.json"
+      - "--state-interval"
+      - "30"          # snapshot every 30s so a docker restart loses < 30s of state
+      - "--gas-limit"
+      - "30000000"
+      - "--block-time"
+      - "2"
+      - "--silent"
+    volumes:
+      # Bind-mount instead of named volume so the foundry user inside the
+      # container (UID 1000) can write state.json. With a named volume the
+      # mountpoint inherits root:root from the Docker daemon and anvil
+      # silently fails to snapshot. ./data/anvil is gitignored.
+      - ./data/anvil:/data
+    ports:
+      # Host loopback only — nginx upstreams to chain.prysm.sh from same box.
+      - "127.0.0.1:8545:8545"
+    healthcheck:
+      # cast is in the foundry image; use it for a real RPC roundtrip.
+      test: ["CMD", "cast", "block-number", "--rpc-url", "http://127.0.0.1:8545"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "1G"   # anvil holds full state in memory; growth is bounded by usage.
+    security_opt:
+      - no-new-privileges:true
+
+  # tkr-postgres — durable state for tkr-server. Sessions, receipts
+  # queue, and audit rings live here. Single-tenant credentials; the
+  # database is only reachable from the compose network (no published
+  # port). Backup story: snapshot the named volume.
+  tkr-postgres:
+    image: postgres:16-alpine
+    container_name: tkr-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tkr
+      POSTGRES_PASSWORD: tkr
+      POSTGRES_DB: tkr
+      # Speeds up CI / dev resets; safe because we have backups.
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+    # No `ports:` directive — Postgres is reachable only on the compose
+    # network. `docker-compose.test.yml` adds a loopback mapping when
+    # the integration test harness needs it.
+    volumes:
+      - tkr-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tkr -d tkr"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "512M"
+    security_opt:
+      - no-new-privileges:true
+
+  # tkr-redis — ephemeral state with TTLs. OAuth login state (10-min
+  # windows), future rate-limit counters, proxy-dedupe keys. Persistence
+  # configured for AOF-everysec so a hard kill loses ≤1s of writes —
+  # acceptable for the ephemeral semantics. Not exposed off-network.
+  tkr-redis:
+    image: redis:7-alpine
+    container_name: tkr-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    # No `ports:` directive — same posture as tkr-postgres above.
+    # `docker-compose.test.yml` opens this for integration tests only.
+    volumes:
+      - tkr-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 3s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "256M"
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  # Default compose network — tkr-server ↔ tkr-chain talk over this.
+  default:
+  # Shared edge network owned by the prysm stack. tkr-server joins it so
+  # prysm-traefik can route tkr.prysm.sh to it via Docker labels.
+  prysm_prysm:
+    external: true
+
+volumes:
+  # tkr-server scratch state — currently the receipt-signing key.
+  # Sessions, receipts, audit rings now live in tkr-postgres-data.
+  tkr-state:
+  # Postgres data directory — durable session/receipt/audit state.
+  tkr-postgres-data:
+  # Redis AOF — ephemeral OAuth state etc.; survives compose restarts
+  # so an in-flight login isn't always invalidated by a routine deploy.
+  tkr-redis-data:
+

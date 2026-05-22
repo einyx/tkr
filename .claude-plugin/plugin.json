@@ -1,0 +1,24 @@
+{
+  "name": "tkr",
+  "description": "Token-saving code-navigation tools (outline, symbol lookup, grep summary) plus PreToolUse/PostToolUse hooks that filter Bash output and warn on oversized Read/Grep results. Exposed as MCP tools backed by the `tkr` Rust CLI.",
+  "version": "0.3.0",
+  "author": {
+    "name": "einyx",
+    "url": "https://github.com/einyx"
+  },
+  "homepage": "https://github.com/einyx/tkr",
+  "repository": "https://github.com/einyx/tkr",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "code-navigation",
+    "token-saving",
+    "outline",
+    "symbol-search",
+    "grep",
+    "rust",
+    "tkr"
+  ],
+  "commands": ["./commands/"],
+  "skills": ["./skills/"]
+}

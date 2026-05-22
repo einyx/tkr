@@ -1,0 +1,21 @@
+command = "bundle"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Fetching gem metadata"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Resolving dependencies\\.\\.\\."
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Using \\S+ "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Bundle complete"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Bundled gems are installed"

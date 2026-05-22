@@ -1,0 +1,24 @@
+/target
+**/*.rs.bk
+.DS_Store
+*.orig
+**/._*
+
+# Local SIEM stack experiments — not part of this repo
+/wazuh/
+
+# Local design/spec scratch — not tracked
+docs/superpowers/
+.claude/
+/tmp/
+
+# Runtime secrets — never commit. The example template is checked in
+# at deploy/tkr-server.env.example.
+/tkr-server.env
+.env
+deploy/keys/*
+!deploy/keys/README.md
+data/
+
+# tkr-index local index DB
+.tkr/

@@ -1,0 +1,18 @@
+command = "jest"
+subcommands = []
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*PASS "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*✓ "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*✔ "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Test Suites:.*\\d+ passed.*$"

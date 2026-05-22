@@ -1,0 +1,245 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            archive: tkr-aarch64-apple-darwin.tar.gz
+            use_cross: false
+          # Build Intel macOS on Apple Silicon runners (macos-13 queue often stalls).
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            archive: tkr-x86_64-apple-darwin.tar.gz
+            use_cross: false
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tkr-x86_64-unknown-linux-gnu.tar.gz
+            use_cross: false
+            install_dbus: true
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tkr-aarch64-unknown-linux-gnu.tar.gz
+            use_cross: true
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: tkr-x86_64-pc-windows-msvc.tar.gz
+            use_cross: false
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.88.0
+          targets: ${{ matrix.target }}
+
+      - name: Install dbus headers (Linux native builds)
+        if: matrix.install_dbus
+        run: sudo apt-get update -qq && sudo apt-get install -y libdbus-1-dev pkg-config
+
+      - name: Install cross
+        if: matrix.use_cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build (cross)
+        if: matrix.use_cross
+        env:
+          TARGET: ${{ matrix.target }}
+        run: cross build --release -p tkr --target "$TARGET"
+
+      - name: Build (cargo)
+        if: ${{ !matrix.use_cross }}
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          cargo build --release -p tkr --target "$TARGET"
+
+      - name: Import Apple Developer ID
+        if: contains(matrix.target, 'apple-darwin') && env.APPLE_CERT_P12_BASE64 != ''
+        env:
+          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 32)"
+          CERT_FILE="$(mktemp -t tkr-cert.XXXXXX.p12)"
+          trap 'rm -f "$CERT_FILE"' EXIT
+          echo "$APPLE_CERT_P12_BASE64" | base64 --decode > "$CERT_FILE"
+          ls -l "$CERT_FILE"
+          file "$CERT_FILE" || true
+          xxd "$CERT_FILE" | head -2 || true
+          if ! openssl pkcs12 -in "$CERT_FILE" -passin "pass:${APPLE_CERT_PASSWORD}" -info -noout >/dev/null 2>&1; then
+            echo "::error::Decoded blob is not a valid PKCS#12 (or password is wrong). Re-export the cert + private key from Keychain Access and update APPLE_CERT_P12_BASE64."
+            exit 1
+          fi
+          echo "PKCS#12 validated."
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -lut 7200 build.keychain
+          security import "$CERT_FILE" -k build.keychain -f pkcs12 \
+            -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          security find-identity -v -p codesigning build.keychain | grep -c "valid identities"
+
+      - name: Sign macOS binary
+        if: contains(matrix.target, 'apple-darwin')
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          BIN="target/${TARGET}/release/tkr"
+          IDENTIFIER=com.einyx.tkr
+          IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
+            | grep "Developer ID Application" \
+            | head -1 \
+            | sed -E 's/^[[:space:]]*[0-9]+\)[[:space:]]+([A-F0-9]{40}).*/\1/' || true)
+          if [ -n "$IDENTITY" ]; then
+            codesign --force --sign "$IDENTITY" --identifier "$IDENTIFIER" \
+              --options runtime --timestamp "$BIN"
+            codesign --verify --verbose=2 "$BIN"
+            codesign -dvv "$BIN" 2>&1 | head -10
+          else
+            echo "::warning::No Developer ID Application identity found; binary remains ad-hoc signed"
+            codesign --force --sign - --identifier "$IDENTIFIER" "$BIN"
+          fi
+
+      - name: Package
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          ARCHIVE: ${{ matrix.archive }}
+        run: |
+          set -euo pipefail
+          exe=""
+          case "$TARGET" in *windows*) exe=".exe" ;; esac
+          BIN="target/${TARGET}/release/tkr${exe}"
+          tar czf "$ARCHIVE" -C "$(dirname "$BIN")" "$(basename "$BIN")"
+          python3 -c "import hashlib, pathlib, os; p=pathlib.Path(os.environ['ARCHIVE']); print(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name)" > "${ARCHIVE}.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.archive }}
+          path: |
+            ${{ matrix.archive }}
+            ${{ matrix.archive }}.sha256
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            *.tar.gz
+            *.sha256
+          generate_release_notes: true
+
+  bump-formula:
+    name: Update Homebrew formula
+    needs: release
+    runs-on: ubuntu-latest
+    # Skip if no tap token configured. Owners can add HOMEBREW_TAP_TOKEN as a
+    # repo secret (PAT with `contents: write` on einyx/homebrew-tap) to enable.
+    if: ${{ vars.HOMEBREW_TAP_REPO != '' || true }}
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          merge-multiple: true
+
+      - name: Resolve version + SHAs
+        id: sha
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          VERSION="${REF#refs/tags/v}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          for asset in tkr-aarch64-apple-darwin tkr-x86_64-apple-darwin \
+                       tkr-aarch64-unknown-linux-gnu tkr-x86_64-unknown-linux-gnu; do
+            sha=$(cut -d' ' -f1 < "${asset}.tar.gz.sha256")
+            slug=$(echo "${asset}" | tr '[:lower:]-' '[:upper:]_')
+            echo "sha_${slug}=${sha}" >> "$GITHUB_OUTPUT"
+          done
+
+      - name: Check out tap
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ vars.HOMEBREW_TAP_REPO || 'einyx/homebrew-tap' }}
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Bump formula
+        env:
+          VERSION: ${{ steps.sha.outputs.version }}
+          SHA_AARCH64_DARWIN: ${{ steps.sha.outputs.sha_TKR_AARCH64_APPLE_DARWIN }}
+          SHA_X86_64_DARWIN: ${{ steps.sha.outputs.sha_TKR_X86_64_APPLE_DARWIN }}
+          SHA_AARCH64_LINUX: ${{ steps.sha.outputs.sha_TKR_AARCH64_UNKNOWN_LINUX_GNU }}
+          SHA_X86_64_LINUX: ${{ steps.sha.outputs.sha_TKR_X86_64_UNKNOWN_LINUX_GNU }}
+        run: |
+          set -euo pipefail
+          cd tap
+          python3 - <<PYEOF
+          import re, os, pathlib
+          p = pathlib.Path("Formula/tkr.rb")
+          src = p.read_text()
+          src = re.sub(r'^  version "[^"]+"', f'  version "{os.environ["VERSION"]}"', src, count=1, flags=re.M)
+          # Order matches the formula: macOS arm, macOS intel, linux arm, linux intel.
+          mapping = [
+            (r'tkr-aarch64-apple-darwin\.tar\.gz"\n      sha256 "[^"]+"',
+             f'tkr-aarch64-apple-darwin.tar.gz"\n      sha256 "{os.environ["SHA_AARCH64_DARWIN"]}"'),
+            (r'tkr-x86_64-apple-darwin\.tar\.gz"\n      sha256 "[^"]+"',
+             f'tkr-x86_64-apple-darwin.tar.gz"\n      sha256 "{os.environ["SHA_X86_64_DARWIN"]}"'),
+            (r'tkr-aarch64-unknown-linux-gnu\.tar\.gz"\n      sha256 "[^"]+"',
+             f'tkr-aarch64-unknown-linux-gnu.tar.gz"\n      sha256 "{os.environ["SHA_AARCH64_LINUX"]}"'),
+            (r'tkr-x86_64-unknown-linux-gnu\.tar\.gz"\n      sha256 "[^"]+"',
+             f'tkr-x86_64-unknown-linux-gnu.tar.gz"\n      sha256 "{os.environ["SHA_X86_64_LINUX"]}"'),
+          ]
+          for pat, repl in mapping:
+            src = re.sub(pat, repl, src, count=1)
+          p.write_text(src)
+          PYEOF
+
+      - name: Commit + push tap
+        env:
+          VERSION: ${{ steps.sha.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd tap
+          if git diff --quiet; then
+            echo "no formula change to push"
+            exit 0
+          fi
+          git config user.name "tkr-release-bot"
+          git config user.email "tkr-release-bot@users.noreply.github.com"
+          git add Formula/tkr.rb
+          git commit -m "release: tkr v${VERSION}"
+          git push

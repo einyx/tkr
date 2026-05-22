@@ -1,0 +1,21 @@
+command = "heroku"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^-----> "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^remote: -----> "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Counting objects:"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Compressing objects:"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Writing objects:"

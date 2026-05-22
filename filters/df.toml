@@ -1,0 +1,6 @@
+command = "df"
+
+# tmpfs/devfs are usually noise when looking at real disk use
+[[rules]]
+type = "suppress_regex"
+pattern = "^(tmpfs|devfs|map |overlay|udev|none)\\s"

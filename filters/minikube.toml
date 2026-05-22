@@ -1,0 +1,17 @@
+command = "minikube"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*\\* "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*▪ "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*🔥 "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*🐳 "

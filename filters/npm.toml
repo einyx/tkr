@@ -1,0 +1,40 @@
+command = "npm"
+subcommands = ["install", "ci", "run"]
+
+# Drop deprecation warnings — peer-dep mismatches and "deprecated foo@x.y"
+# lines are the bulk of npm install output and rarely actionable from
+# the LLM's perspective. Real errors (`npm err!` / `npm error`) survive
+# since they don't match this prefix.
+[[rules]]
+type = "suppress_regex"
+pattern = "^npm warn "
+
+# Drop the dependency-funding banner and follow-up.
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*\\d+ packages are looking"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*run `npm fund`"
+
+# Drop `npm notice` lines (advisories that don't block).
+[[rules]]
+type = "suppress_regex"
+pattern = "^npm notice "
+
+# Drop progress/spinner lines that survived TTY detection.
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*\\[#+\\s*\\] "
+
+# Note: the `added N packages in Ts` success summary is intentionally
+# kept (no rule matches it). It's the one line the LLM actually wants
+# to confirm an install succeeded.
+
+# When everything was suppressed (e.g. npm install with no output of
+# interest), emit a marker so the LLM doesn't infer the command broke.
+# Must be the final rule in this group.
+[[rules]]
+type = "empty_result_substitute"
+message = "npm: no output of interest (command exited normally)"

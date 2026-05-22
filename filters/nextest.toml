@@ -1,0 +1,14 @@
+command = "cargo"
+subcommands = ["nextest"]
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*PASS \\["
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Starting \\d+ tests?"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Summary \\["

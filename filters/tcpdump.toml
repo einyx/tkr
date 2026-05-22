@@ -1,0 +1,21 @@
+command = "tcpdump"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^tcpdump: verbose output"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^listening on "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\d+ packets captured$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\d+ packets received by filter$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\d+ packets dropped by kernel$"

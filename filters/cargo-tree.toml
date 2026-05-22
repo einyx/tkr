@@ -1,0 +1,24 @@
+# Aggressive collapse of nested cargo tree branches.
+# Top-level (depth 0) and direct children (depth 1) are kept.
+# Anything deeper is suppressed.
+command = "cargo"
+subcommands = ["tree"]
+
+# Lines starting with deeply-nested tree drawing chars (3+ levels of │ or spaces).
+# A tree branch at depth N starts with N pairs of "│   " or "    " before the ├──/└──.
+# Suppress depth 2+: matches 2 or more leading prefixes.
+[[rules]]
+type = "suppress_regex"
+pattern = "^(\\s{4}|│ {3}){2,}[├└]"
+
+# Build-deps headers nested deep
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s+\\[(build|dev)-dependencies\\]"
+
+# Strip patch versions: `anyhow v1.0.102` → `anyhow v1.0`
+# Keeps major.minor (the API-relevant part), drops patch which is rarely useful for LLMs.
+[[rules]]
+type = "truncate_match"
+pattern = "(\\bv\\d+\\.\\d+)\\.\\d+(?:[+-][\\w.]+)?"
+replace = "$1"

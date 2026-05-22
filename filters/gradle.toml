@@ -1,0 +1,25 @@
+command = "gradle"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Starting a Gradle Daemon"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Welcome to Gradle "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^> Task :"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^BUILD SUCCESSFUL"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\d+ actionable tasks?:"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^<\\=+> \\d+% [A-Z]+"

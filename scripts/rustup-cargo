@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Always invoke rustup's Cargo (~/.cargo/bin/cargo). Homebrew's cargo ignores
+# rust-toolchain.toml in this repo.
+set -euo pipefail
+c="${HOME}/.cargo/bin/cargo"
+if [[ ! -x "$c" ]]; then
+  echo "error: rustup cargo not found at $c" >&2
+  echo "Install rustup: https://rustup.rs  then: rustup toolchain install 1.88.0" >&2
+  exit 1
+fi
+exec "$c" "$@"

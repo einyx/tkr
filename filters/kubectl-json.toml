@@ -1,0 +1,16 @@
+# kubectl/aws/gcloud verbose JSON noise (when pretty-printed multi-line).
+# Suppress lines that are pure metadata an LLM rarely needs.
+command = "kubectl"
+subcommands = ["get"]
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*\"(resourceVersion|uid|selfLink|generation|observedGeneration|creationTimestamp)\":"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*\"managedFields\":"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*\"kubectl\\.kubernetes\\.io/last-applied-configuration\":"

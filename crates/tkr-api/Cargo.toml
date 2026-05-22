@@ -1,0 +1,21 @@
+[package]
+name = "tkr-api"
+publish = false
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+description = "Plugin API types for the tkr token-optimized CLI proxy"
+repository = "https://github.com/einyx/tkr"
+license = "Apache-2.0"
+
+[lib]
+name = "tkr_api"
+crate-type = ["rlib"]
+
+[features]
+default = []
+test-host = []
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }

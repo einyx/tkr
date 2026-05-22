@@ -1,0 +1,13 @@
+command = "nmap"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Starting Nmap "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Nmap done: "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Not shown: "

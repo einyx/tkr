@@ -1,0 +1,9 @@
+command = "redis-cli"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^# Server$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^# (Clients|Memory|Persistence|Stats|Replication|CPU|Modules|Errorstats|Cluster|Keyspace)$"

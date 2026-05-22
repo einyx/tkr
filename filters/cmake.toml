@@ -1,0 +1,13 @@
+command = "cmake"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^-- (Found|Looking for|Performing|Detecting|Check for|Configuring done|Generating done|Build files have been written)"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^-- Build files have been written"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^-- The C(XX)? compiler identification"

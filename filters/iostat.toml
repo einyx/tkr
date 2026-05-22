@@ -1,0 +1,7 @@
+command = "iostat"
+[[rules]]
+type = "suppress_regex"
+pattern = "^Linux \\d"
+[[rules]]
+type = "suppress_regex"
+pattern = "^avg-cpu:"

@@ -1,0 +1,21 @@
+command = "phpunit"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^PHPUnit \\d+\\.\\d+"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Runtime:"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Configuration:"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^OK \\(\\d+ tests?, \\d+ assertions?\\)"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Time: "

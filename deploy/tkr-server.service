@@ -1,0 +1,49 @@
+[Unit]
+Description=tkr-server — session vault dashboard for tkr.prysm.sh
+Documentation=https://github.com/einyx/tkr
+After=network.target
+# Optional but encouraged: if nginx fronts this, start after it.
+Wants=nginx.service
+
+[Service]
+Type=simple
+User=alessio
+Group=alessio
+WorkingDirectory=/home/alessio/tkr
+ExecStart=/home/alessio/tkr/target/release/tkr-server
+EnvironmentFile=/etc/tkr/tkr-server.env
+
+# Auto-restart on crash, with a small backoff so a misconfig doesn't hot-loop.
+Restart=on-failure
+RestartSec=3s
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# Logging goes to journald — view with:  journalctl -u tkr-server -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tkr-server
+
+# ----- Hardening -----
+# These are conservative defaults. Loosen only with a specific reason.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/alessio/tkr
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+# Network access stays open; this is a network service. We restrict address
+# families to the ones we actually use.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

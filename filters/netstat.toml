@@ -1,0 +1,10 @@
+command = "netstat"
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*$"
+[[rules]]
+type = "suppress_regex"
+pattern = "^Active (Internet|UNIX)"
+[[rules]]
+type = "suppress_regex"
+pattern = "^Proto\\s+Recv-Q"

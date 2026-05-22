@@ -1,0 +1,14 @@
+command = "pnpm"
+subcommands = ["install", "add", "remove"]
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Already up to date"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Progress: "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Packages: "

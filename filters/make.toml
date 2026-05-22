@@ -1,0 +1,9 @@
+command = "make"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^make\\[\\d+\\]: (Entering|Leaving) directory"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^make: Nothing to be done"

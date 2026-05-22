@@ -1,0 +1,29 @@
+[package]
+name = "tkr-model"
+publish = false
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+hex = { workspace = true }
+sha2 = "0.10"
+sha3 = "0.10"
+tkr-mesh = { path = "../tkr-mesh" }
+
+# IPFS via iroh — embedded, no daemon. Pin to a recent release before first build.
+# iroh = "0.28"
+# iroh-blobs = "0.28"
+
+# Bundled inference. Feature-gated so CPU-only builds don't pay for CUDA/Metal toolchains.
+# llama-cpp-2 = { version = "0.1", optional = true }
+
+[features]
+default = []
+cuda = []     # llama-cpp-2/cuda
+metal = []    # llama-cpp-2/metal
+vulkan = []   # llama-cpp-2/vulkan

@@ -1,0 +1,13 @@
+{
+  "name": "my-plugin",
+  "version": "0.1.0",
+  "capabilities_required": ["cap:stdout.filter"],
+  "services_exposed": [],
+  "events_subscribed": [],
+  "events_emitted": [],
+  "cli_subcommands": [],
+  "storage_requests": [
+    { "kind": "Sqlite", "class": "Public" }
+  ],
+  "config_schema": { "type": "object" }
+}

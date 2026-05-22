@@ -1,0 +1,58 @@
+[Unit]
+Description=tkr mesh demo bots — synthetic peers that keep tkr.prysm.sh's mesh stats non-zero
+Documentation=https://github.com/einyx/tkr
+After=network-online.target docker.service
+Wants=network-online.target
+# We need the broker (tkr-server container) up before the bots can authenticate.
+# docker-compose's restart=unless-stopped handles tkr-server itself.
+
+[Service]
+Type=forking
+User=alessio
+Group=alessio
+WorkingDirectory=/home/alessio/tkr
+
+# scripts/mesh-bot.sh nohup-spawns 4 background processes (3 tails + 1 heartbeat
+# loop). Type=forking + GuessMainPID=no tells systemd not to follow the spawned
+# children — the unit is "running" if `start` exited 0, "stopped" after `stop`.
+GuessMainPID=no
+
+# The bot reads tkr-server.env for TKR_ADMIN_PASSWORD via the script's fallback
+# chain; no env_file needed here. If you'd rather keep the password out of the
+# script's reach, set it in /etc/tkr/tkr-mesh-bot.env and uncomment EnvironmentFile.
+# EnvironmentFile=-/etc/tkr/tkr-mesh-bot.env
+
+ExecStart=/home/alessio/tkr/scripts/mesh-bot.sh start
+ExecStop=/home/alessio/tkr/scripts/mesh-bot.sh stop
+
+# Auto-recover if the script's launch step fails transiently (broker starting
+# during boot, etc).
+Restart=on-failure
+RestartSec=15s
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Logs go to journald. View with: journalctl -u tkr-mesh-bot -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tkr-mesh-bot
+
+# Mild hardening — the script writes only to /tmp/tkr-mesh-bot/ and reads only
+# from the repo + tkr-server.env. ProtectHome=read-only would block writing
+# bot state under $HOME, but we use /tmp, so ProtectHome can be true.
+NoNewPrivileges=true
+PrivateTmp=false  # we DO want /tmp/tkr-mesh-bot/ to persist across script restarts
+ProtectSystem=strict
+ReadWritePaths=/tmp/tkr-mesh-bot /home/alessio/tkr
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

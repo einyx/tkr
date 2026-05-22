@@ -1,0 +1,29 @@
+command = "yarn"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^yarn install v"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\[1/4\\] "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\[2/4\\] "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\[3/4\\] "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\[4/4\\] "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^success Already up-to-date"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Done in [\\d.]+s"

@@ -1,0 +1,7 @@
+command = "vmstat"
+[[rules]]
+type = "suppress_regex"
+pattern = "^procs ---"
+[[rules]]
+type = "suppress_regex"
+pattern = "^ r  b "

@@ -1,0 +1,29 @@
+[package]
+name = "tkr-sandbox"
+publish = false
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+description = "Sandboxing primitives (landlock/macOS sandbox) for the tkr CLI proxy"
+repository = "https://github.com/einyx/tkr"
+license = "Apache-2.0"
+
+[lib]
+name = "tkr_sandbox"
+crate-type = ["rlib"]
+
+[dependencies]
+anyhow = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+landlock = { workspace = true }
+rlimit = "0.10"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+tempfile = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+toml = { workspace = true }

@@ -1,0 +1,28 @@
+[package]
+name = "tkr-analytics"
+publish = false
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+description = "Token savings analytics for the tkr CLI proxy"
+repository = "https://github.com/einyx/tkr"
+license = "Apache-2.0"
+
+[lib]
+name = "tkr_analytics"
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+tkr-api = { path = "../tkr-api", version = "0.1.0" }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rusqlite = { version = "0.31", features = ["bundled"] }
+dirs = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[features]
+test-host = ["tkr-api/test-host"]

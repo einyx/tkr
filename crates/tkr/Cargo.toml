@@ -1,0 +1,73 @@
+[package]
+name = "tkr"
+version = "0.3.2"
+publish = false
+edition = "2021"
+rust-version.workspace = true
+description = "Token-optimized CLI proxy for LLM development workflows"
+repository = "https://github.com/einyx/tkr"
+license = "Apache-2.0"
+keywords = ["cli", "llm", "token", "filter", "productivity"]
+categories = ["command-line-utilities", "development-tools"]
+build = "build.rs"
+
+[lib]
+name = "tkr"
+path = "src/lib.rs"
+
+[[bin]]
+name = "tkr"
+path = "src/main.rs"
+
+[features]
+default = []
+# Enable MiniLM-based noise clustering for `tkr suggest` (adds ~80MB ONNX
+# runtime + downloads model on first use to ~/.cache/fastembed/).
+embeddings = ["dep:fastembed"]
+
+[dependencies]
+tkr-agent = { path = "../tkr-agent" }
+tkr-providers = { path = "../tkr-providers" }
+tkr-api = { path = "../tkr-api" }
+tkr-filter = { path = "../tkr-filter" }
+tkr-analytics = { path = "../tkr-analytics" }
+tkr-session-recorder = { path = "../tkr-session-recorder" }
+tkr-mesh = { path = "../tkr-mesh" }
+tkr-mcp = { path = "../tkr-mcp" }
+tkr-sandbox = { path = "../tkr-sandbox" }
+anyhow = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+jsonschema = { workspace = true }
+dirs = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true }
+ratatui = "0.28"
+crossterm = "0.27"
+libloading = { workspace = true }
+fastembed = { version = "4", optional = true }
+keyring = { workspace = true }
+rand = { workspace = true }
+age = { workspace = true }
+chacha20poly1305 = "0.10"
+uuid = { version = "1", features = ["v4"] }
+hostname = "0.4"
+sha2 = { workspace = true }
+hkdf = { workspace = true }
+hex = { workspace = true }
+zeroize = { workspace = true }
+rusqlite = { workspace = true }
+sqlite-vec = { workspace = true }
+tar = { workspace = true }
+flate2 = { workspace = true }
+self_update = { version = "0.44.0", default-features = false, features = ["archive-tar", "compression-flate2", "ureq", "rustls"] }
+alloy = { version = "0.8", default-features = false, features = ["std", "providers", "signer-local", "sol-types", "contract", "network", "rpc-types-eth", "reqwest-rustls-tls"] }
+tokio = { workspace = true, features = ["rt"] }
+k256 = { version = "0.13", features = ["ecdh"] }
+ureq = { workspace = true }
+
+[dev-dependencies]
+regex = { workspace = true }
+tempfile = { workspace = true }

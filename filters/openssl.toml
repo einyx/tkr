@@ -1,0 +1,13 @@
+command = "openssl"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^depth=\\d+ "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^verify return:"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^---$"

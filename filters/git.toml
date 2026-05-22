@@ -1,0 +1,181 @@
+command = "git"
+subcommands = ["status", "diff", "log", "show", "add", "commit", "push", "pull"]
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*$"
+
+[[rules]]
+type = "suppress_prefix"
+prefix = "hint:"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\(use \"git"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^no changes added to commit"
+
+# `git commit` verbose mode markers
+# ` create mode 100644 path` → ` create  path`  (drop the always-100644 mode digits)
+[[rules]]
+type = "truncate_match"
+pattern = "^( (?:create|delete) mode) \\d{6} "
+replace = "$1 "
+
+# `git commit` "[main abcdefg] msg" — already short, keep as-is.
+# Drop the rare "(use \"git push\" ...)" hint lines
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\(use \"git push"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Your branch is (ahead|up to date|behind)"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^  \\(use \""
+
+# git status section banners
+[[rules]]
+type = "suppress_regex"
+pattern = "^On branch "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Changes (not staged for commit|to be committed):"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Untracked files:"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^nothing to commit, working tree clean"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^You are currently rebasing"
+
+# `git status` long-form → short-form codes. Eliminates ~60% of bytes per
+# changed-file line (`        modified:   crates/foo.rs` → `M crates/foo.rs`).
+# These match the same letters `git status --short` emits, so the result is
+# as familiar to humans as porcelain output.
+[[rules]]
+type = "truncate_match"
+pattern = "^\\s+modified:\\s+(.+)$"
+replace = "M $1"
+
+[[rules]]
+type = "truncate_match"
+pattern = "^\\s+new file:\\s+(.+)$"
+replace = "A $1"
+
+[[rules]]
+type = "truncate_match"
+pattern = "^\\s+deleted:\\s+(.+)$"
+replace = "D $1"
+
+[[rules]]
+type = "truncate_match"
+pattern = "^\\s+renamed:\\s+(.+)$"
+replace = "R $1"
+
+[[rules]]
+type = "truncate_match"
+pattern = "^\\s+typechange:\\s+(.+)$"
+replace = "T $1"
+
+[[rules]]
+type = "truncate_match"
+pattern = "^\\s+copied:\\s+(.+)$"
+replace = "C $1"
+
+# Section banner the porcelain rename leaves dangling — `Untracked files:`
+# was already suppressed; bare `?? path` lines are short enough to keep.
+# But the section's leading-tab indented filenames (`\tpath`) need a small
+# tweak: turn them into `?? path`.
+[[rules]]
+type = "truncate_match"
+pattern = "^\\t(.+)$"
+replace = "?? $1"
+
+# Truncate git commit's "[branch SHA] subject" — SHA already short, but
+# repeated commit refs in `git log --all` output are noise; this leaves
+# them alone and instead targets the `... files changed` summary's whitespace.
+[[rules]]
+type = "truncate_match"
+pattern = "^ (\\d+) files? changed, (\\d+) insertions?\\(\\+\\), (\\d+) deletions?\\(-\\)"
+replace = " $1f +$2 -$3"
+
+[[rules]]
+type = "truncate_match"
+pattern = "^ (\\d+) files? changed, (\\d+) insertions?\\(\\+\\)"
+replace = " $1f +$2"
+
+[[rules]]
+type = "truncate_match"
+pattern = "^ (\\d+) files? changed, (\\d+) deletions?\\(-\\)"
+replace = " $1f -$2"
+
+# ---------- `git show` commit-header (subcommands "show", "log") ----------
+
+# `commit <40-hex-sha> (refs)` — keep only the short SHA.
+[[rules]]
+type = "truncate_match"
+pattern = "^commit ([0-9a-f]{7})[0-9a-f]+(.*)$"
+replace = "commit $1$2"
+
+# `Author: Name <email>` and `Date:   ...` — drop, rarely useful to LLM.
+[[rules]]
+type = "suppress_regex"
+pattern = "^Author: "
+[[rules]]
+type = "suppress_regex"
+pattern = "^Date:   "
+
+# Indented commit message body (4-space prefix). Keep first 2 lines
+# (subject + first body line); collapse the rest. Long PR descriptions
+# and Co-Authored-By blocks live here.
+[[rules]]
+type = "collapse_run"
+pattern = "^    "
+keep_first = 2
+
+# `index abc..def 100644` lines — rarely useful for review
+[[rules]]
+type = "suppress_regex"
+pattern = "^index [0-9a-f]+\\.\\.[0-9a-f]+"
+
+# `\\ No newline at end of file` notices
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\\\ No newline at end of file"
+
+# Long unchanged context blocks: keep first context line per run.
+[[rules]]
+type = "collapse_run"
+pattern = "^ "
+keep_first = 1
+
+# `@@ -123,5 +130,8 @@ context` — drop trailing context hint, keep numbers.
+[[rules]]
+type = "truncate_match"
+pattern = "^(@@ -\\d+(,\\d+)? \\+\\d+(,\\d+)? @@) .+"
+replace = "$1"
+
+# similarity / dissimilarity index — rename arrow already conveys it.
+[[rules]]
+type = "suppress_regex"
+pattern = "^similarity index \\d+%"
+[[rules]]
+type = "suppress_regex"
+pattern = "^dissimilarity index"
+
+# Defensive line cap. Generated diffs and merge-conflict markers can
+# produce arbitrarily long lines that survive earlier rules.
+[[rules]]
+type = "truncate_long"
+max_len = 200

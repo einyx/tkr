@@ -1,0 +1,14 @@
+command = "ip"
+subcommands = ["a", "addr", "link"]
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s+inet6 fe80::"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s+valid_lft "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s+link/(loopback|ether) "

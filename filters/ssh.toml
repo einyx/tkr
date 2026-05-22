@@ -1,0 +1,17 @@
+command = "ssh"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Welcome to "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Last login: "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^The programs included with"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^the exact distribution terms"

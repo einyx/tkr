@@ -1,0 +1,17 @@
+command = "skaffold"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Generating tags"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Checking cache"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^- Found Locally$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Tags used in deployment"

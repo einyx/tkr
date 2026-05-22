@@ -1,0 +1,17 @@
+command = "mix"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^==> "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Compiling \\d+ files? \\("
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Generated "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Resolving Hex dependencies"

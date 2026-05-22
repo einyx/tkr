@@ -1,0 +1,37 @@
+command = "apt"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Reading package lists"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Building dependency tree"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Reading state information"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Get:\\d+ "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Hit:\\d+ "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Fetched \\d+ "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Selecting previously unselected"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Setting up "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Processing triggers for"

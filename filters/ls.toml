@@ -1,0 +1,85 @@
+command = "ls"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*$"
+
+# `ls -l` / `ls -la` emit a `total N` header — pure noise.
+[[rules]]
+type = "suppress_regex"
+pattern = "^total \\d+$"
+
+# Long `ls` listings often emit large runs of structurally similar entries
+# (cache dirs, numbered build artifacts, dependency trees). Keep the first few
+# rows of a repeated shape and suppress the rest.
+[[rules]]
+type = "collapse_common_prefix"
+prefix_len = 16
+keep_first = 4
+
+# Compress `ls -l` / `ls -la` long-form metadata.
+#
+# A typical line looks like:
+#   -rw-rw-r--  1 alessio alessio 142511 May  1 14:56 Cargo.lock
+#    └─mode──┘ └nl┘ └─owner──┘ └─group─┘ └size─┘ └───date────┘ └name┘
+#
+# nlink + owner + group are boilerplate the LLM rarely needs.
+# TODO(you): write a `truncate_match` rule that drops them.
+#
+# Decide which columns to keep — see the table in chat. Recommended: keep
+# mode + size + date + name; drop nlink + owner + group.
+#
+# Hints:
+#   - mode is 10 chars from [dlcbps-rwxsStT]
+#   - nlink is one or more digits
+#   - owner / group are non-whitespace tokens
+#   - size is digits
+#   - date is `<Mon> <D> <HH:MM-or-YYYY>` — three whitespace-separated tokens
+#   - use `\s+` between fields, capture groups for what you keep,
+#     and reference them in `replace` as `$1`, `$2`, ...
+#
+# Drop noisy entries (caches, build outputs, vendored deps) — the LLM almost
+# never needs to know they exist. Each pattern matches the entry at end of
+# line so it works for `ls -1`, `ls -la`, and `ls -l` rows. Multi-column `ls`
+# isn't covered — use `ls -1` or `ls -la` for LLM contexts.
+#
+# These run BEFORE the truncate_match below, since first-match-wins.
+[[rules]]
+type = "suppress_regex"
+pattern = "(^|\\s)(node_modules|target|dist|build|coverage|vendor|venv|htmlcov)/?$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "(^|\\s)\\.(git|next|cache|venv|tox|nyc_output|pytest_cache|mypy_cache|ruff_cache|gradle|idea|vscode|eggs)/?$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "(^|\\s)(__pycache__|buck-out)/?$"
+
+# Python egg-info packaging dirs (`mypkg.egg-info`).
+[[rules]]
+type = "suppress_regex"
+pattern = "(^|\\s)\\S+\\.egg-info/?$"
+
+[[rules]]
+type = "truncate_match"
+pattern = '^([dlcbps-][rwxsStT-]{9})\s+\d+\s+\S+\s+\S+\s+(\d+)\s+(\S+\s+\S+\s+\S+)\s+(.+)$'
+replace = "$1 $2 $3 $4"
+
+# Bucket survivors by extension so a directory full of similar files
+# (e.g. 200 .png assets, 80 .rs files) collapses into a per-extension
+# summary rather than a wall of names. cap_per_key=4 keeps a few
+# representative names per bucket so the LLM still sees the shape.
+[[rules]]
+type = "group_by_capture"
+pattern = "^.*\\.([a-zA-Z0-9]{1,8})$"
+key_capture = 1
+cap_per_key = 4
+total_cap = 60
+header = "files by extension:"
+
+# Defensive line cap. Color-escaped paths and pathologically long names
+# survive the field truncation above.
+[[rules]]
+type = "truncate_long"
+max_len = 200

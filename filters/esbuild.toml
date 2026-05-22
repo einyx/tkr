@@ -1,0 +1,9 @@
+command = "esbuild"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s+\\S+\\.\\S+\\s+\\d+\\.\\d+\\s*[KM]?B$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^⚡ Done in"

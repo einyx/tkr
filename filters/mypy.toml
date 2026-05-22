@@ -1,0 +1,9 @@
+command = "mypy"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Success: no issues found"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Found \\d+ errors? in \\d+ files?"

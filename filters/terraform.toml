@@ -1,0 +1,40 @@
+command = "terraform"
+
+# Repetitive "Refreshing state... [id=...]" spam during plan/apply
+[[rules]]
+type = "suppress_regex"
+pattern = ": Refreshing state\\.\\.\\. "
+
+[[rules]]
+type = "suppress_regex"
+pattern = ": Reading\\.\\.\\."
+
+[[rules]]
+type = "suppress_regex"
+pattern = ": Read complete after "
+
+# Provider download chatter
+[[rules]]
+type = "suppress_regex"
+pattern = "^- Installing "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^- Installed "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^- Downloading "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^- Finding "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^- Using previously-installed "
+
+# Defensive cap for long resource attribute lines in plan output.
+[[rules]]
+type = "truncate_long"
+max_len = 240

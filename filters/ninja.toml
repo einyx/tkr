@@ -1,0 +1,13 @@
+command = "ninja"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\[\\d+/\\d+\\] "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^ninja: no work to do\\."
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^ninja: Entering directory"

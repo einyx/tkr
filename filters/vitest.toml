@@ -1,0 +1,29 @@
+command = "vitest"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*✓ "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*✔ "
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*RUN  v"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Test Files\\s+\\d+ passed"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Tests\\s+\\d+ passed"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Duration\\s+"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\s*Start at\\s+"

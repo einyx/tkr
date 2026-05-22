@@ -1,0 +1,81 @@
+command = "docker"
+subcommands = ["build", "pull", "push", "logs", "ps", "compose"]
+
+# Layer pull/push progress bar updates
+[[rules]]
+type = "suppress_regex"
+pattern = ": Pulling fs layer$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = ": Pull complete$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = ": Verifying Checksum$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = ": Download complete$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = ": Waiting$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = ": Preparing$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = ": Layer already exists$"
+
+# BuildKit step decoration
+[[rules]]
+type = "suppress_regex"
+pattern = "^#\\d+ DONE \\d"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^#\\d+ CACHED$"
+
+# BuildKit "transferring context" / "transferring dockerfile" lines.
+[[rules]]
+type = "suppress_regex"
+pattern = "^#\\d+ transferring "
+
+# `docker pull <ref>: digest:` line — the digest blob is rarely useful.
+[[rules]]
+type = "truncate_match"
+pattern = "^Digest: sha256:[0-9a-f]{8}[0-9a-f]{56}$"
+replace = "Digest: sha256:$1"
+
+# `docker logs` from common app frameworks: drop time-stamped INFO lines
+# that account for the bulk of routine logging. Keep WARN / ERROR / FATAL.
+# Pattern matches ISO timestamps + level prefix.
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}[.,]?\\d* +\\[?(INFO|DEBUG|TRACE)\\]?"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\[\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}[.,]?\\d*\\] +(INFO|DEBUG|TRACE)"
+
+# Common access-log noise: 200 OK lines (everything from nginx/caddy/express
+# logging "GET /foo 200 in 5ms"). Keep 4xx/5xx since they signal trouble.
+[[rules]]
+type = "suppress_regex"
+pattern = " (HTTP/[0-9.]+\" )?2\\d\\d ([0-9]+ )?\\d+(\\.\\d+)?\\s*(ms|µs|s)?$"
+
+# Aggregate repeated log/event lines by their leading "level + msg"
+# signature (after a timestamp). Captures up to the first 80 chars of
+# the line as the dedup key.
+[[rules]]
+type = "dedup_with_count"
+pattern = "^(.{1,80})"
+key_capture = 1
+
+# Defensive line cap. JSON-formatted log lines from compose can be very long.
+[[rules]]
+type = "truncate_long"
+max_len = 240

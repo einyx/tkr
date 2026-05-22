@@ -1,0 +1,17 @@
+command = "psql"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^Type:\\s"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^psql \\(\\d+"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^SSL connection \\("
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^You are now connected to database"

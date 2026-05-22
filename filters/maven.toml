@@ -1,0 +1,41 @@
+command = "mvn"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\[INFO\\] Downloading"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\[INFO\\] Downloaded"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\[INFO\\] -+$"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\[INFO\\] $"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\[INFO\\] Scanning for projects"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\[INFO\\] (Building|Reactor|---)"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\[INFO\\] BUILD SUCCESS"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\[INFO\\] Total time:"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\[INFO\\] Finished at:"
+
+[[rules]]
+type = "suppress_regex"
+pattern = "^\\[INFO\\] (Compiling|Tests run:)"
