@@ -264,7 +264,11 @@ fn call_read_smart(args: &Value) -> Result<String> {
         .and_then(|v| v.as_u64())
         .map(|n| n as usize)
         .unwrap_or(8);
-    index_backed::try_read_smart(question, &root, limit)?
+    let verbose = args
+        .get("verbose")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    index_backed::try_read_smart(question, &root, limit, verbose)?
         .ok_or_else(|| anyhow::anyhow!("no index at {}; run tkr_index_build first", root.display()))
 }
 

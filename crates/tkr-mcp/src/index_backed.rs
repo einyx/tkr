@@ -496,7 +496,12 @@ fn render_path(
 /// `Read` with the line ranges if they want more.
 ///
 /// Returns Ok(None) if no index exists.
-pub fn try_read_smart(question: &str, root: &Path, limit: usize) -> Result<Option<String>> {
+pub fn try_read_smart(
+    question: &str,
+    root: &Path,
+    limit: usize,
+    verbose: bool,
+) -> Result<Option<String>> {
     if !index_path(root).exists() {
         return Ok(None);
     }
@@ -544,15 +549,31 @@ pub fn try_read_smart(question: &str, root: &Path, limit: usize) -> Result<Optio
         if rows.is_empty() {
             return Ok(Some(format!("{label}\n(no matches)\n")));
         }
+        // Terse by default: drop the `sig` column. Caller opts in to it.
+        // For TOON the column count savings is even more material because
+        // empty sig cells still occupy a tab position.
+        if verbose {
+            let toon_rows: Vec<Vec<String>> = rows
+                .into_iter()
+                .map(|(kind, sname, sig, path, a, b, _)| {
+                    vec![kind, sname, path, a.to_string(), b.to_string(), sig]
+                })
+                .collect();
+            return Ok(Some(toon::table(
+                &label,
+                &["kind", "name", "path", "start", "end", "sig"],
+                &toon_rows,
+            )));
+        }
         let toon_rows: Vec<Vec<String>> = rows
             .into_iter()
-            .map(|(kind, sname, sig, path, a, b, _)| {
-                vec![kind, sname, path, a.to_string(), b.to_string(), sig]
+            .map(|(kind, sname, _sig, path, a, b, _)| {
+                vec![kind, sname, path, a.to_string(), b.to_string()]
             })
             .collect();
         return Ok(Some(toon::table(
             &label,
-            &["kind", "name", "path", "start", "end", "sig"],
+            &["kind", "name", "path", "start", "end"],
             &toon_rows,
         )));
     }
@@ -566,9 +587,15 @@ pub fn try_read_smart(question: &str, root: &Path, limit: usize) -> Result<Optio
         out.push_str("(none — try different keywords)\n");
         return Ok(Some(out));
     }
-    // One block per hit; no blank-line separators. Signature, when present,
-    // is on the next line indented two spaces. Path-dedup applies the same
-    // heuristic as find_symbol.
+    // One block per hit; no blank-line separators. Path-dedup applies the
+    // same heuristic as find_symbol.
+    //
+    // Signatures are opt-in (`verbose=true`). Default-off because in a real
+    // agent flow read_smart is the "find candidate locations" tool — bodies
+    // come from a follow-up `tkr_signature` or `Read`. Including signatures
+    // on every read_smart turn was the dominant per-call cost in the bench
+    // (974 B/call). Dropping them by default cuts that ~40-50% on real repos.
+    //
     // The didactic "use native Read with offset/limit" hint was dropped: an
     // agent already on a `tkr_read_smart` tool call knows how to read a file
     // by line range.
@@ -578,14 +605,14 @@ pub fn try_read_smart(question: &str, root: &Path, limit: usize) -> Result<Optio
         for (kind, sname, sig, path, a, b, _) in &rows {
             let id = ids[path.as_str()];
             out.push_str(&format!("{kind} {sname} @{id}:{a}-{b}\n"));
-            if !sig.is_empty() {
+            if verbose && !sig.is_empty() {
                 out.push_str(&format!("  {sig}\n"));
             }
         }
     } else {
         for (kind, sname, sig, path, a, b, _) in rows {
             out.push_str(&format!("{kind} {sname} {path}:{a}-{b}\n"));
-            if !sig.is_empty() {
+            if verbose && !sig.is_empty() {
                 out.push_str(&format!("  {sig}\n"));
             }
         }
@@ -730,6 +757,50 @@ fn unrelated() { println!("not in chain"); }
         assert!(!out.contains("@P\n"), "no dedup expected for single hit:\n{out}");
     }
 
+    #[test]
+    fn read_smart_verbose_flag_toggles_signatures() {
+        // Need multi-char names: read_smart's FTS tokenizer drops tokens
+        // shorter than 2 chars. The three_hop fixture uses `a`/`b`/`c`/`d`
+        // which would be filtered out.
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("verbose_fixture.rs");
+        fs::write(
+            &src,
+            "fn parse_query(input: &str) -> Vec<String> { vec![] }\n\
+             fn build_query(tokens: &[String]) -> String { String::new() }\n",
+        )
+        .unwrap();
+        let mut db = IndexDb::open(dir.path()).unwrap();
+        db.index_file(&src).unwrap();
+
+        let terse = try_read_smart("parse_query", dir.path(), 5, false)
+            .unwrap()
+            .unwrap();
+        let verbose = try_read_smart("parse_query", dir.path(), 5, true)
+            .unwrap()
+            .unwrap();
+
+        assert!(
+            verbose.len() > terse.len(),
+            "verbose should include extra signature lines:\nterse:\n{terse}\nverbose:\n{verbose}"
+        );
+        assert!(
+            terse.contains("parse_query"),
+            "terse output missing symbol:\n{terse}"
+        );
+        // Signature should appear only in verbose mode. The parsed signature
+        // for a Rust fn includes the parameter list, so `&str` is a good
+        // signature-only marker (it's never in the kind/name/path fields).
+        assert!(
+            !terse.contains("&str"),
+            "terse mode should not include signature:\n{terse}"
+        );
+        assert!(
+            verbose.contains("&str"),
+            "verbose mode should include signature:\n{verbose}"
+        );
+    }
+
     /// Measure the actual byte savings from path-dedup so future shape
     /// changes can be eyeballed against this number. Prints to stdout under
     /// `cargo test -- --nocapture` for spot-checking.
@@ -831,7 +902,7 @@ fn unrelated() { println!("not in chain"); }
         );
 
         // read_smart on a phrase that should hit `function a`.
-        let rs_out = try_read_smart("a", dir.path(), 5).unwrap().unwrap();
+        let rs_out = try_read_smart("a", dir.path(), 5, false).unwrap().unwrap();
         assert!(
             !rs_out.contains("hint:"),
             "read_smart still emits hint footer:\n{rs_out}"

@@ -220,13 +220,14 @@ pub fn tools_catalog() -> Value {
             },
             {
                 "name": "tkr_read_smart",
-                "description": "Ranked search across all indexed symbols using a natural-language question. Returns the top-K matching symbols with location + signature, NOT the full file contents. Designed to replace 'Read whole file to find the relevant part' with 'jump straight to the relevant ranges'. Requires tkr_index_build to have run.",
+                "description": "Ranked search across all indexed symbols using a natural-language question. Default output is terse: kind/name/location only (NOT the signature, NOT the file contents). For 'find the relevant part' triage, that's enough — follow up with tkr_signature for shape or native Read with the line range for body. Pass verbose=true to inline signatures. Requires tkr_index_build to have run.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "question": { "type": "string", "description": "Free-form question or keywords." },
                         "root": { "type": "string", "description": "Repo root. Defaults to CWD." },
-                        "limit": { "type": "integer", "minimum": 1, "maximum": 50, "description": "Max symbols returned. Default 8." }
+                        "limit": { "type": "integer", "minimum": 1, "maximum": 50, "description": "Max symbols returned. Default 8." },
+                        "verbose": { "type": "boolean", "description": "Include the per-symbol signature line. Default false — terse output saves ~40% on real repos. Set true when you specifically need the shape of each hit, not just its location." }
                     },
                     "required": ["question"]
                 }

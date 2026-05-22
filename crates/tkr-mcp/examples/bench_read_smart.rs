@@ -26,7 +26,7 @@ fn main() -> anyhow::Result<()> {
     let mut total_naive = 0usize;
     let mut total_smart = 0usize;
     for q in &questions {
-        let smart = index_backed::try_read_smart(q, &root, 8)?.unwrap_or_default();
+        let smart = index_backed::try_read_smart(q, &root, 8, false)?.unwrap_or_default();
         // Naive baseline: every file under root that contains any keyword,
         // read in full. (Mirrors "Grep then Read" without the Grep filter.)
         let tokens: Vec<String> = q

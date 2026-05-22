@@ -97,7 +97,7 @@ fn main() -> anyhow::Result<()> {
     // read_smart
     let mut bytes = 0usize;
     for question in &q.read_smarts {
-        if let Some(out) = index_backed::try_read_smart(question, &root, 8)? {
+        if let Some(out) = index_backed::try_read_smart(question, &root, 8, false)? {
             bytes += out.len();
         }
     }
