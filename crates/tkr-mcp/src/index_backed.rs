@@ -13,6 +13,36 @@ use tkr_index::IndexDb;
 
 use crate::toon;
 
+/// If the row set has enough size + repetition to benefit from path
+/// deduplication, returns a path-table block (`@P` header + numbered list)
+/// and a map from path to short ID. Callers substitute `@<id>` for the path
+/// in each row.
+///
+/// Threshold: at least 3 rows AND at least one path repeats. Below that the
+/// table's own overhead exceeds the inlined repetition.
+fn maybe_path_table<'a>(
+    paths: &'a [&str],
+) -> Option<(String, HashMap<&'a str, usize>)> {
+    if paths.len() < 3 {
+        return None;
+    }
+    let unique = paths.iter().collect::<HashSet<&&str>>().len();
+    if unique == paths.len() {
+        return None; // every path distinct — header would lose
+    }
+    let mut id_of: HashMap<&str, usize> = HashMap::new();
+    let mut next = 1usize;
+    let mut table = String::from("@P\n");
+    for p in paths {
+        if !id_of.contains_key(*p) {
+            id_of.insert(*p, next);
+            table.push_str(&format!("  {next} {p}\n"));
+            next += 1;
+        }
+    }
+    Some((table, id_of))
+}
+
 fn index_path(root: &Path) -> PathBuf {
     root.join(".tkr").join("index.sqlite")
 }
@@ -127,10 +157,21 @@ pub fn try_find_symbol(name: &str, root: &Path) -> Result<Option<String>> {
     out.push_str(&format!("find_symbol {:?} ({} hits)\n", name, rows.len()));
     if rows.is_empty() {
         out.push_str("(none — rebuild index if files changed)\n");
+        return Ok(Some(out));
+    }
+    // No wide padding: aligned columns burn ~30 chars per row to no
+    // benefit when the consumer is an LLM tokenizer, not a human eye.
+    // Path-dedup: when a path repeats across rows, emit it once at the top
+    // and reference by `@N`. See `maybe_path_table` for the heuristic.
+    let paths: Vec<&str> = rows.iter().map(|r| r.2.as_str()).collect();
+    if let Some((table, ids)) = maybe_path_table(&paths) {
+        out.push_str(&table);
+        for (kind, sname, path, a, b) in &rows {
+            let id = ids[path.as_str()];
+            out.push_str(&format!("{kind} {sname} @{id}:{a}-{b}\n"));
+        }
     } else {
         for (kind, sname, path, a, b) in rows {
-            // No wide padding: aligned columns burn ~30 chars per row to no
-            // benefit when the consumer is an LLM tokenizer, not a human eye.
             out.push_str(&format!("{kind} {sname} {path}:{a}-{b}\n"));
         }
     }
@@ -167,10 +208,22 @@ pub fn try_signature(name: &str, root: &Path) -> Result<Option<String>> {
     out.push_str(&format!("signature {:?} ({} hits)\n", name, rows.len()));
     if rows.is_empty() {
         out.push_str("(none)\n");
+        return Ok(Some(out));
+    }
+    // One line per hit when sig is empty; two when present. Indent dropped:
+    // the relationship is structural, not visual. Path-dedup as elsewhere.
+    let paths: Vec<&str> = rows.iter().map(|r| r.3.as_str()).collect();
+    if let Some((table, ids)) = maybe_path_table(&paths) {
+        out.push_str(&table);
+        for (kind, sname, sig, path, a, b) in &rows {
+            let id = ids[path.as_str()];
+            out.push_str(&format!("{kind} {sname} @{id}:{a}-{b}\n"));
+            if !sig.is_empty() {
+                out.push_str(&format!("  {sig}\n"));
+            }
+        }
     } else {
         for (kind, sname, sig, path, a, b) in rows {
-            // One line per hit when sig is empty; two when present. Indent
-            // dropped: the relationship is structural, not visual.
             out.push_str(&format!("{kind} {sname} {path}:{a}-{b}\n"));
             if !sig.is_empty() {
                 out.push_str(&format!("  {sig}\n"));
@@ -219,6 +272,15 @@ pub fn try_callers_of(name: &str, root: &Path) -> Result<Option<String>> {
     out.push_str(&format!("callers_of {:?} ({} call sites)\n", name, rows.len()));
     if rows.is_empty() {
         out.push_str("(none)\n");
+        return Ok(Some(out));
+    }
+    let paths: Vec<&str> = rows.iter().map(|r| r.2.as_str()).collect();
+    if let Some((table, ids)) = maybe_path_table(&paths) {
+        out.push_str(&table);
+        for (kind, sname, path, line) in &rows {
+            let id = ids[path.as_str()];
+            out.push_str(&format!("{kind} {sname} @{id}:{line}\n"));
+        }
     } else {
         for (kind, sname, path, line) in rows {
             out.push_str(&format!("{kind} {sname} {path}:{line}\n"));
@@ -502,18 +564,31 @@ pub fn try_read_smart(question: &str, root: &Path, limit: usize) -> Result<Optio
     ));
     if rows.is_empty() {
         out.push_str("(none — try different keywords)\n");
+        return Ok(Some(out));
+    }
+    // One block per hit; no blank-line separators. Signature, when present,
+    // is on the next line indented two spaces. Path-dedup applies the same
+    // heuristic as find_symbol.
+    // The didactic "use native Read with offset/limit" hint was dropped: an
+    // agent already on a `tkr_read_smart` tool call knows how to read a file
+    // by line range.
+    let paths: Vec<&str> = rows.iter().map(|r| r.3.as_str()).collect();
+    if let Some((table, ids)) = maybe_path_table(&paths) {
+        out.push_str(&table);
+        for (kind, sname, sig, path, a, b, _) in &rows {
+            let id = ids[path.as_str()];
+            out.push_str(&format!("{kind} {sname} @{id}:{a}-{b}\n"));
+            if !sig.is_empty() {
+                out.push_str(&format!("  {sig}\n"));
+            }
+        }
     } else {
         for (kind, sname, sig, path, a, b, _) in rows {
-            // One block per hit; no blank-line separators. Signature, when
-            // present, is on the next line indented two spaces.
             out.push_str(&format!("{kind} {sname} {path}:{a}-{b}\n"));
             if !sig.is_empty() {
                 out.push_str(&format!("  {sig}\n"));
             }
         }
-        // The didactic "use native Read with offset/limit" hint was dropped:
-        // an agent already on a `tkr_read_smart` tool call knows how to read
-        // a file by line range. Saving ~70 bytes per response.
     }
     Ok(Some(out))
 }
@@ -604,6 +679,116 @@ fn unrelated() { println!("not in chain"); }
         let dir = tempdir().unwrap();
         let out = try_call_path("a", "b", 4, dir.path()).unwrap();
         assert!(out.is_none());
+    }
+
+    /// Fixture: multi-file repo where the same name (`Helper`) appears in
+    /// several files, forcing repeat-path scenarios for find_symbol.
+    fn multi_file_repo_with_repeats() -> tempfile::TempDir {
+        let dir = tempdir().unwrap();
+        // Two files, each defining `Helper` twice — guarantees ≥3 rows with
+        // repeated paths.
+        fs::write(
+            dir.path().join("alpha.rs"),
+            "fn Helper() {}\nfn Helper_v2() {}\nfn Helper() {}\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join("beta.rs"),
+            "fn Helper() {}\nfn other() {}\nfn Helper() {}\n",
+        )
+        .unwrap();
+        let mut db = IndexDb::open(dir.path()).unwrap();
+        db.index_file(&dir.path().join("alpha.rs")).unwrap();
+        db.index_file(&dir.path().join("beta.rs")).unwrap();
+        dir
+    }
+
+    #[test]
+    fn path_dedup_kicks_in_when_paths_repeat() {
+        let dir = multi_file_repo_with_repeats();
+        let out = try_find_symbol("Helper", dir.path()).unwrap().unwrap();
+        // Header marker `@P` must be present and each path appears exactly
+        // once after the marker (in the table) and zero times outside.
+        assert!(out.contains("@P\n"), "expected path table header:\n{out}");
+        assert!(
+            out.contains("@1:") && out.contains("@2:"),
+            "expected at least two path IDs in rows:\n{out}"
+        );
+        // Each unique path appears exactly once in the entire output (in
+        // the path table only).
+        let alpha_count = out.matches("alpha.rs").count();
+        let beta_count = out.matches("beta.rs").count();
+        assert_eq!(alpha_count, 1, "alpha.rs should appear once (path table), got {alpha_count}:\n{out}");
+        assert_eq!(beta_count, 1, "beta.rs should appear once (path table), got {beta_count}:\n{out}");
+    }
+
+    #[test]
+    fn path_dedup_skipped_when_all_paths_unique() {
+        let dir = three_hop_repo();
+        // find_symbol "b" returns one row → below 3-row threshold, no dedup.
+        let out = try_find_symbol("b", dir.path()).unwrap().unwrap();
+        assert!(!out.contains("@P\n"), "no dedup expected for single hit:\n{out}");
+    }
+
+    /// Measure the actual byte savings from path-dedup so future shape
+    /// changes can be eyeballed against this number. Prints to stdout under
+    /// `cargo test -- --nocapture` for spot-checking.
+    #[test]
+    fn path_dedup_byte_savings_are_real() {
+        let dir = multi_file_repo_with_repeats();
+        let out = try_find_symbol("Helper", dir.path()).unwrap().unwrap();
+        // Estimate the un-deduped length: replace each `@N:` back to the
+        // path it refers to and add the saved path-table block back.
+        let mut id_to_path: HashMap<usize, String> = HashMap::new();
+        for line in out.lines() {
+            // Path-table rows look like `  N /full/path`. Pick them out.
+            let trimmed = line.trim_start();
+            if let Some((id_str, rest)) = trimmed.split_once(' ') {
+                if let Ok(id) = id_str.parse::<usize>() {
+                    if line.starts_with("  ") {
+                        id_to_path.insert(id, rest.to_string());
+                    }
+                }
+            }
+        }
+        assert!(
+            !id_to_path.is_empty(),
+            "expected to parse at least one path from the table:\n{out}"
+        );
+        // Reconstruct the inline-only form by replacing `@N` with the path.
+        let mut inline_form = String::new();
+        for line in out.lines() {
+            // Drop the @P header + its table rows from the reconstructed form.
+            let t = line.trim_start();
+            if line == "@P" {
+                continue;
+            }
+            if t.split_once(' ').and_then(|(s, _)| s.parse::<usize>().ok()).is_some()
+                && line.starts_with("  ")
+            {
+                continue;
+            }
+            // Substitute @N: → /full/path: in row lines.
+            let mut replaced = line.to_string();
+            for (id, p) in &id_to_path {
+                replaced = replaced.replace(&format!("@{id}:"), &format!("{p}:"));
+            }
+            inline_form.push_str(&replaced);
+            inline_form.push('\n');
+        }
+        let saved = inline_form.len().saturating_sub(out.len());
+        // For 4-row response with 2 long temp paths, expect >= a few dozen
+        // bytes saved. Loose threshold to keep test stable across machines.
+        assert!(
+            saved >= 20,
+            "expected ≥20 bytes saved, got {saved} (inline={}, dedup={}):\n=== inline ===\n{inline_form}\n=== dedup ===\n{out}",
+            inline_form.len(),
+            out.len()
+        );
+        eprintln!(
+            "path_dedup saved {saved} bytes ({:.0}%) on find_symbol fixture",
+            (saved as f64 / inline_form.len() as f64) * 100.0
+        );
     }
 
     /// Pin the tightened response shapes. These bytes-per-hit budgets are
