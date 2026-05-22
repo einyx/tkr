@@ -1,31 +1,52 @@
 use serde_json::json;
-use std::io::Write;
-use std::os::unix::net::UnixStream;
+#[cfg(unix)]
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(unix)]
+use std::io::Write;
+#[cfg(unix)]
+use std::os::unix::net::UnixStream;
+
+/// Live session events for `tkr watch` (Unix domain socket). No-op on Windows.
 #[derive(Clone)]
 pub struct Session {
+    #[cfg(unix)]
     inner: Arc<Mutex<Option<UnixStream>>>,
 }
 
 impl Session {
     pub fn connect(path: &str) -> Self {
-        let stream = UnixStream::connect(path).ok();
-        Self {
-            inner: Arc::new(Mutex::new(stream)),
+        #[cfg(unix)]
+        {
+            let stream = UnixStream::connect(path).ok();
+            Self {
+                inner: Arc::new(Mutex::new(stream)),
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = path;
+            Self {}
         }
     }
 
     pub fn emit(&self, event: serde_json::Value) {
-        if let Ok(mut guard) = self.inner.lock() {
-            if let Some(ref mut stream) = *guard {
-                let mut line = event.to_string();
-                line.push('\n');
-                if stream.write_all(line.as_bytes()).is_err() {
-                    *guard = None;
+        #[cfg(unix)]
+        {
+            if let Ok(mut guard) = self.inner.lock() {
+                if let Some(ref mut stream) = *guard {
+                    let mut line = event.to_string();
+                    line.push('\n');
+                    if stream.write_all(line.as_bytes()).is_err() {
+                        *guard = None;
+                    }
                 }
             }
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = event;
         }
     }
 
