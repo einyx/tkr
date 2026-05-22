@@ -274,16 +274,56 @@ pub fn try_callers_of(name: &str, root: &Path) -> Result<Option<String>> {
         out.push_str("(none)\n");
         return Ok(Some(out));
     }
-    let paths: Vec<&str> = rows.iter().map(|r| r.2.as_str()).collect();
+    // Per-caller dedup: a single caller (`bar`) hitting `foo` at multiple
+    // lines used to emit one row per call site. Now we collapse to one row
+    // per (kind, caller-name, path) with a comma-separated line list — same
+    // pattern as tkr_callees_of (#20). Insertion order preserved so the
+    // output tracks the original ORDER BY f.path, r.line.
+    type CallerKey = (String, String, String); // (kind, sname, path)
+    let mut order: Vec<CallerKey> = Vec::new();
+    let mut lines_of: HashMap<CallerKey, Vec<i64>> = HashMap::new();
+    for (kind, sname, path, line) in rows {
+        let key = (kind, sname, path);
+        lines_of.entry(key.clone()).or_insert_with(|| {
+            order.push(key.clone());
+            Vec::new()
+        }).push(line);
+    }
+
+    // Path-dedup heuristic runs on the deduped row count, not raw call
+    // sites — that's the right shape for the threshold (≥3 rows + repeats).
+    const LINE_LIST_CAP: usize = 8;
+    let paths: Vec<&str> = order.iter().map(|k| k.2.as_str()).collect();
+    let render_lines = |lines: &[i64]| -> String {
+        if lines.len() == 1 {
+            lines[0].to_string()
+        } else if lines.len() <= LINE_LIST_CAP {
+            lines
+                .iter()
+                .map(|l| l.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        } else {
+            let head = lines[..LINE_LIST_CAP]
+                .iter()
+                .map(|l| l.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            let more = lines.len() - LINE_LIST_CAP;
+            format!("{head} (+{more} more)")
+        }
+    };
     if let Some((table, ids)) = maybe_path_table(&paths) {
         out.push_str(&table);
-        for (kind, sname, path, line) in &rows {
-            let id = ids[path.as_str()];
-            out.push_str(&format!("{kind} {sname} @{id}:{line}\n"));
+        for key in &order {
+            let id = ids[key.2.as_str()];
+            let ls = render_lines(&lines_of[key]);
+            out.push_str(&format!("{} {} @{}:{}\n", key.0, key.1, id, ls));
         }
     } else {
-        for (kind, sname, path, line) in rows {
-            out.push_str(&format!("{kind} {sname} {path}:{line}\n"));
+        for key in &order {
+            let ls = render_lines(&lines_of[key]);
+            out.push_str(&format!("{} {} {}:{}\n", key.0, key.1, key.2, ls));
         }
     }
     Ok(Some(out))
@@ -807,6 +847,56 @@ fn unrelated() { println!("not in chain"); }
         // find_symbol "b" returns one row → below 3-row threshold, no dedup.
         let out = try_find_symbol("b", dir.path()).unwrap().unwrap();
         assert!(!out.contains("@P\n"), "no dedup expected for single hit:\n{out}");
+    }
+
+    #[test]
+    fn callers_of_dedupes_repeated_call_sites() {
+        // Fixture: one caller (`bar`) invokes `target` at multiple lines.
+        // Pre-#22 this produced N duplicate `function bar path:line` rows;
+        // post-#22 it should be one row with a comma-separated line list.
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("repeat_caller.rs");
+        fs::write(
+            &src,
+            "fn target() -> u32 { 0 }\n\
+             fn other_caller() { target(); }\n\
+             fn bar() {\n    \
+             target();\n    \
+             target();\n    \
+             target();\n\
+             }\n",
+        )
+        .unwrap();
+        let mut db = IndexDb::open(dir.path()).unwrap();
+        db.index_file(&src).unwrap();
+
+        let out = try_callers_of("target", dir.path()).unwrap().unwrap();
+        // `bar` should appear on exactly one row (deduped), with comma list.
+        let bar_lines: Vec<&str> = out
+            .lines()
+            .filter(|l| l.contains(" bar "))
+            .collect();
+        assert_eq!(
+            bar_lines.len(),
+            1,
+            "expected exactly one deduped `bar` row:\n{out}"
+        );
+        assert!(
+            bar_lines[0].contains(','),
+            "expected comma-separated line list:\n{}\n{out}",
+            bar_lines[0]
+        );
+        // `other_caller` calls target once, no comma.
+        let other_lines: Vec<&str> = out
+            .lines()
+            .filter(|l| l.contains(" other_caller "))
+            .collect();
+        assert_eq!(other_lines.len(), 1);
+        assert!(
+            !other_lines[0].contains(','),
+            "single-call caller should not have comma list:\n{}",
+            other_lines[0]
+        );
     }
 
     #[test]
