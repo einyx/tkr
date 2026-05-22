@@ -5,7 +5,7 @@
 use anyhow::Result;
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::index_backed;
 use crate::jobs;
@@ -180,6 +180,31 @@ fn resolve_root(args: &Value) -> Result<PathBuf> {
     }
 }
 
+/// Run an index-backed query. If the index doesn't yet exist for this root,
+/// build it inline before retrying — drops the "run tkr_index_build first"
+/// friction that real transcripts showed was a tool-adoption killer.
+///
+/// On first-call: prepends a one-time `[tkr: built index in Ns]\n` line so
+/// the agent can attribute the latency. Subsequent calls hit the cached
+/// index normally and pay no overhead.
+fn with_auto_index<F>(root: &PathBuf, f: F) -> Result<String>
+where
+    F: Fn(&Path) -> Result<Option<String>>,
+{
+    match f(root)? {
+        Some(out) => Ok(out),
+        None => {
+            let started = std::time::Instant::now();
+            let _ = index_backed::build(root)?;
+            let elapsed_ms = started.elapsed().as_millis();
+            let out = f(root)?.ok_or_else(|| {
+                anyhow::anyhow!("internal: index built but query still returned None")
+            })?;
+            Ok(format!("[tkr: built index in {elapsed_ms}ms]\n{out}"))
+        }
+    }
+}
+
 fn call_find_symbol(args: &Value) -> Result<String> {
     let name = args
         .get("name")
@@ -208,56 +233,58 @@ fn call_signature(args: &Value) -> Result<String> {
     let name = args
         .get("name")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow::anyhow!("missing 'name'"))?;
+        .ok_or_else(|| anyhow::anyhow!("missing 'name'"))?
+        .to_string();
     let root = resolve_root(args)?;
-    index_backed::try_signature(name, &root)?
-        .ok_or_else(|| anyhow::anyhow!("no index at {}; run tkr_index_build first", root.display()))
+    with_auto_index(&root, |r| index_backed::try_signature(&name, r))
 }
 
 fn call_callers_of(args: &Value) -> Result<String> {
     let name = args
         .get("name")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow::anyhow!("missing 'name'"))?;
+        .ok_or_else(|| anyhow::anyhow!("missing 'name'"))?
+        .to_string();
     let root = resolve_root(args)?;
-    index_backed::try_callers_of(name, &root)?
-        .ok_or_else(|| anyhow::anyhow!("no index at {}; run tkr_index_build first", root.display()))
+    with_auto_index(&root, |r| index_backed::try_callers_of(&name, r))
 }
 
 fn call_callees_of(args: &Value) -> Result<String> {
     let name = args
         .get("name")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow::anyhow!("missing 'name'"))?;
+        .ok_or_else(|| anyhow::anyhow!("missing 'name'"))?
+        .to_string();
     let root = resolve_root(args)?;
-    index_backed::try_callees_of(name, &root)?
-        .ok_or_else(|| anyhow::anyhow!("no index at {}; run tkr_index_build first", root.display()))
+    with_auto_index(&root, |r| index_backed::try_callees_of(&name, r))
 }
 
 fn call_call_path(args: &Value) -> Result<String> {
     let from = args
         .get("from")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow::anyhow!("missing 'from'"))?;
+        .ok_or_else(|| anyhow::anyhow!("missing 'from'"))?
+        .to_string();
     let to = args
         .get("to")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow::anyhow!("missing 'to'"))?;
+        .ok_or_else(|| anyhow::anyhow!("missing 'to'"))?
+        .to_string();
     let max_depth = args
         .get("max_depth")
         .and_then(|v| v.as_u64())
         .map(|n| n as usize)
         .unwrap_or(6);
     let root = resolve_root(args)?;
-    index_backed::try_call_path(from, to, max_depth, &root)?
-        .ok_or_else(|| anyhow::anyhow!("no index at {}; run tkr_index_build first", root.display()))
+    with_auto_index(&root, |r| index_backed::try_call_path(&from, &to, max_depth, r))
 }
 
 fn call_read_smart(args: &Value) -> Result<String> {
     let question = args
         .get("question")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow::anyhow!("missing 'question'"))?;
+        .ok_or_else(|| anyhow::anyhow!("missing 'question'"))?
+        .to_string();
     let root = resolve_root(args)?;
     let limit = args
         .get("limit")
@@ -268,8 +295,9 @@ fn call_read_smart(args: &Value) -> Result<String> {
         .get("verbose")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    index_backed::try_read_smart(question, &root, limit, verbose)?
-        .ok_or_else(|| anyhow::anyhow!("no index at {}; run tkr_index_build first", root.display()))
+    with_auto_index(&root, |r| {
+        index_backed::try_read_smart(&question, r, limit, verbose)
+    })
 }
 
 fn call_mesh_status(_args: &Value) -> Result<String> {
@@ -352,6 +380,47 @@ mod tests {
     fn parse_error_for_invalid_json() {
         let v = rpc("not-json");
         assert_eq!(v["error"]["code"], -32700);
+    }
+
+    #[test]
+    fn with_auto_index_builds_on_first_call() {
+        // Fresh temp repo: no .tkr/index.sqlite exists. After one call to
+        // an index-requiring tool, the index file should exist AND the
+        // response should carry the `[tkr: built index in Nms]` notice.
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("auto.rs");
+        std::fs::write(
+            &src,
+            "fn target() -> u32 { 0 }\nfn caller() { target(); }\n",
+        )
+        .unwrap();
+        let root_buf = dir.path().to_path_buf();
+
+        // No index file before the call.
+        assert!(!root_buf.join(".tkr").join("index.sqlite").exists());
+
+        let out = with_auto_index(&root_buf, |r| {
+            index_backed::try_callers_of("target", r)
+        })
+        .unwrap();
+
+        assert!(
+            out.starts_with("[tkr: built index in"),
+            "expected build notice, got:\n{out}"
+        );
+        assert!(
+            out.contains("caller"),
+            "expected the query result after the notice:\n{out}"
+        );
+        // Second call must NOT re-build (no notice).
+        let out2 = with_auto_index(&root_buf, |r| {
+            index_backed::try_callers_of("target", r)
+        })
+        .unwrap();
+        assert!(
+            !out2.starts_with("[tkr:"),
+            "second call should hit cached index (no notice), got:\n{out2}"
+        );
     }
 
     #[test]

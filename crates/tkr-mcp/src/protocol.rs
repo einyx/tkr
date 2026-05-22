@@ -102,7 +102,7 @@ pub fn tools_catalog() -> Value {
             },
             {
                 "name": "tkr_find_symbol",
-                "description": "USE INSTEAD OF `Grep` when you know the exact symbol name (function/struct/type/method). One indexed lookup returns every definition site in the repo at <100B per response. Native Grep on the same name typically returns 50-500× more bytes because it matches every call site, comment, and string literal too. Requires tkr_index_build to have run once.",
+                "description": "USE INSTEAD OF `Grep` when you know the exact symbol name (function/struct/type/method). One indexed lookup returns every definition site in the repo at <100B per response. Native Grep on the same name typically returns 50-500× more bytes because it matches every call site, comment, and string literal too. Falls back to a stateless scan if no index exists, so it works on any repo without setup.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -165,7 +165,7 @@ pub fn tools_catalog() -> Value {
             },
             {
                 "name": "tkr_callers_of",
-                "description": "USE INSTEAD OF `Grep \"\\bfoo\\(\"` when answering 'where is X called?'. Returns every call site of a symbol by name from the indexed refs table, grouped per caller with line lists. Name resolution is unqualified (matches any `foo()` regardless of module/receiver). Requires tkr_index_build.",
+                "description": "USE INSTEAD OF `Grep \"\\bfoo\\(\"` when answering 'where is X called?'. Returns every call site of a symbol by name from the indexed refs table, grouped per caller with line lists. Name resolution is unqualified (matches any `foo()` regardless of module/receiver). First call auto-builds the index (~1-5s on a normal repo); subsequent calls are instant.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -177,7 +177,7 @@ pub fn tools_catalog() -> Value {
             },
             {
                 "name": "tkr_callees_of",
-                "description": "USE INSTEAD OF reading a function's body to figure out 'what does X actually do?'. Returns the list of unresolved callees referenced inside the symbol, deduped with call-site line lists. Reading the body costs N×line-bytes; this is ~50B regardless of body size. Requires tkr_index_build.",
+                "description": "USE INSTEAD OF reading a function's body to figure out 'what does X actually do?'. Returns the list of unresolved callees referenced inside the symbol, deduped with call-site line lists. Reading the body costs N×line-bytes; this is ~50B regardless of body size. First call auto-builds the index (~1-5s on a normal repo); subsequent calls are instant.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -189,7 +189,7 @@ pub fn tools_catalog() -> Value {
             },
             {
                 "name": "tkr_call_path",
-                "description": "USE INSTEAD OF walking callees by hand for 'does X eventually reach Y?' questions. Shortest call-path between two symbols via BFS, bounded depth, cycle-safe. One call replaces ~depth × callees_of invocations. Returns the chain `from -> A -> B -> to` with per-hop lines, or 'no path'. Requires tkr_index_build.",
+                "description": "USE INSTEAD OF walking callees by hand for 'does X eventually reach Y?' questions. Shortest call-path between two symbols via BFS, bounded depth, cycle-safe. One call replaces ~depth × callees_of invocations. Returns the chain `from -> A -> B -> to` with per-hop lines, or 'no path'. First call auto-builds the index (~1-5s on a normal repo); subsequent calls are instant.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -208,7 +208,7 @@ pub fn tools_catalog() -> Value {
             },
             {
                 "name": "tkr_signature",
-                "description": "USE INSTEAD OF `Read` on a file just to see a function's signature. Returns kind + name + the one-line declaration + file:line. ~50B vs reading 500-5000B of file just to find the signature. Pairs with tkr_read_smart (which gives location, then this gives shape). Requires tkr_index_build.",
+                "description": "USE INSTEAD OF `Read` on a file just to see a function's signature. Returns kind + name + the one-line declaration + file:line. ~50B vs reading 500-5000B of file just to find the signature. Pairs with tkr_read_smart (which gives location, then this gives shape). First call auto-builds the index (~1-5s on a normal repo); subsequent calls are instant.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -220,7 +220,7 @@ pub fn tools_catalog() -> Value {
             },
             {
                 "name": "tkr_read_smart",
-                "description": "USE FIRST for 'where is X done in this codebase?' questions instead of guessing files. FTS-ranked symbol search via natural-language query. Returns the top-K best-matched symbols with kind/name/location — no bodies, no signatures by default. Then drill in: tkr_signature for shape, native Read with the line range for body. Pass verbose=true to inline signatures when you specifically need them. Requires tkr_index_build.",
+                "description": "USE FIRST for 'where is X done in this codebase?' questions instead of guessing files. FTS-ranked symbol search via natural-language query. Returns the top-K best-matched symbols with kind/name/location — no bodies, no signatures by default. Then drill in: tkr_signature for shape, native Read with the line range for body. Pass verbose=true to inline signatures when you specifically need them. First call auto-builds the index (~1-5s on a normal repo); subsequent calls are instant.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
