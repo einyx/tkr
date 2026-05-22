@@ -43,13 +43,35 @@ pub fn render_outline(path: &Path) -> Result<String> {
         _ => Vec::new(),
     };
 
+    // Kind elision: in most files, one kind (`function` in Rust, `def` in
+    // Python, etc.) dominates. Emitting it on every row costs ~9 chars × N
+    // for no info gained — the row position + name already communicate "a
+    // symbol here." Strategy: count kinds, pick the dominant one if it
+    // covers ≥3 symbols AND is at least half the total, name it in the
+    // header, then elide on matching rows. Non-default kinds stay labeled.
+    let mut counts: std::collections::HashMap<&'static str, usize> =
+        std::collections::HashMap::new();
+    for s in &symbols {
+        *counts.entry(s.kind).or_insert(0) += 1;
+    }
+    let default_kind: Option<&'static str> = counts
+        .iter()
+        .max_by_key(|(_, c)| *c)
+        .filter(|(_, c)| **c >= 3 && **c * 2 >= symbols.len())
+        .map(|(k, _)| *k);
+
     let mut out = String::new();
+    let default_tag = match default_kind {
+        Some(k) => format!(", default kind={k}"),
+        None => String::new(),
+    };
     out.push_str(&format!(
-        "outline {} ({}L {}B, {} symbols)\n",
+        "outline {} ({}L {}B, {} symbols{})\n",
         path.display(),
         total_lines,
         bytes.len(),
-        symbols.len()
+        symbols.len(),
+        default_tag,
     ));
     if symbols.is_empty() {
         // Fallback: header-only summary. Didactic Read-hint dropped (agents
@@ -65,12 +87,17 @@ pub fn render_outline(path: &Path) -> Result<String> {
     // No alignment padding: `{:<8}` + `{:<40}` was burning ~40 chars per row
     // for visual alignment that the consumer (an LLM) doesn't use. Single
     // space separators; `L{a}-{b}` collapsed to `{a}-{b}` since the column
-    // ordering already encodes "this is a line range".
+    // ordering already encodes "this is a line range". The kind column is
+    // elided when it matches the file's `default kind=` (see header).
     for s in &symbols {
-        out.push_str(&format!(
-            "{} {} {}-{}\n",
-            s.kind, s.name, s.start_line, s.end_line
-        ));
+        if default_kind == Some(s.kind) {
+            out.push_str(&format!("{} {}-{}\n", s.name, s.start_line, s.end_line));
+        } else {
+            out.push_str(&format!(
+                "{} {} {}-{}\n",
+                s.kind, s.name, s.start_line, s.end_line
+            ));
+        }
     }
     Ok(out)
 }
