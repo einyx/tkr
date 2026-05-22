@@ -323,21 +323,73 @@ pub fn try_callees_of(name: &str, root: &Path) -> Result<Option<String>> {
         out.push_str("(symbol not found in index)\n");
         return Ok(Some(out));
     }
-    // Group by symbol location. No blank-line separators between groups —
-    // structure is carried by indentation + the `->` prefix on callee lines.
-    let mut current: Option<(String, String, i64)> = None;
+    // Group by symbol location. Within each group, dedup callees by name and
+    // collect their call-site lines. A function that calls println!/clone/
+    // unwrap N times used to emit N duplicate lines; now it's one line with
+    // a comma-separated line list. Big win on hot patterns.
+    //
+    // No blank-line separators between groups — structure is carried by
+    // indentation + the `->` prefix on callee lines.
+    type GroupKey = (String, String, i64);
+    struct GroupData {
+        kind: String,
+        // Insertion-ordered: callee names keyed by first-occurrence order so
+        // the output ordering tracks source-code reading order (top-down),
+        // not alphabetical. Keeps the agent's mental model of "what does X
+        // do?" intact.
+        callees: Vec<String>,
+        lines: HashMap<String, Vec<i64>>,
+    }
+    let mut groups: Vec<GroupKey> = Vec::new();
+    let mut data: HashMap<GroupKey, GroupData> = HashMap::new();
     let mut any_call = false;
+
     for (kind, sname, path, lstart, callee, line) in rows {
         let key = (path.clone(), sname.clone(), lstart);
-        if current.as_ref() != Some(&key) {
-            out.push_str(&format!("{kind} {sname} {path}:{lstart}\n"));
-            current = Some(key);
-        }
+        let entry = data.entry(key.clone()).or_insert_with(|| {
+            groups.push(key.clone());
+            GroupData {
+                kind: kind.clone(),
+                callees: Vec::new(),
+                lines: HashMap::new(),
+            }
+        });
         if let (Some(c), Some(l)) = (callee, line) {
-            // Was `-> {c}  (L{l})`; tighten to `-> {c}:{l}` for consistency
-            // with the path:line format used everywhere else.
-            out.push_str(&format!("  -> {c}:{l}\n"));
+            if !entry.lines.contains_key(&c) {
+                entry.callees.push(c.clone());
+            }
+            entry.lines.entry(c).or_default().push(l);
             any_call = true;
+        }
+    }
+
+    // Render. Per-callee line cap = 8: hot helpers like println!/format!
+    // can be called 50+ times in a single function; uncapped lists would
+    // re-create the bloat we just eliminated.
+    const LINE_LIST_CAP: usize = 8;
+    for key in &groups {
+        let g = &data[key];
+        out.push_str(&format!("{} {} {}:{}\n", g.kind, key.1, key.0, key.2));
+        for c in &g.callees {
+            let lines = &g.lines[c];
+            if lines.len() == 1 {
+                out.push_str(&format!("  -> {}:{}\n", c, lines[0]));
+            } else if lines.len() <= LINE_LIST_CAP {
+                let joined = lines
+                    .iter()
+                    .map(|l| l.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",");
+                out.push_str(&format!("  -> {c}:{joined}\n"));
+            } else {
+                let head = lines[..LINE_LIST_CAP]
+                    .iter()
+                    .map(|l| l.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",");
+                let more = lines.len() - LINE_LIST_CAP;
+                out.push_str(&format!("  -> {c}:{head} (+{more} more)\n"));
+            }
         }
     }
     if !any_call {
@@ -755,6 +807,57 @@ fn unrelated() { println!("not in chain"); }
         // find_symbol "b" returns one row → below 3-row threshold, no dedup.
         let out = try_find_symbol("b", dir.path()).unwrap().unwrap();
         assert!(!out.contains("@P\n"), "no dedup expected for single hit:\n{out}");
+    }
+
+    #[test]
+    fn callees_of_dedupes_repeated_calls() {
+        // The tree-sitter Rust index captures call_expression nodes (regular
+        // function calls), not macro_invocation. So this fixture uses plain
+        // function calls — `helper` invoked four times + `other` once.
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("hot.rs");
+        fs::write(
+            &src,
+            "fn helper(x: u32) -> u32 { x + 1 }\n\
+             fn other() {}\n\
+             fn hot() {\n    \
+             helper(1);\n    \
+             helper(2);\n    \
+             helper(3);\n    \
+             helper(4);\n    \
+             other();\n\
+             }\n",
+        )
+        .unwrap();
+        let mut db = IndexDb::open(dir.path()).unwrap();
+        db.index_file(&src).unwrap();
+
+        let out = try_callees_of("hot", dir.path()).unwrap().unwrap();
+        // Each callee name appears exactly once on its own `->` line.
+        let helper_lines: Vec<&str> = out
+            .lines()
+            .filter(|l| l.contains("-> helper"))
+            .collect();
+        assert_eq!(
+            helper_lines.len(),
+            1,
+            "expected exactly one `-> helper` line (deduped):\n{out}"
+        );
+        // That line must list multiple call-site lines (comma-separated).
+        let line = helper_lines[0];
+        assert!(
+            line.contains(','),
+            "expected comma-separated line list for repeated calls:\n{line}\n{out}"
+        );
+        // `other` appears once, so no comma in its line.
+        let other_lines: Vec<&str> =
+            out.lines().filter(|l| l.contains("-> other")).collect();
+        assert_eq!(other_lines.len(), 1);
+        assert!(
+            !other_lines[0].contains(','),
+            "single-call callee should not have comma list:\n{}",
+            other_lines[0]
+        );
     }
 
     #[test]
