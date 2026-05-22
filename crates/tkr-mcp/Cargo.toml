@@ -30,3 +30,6 @@ ignore = "0.4"
 regex = { workspace = true }
 tkr-index = { path = "../tkr-index" }
 rusqlite = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

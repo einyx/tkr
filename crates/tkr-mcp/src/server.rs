@@ -147,6 +147,7 @@ fn handle_tools_call(id: Value, params: &Value) -> Response {
         "tkr_read_smart" => call_read_smart(&args),
         "tkr_callers_of" => call_callers_of(&args),
         "tkr_callees_of" => call_callees_of(&args),
+        "tkr_call_path" => call_call_path(&args),
         "tkr_jobs_list" => call_jobs_list(&args),
         "tkr_mesh_status" => call_mesh_status(&args),
         _ => return Response::err(id, METHOD_NOT_FOUND, format!("unknown tool: {name}")),
@@ -230,6 +231,25 @@ fn call_callees_of(args: &Value) -> Result<String> {
         .ok_or_else(|| anyhow::anyhow!("missing 'name'"))?;
     let root = resolve_root(args)?;
     index_backed::try_callees_of(name, &root)?
+        .ok_or_else(|| anyhow::anyhow!("no index at {}; run tkr_index_build first", root.display()))
+}
+
+fn call_call_path(args: &Value) -> Result<String> {
+    let from = args
+        .get("from")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("missing 'from'"))?;
+    let to = args
+        .get("to")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("missing 'to'"))?;
+    let max_depth = args
+        .get("max_depth")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as usize)
+        .unwrap_or(6);
+    let root = resolve_root(args)?;
+    index_backed::try_call_path(from, to, max_depth, &root)?
         .ok_or_else(|| anyhow::anyhow!("no index at {}; run tkr_index_build first", root.display()))
 }
 

@@ -45,27 +45,30 @@ pub fn render_outline(path: &Path) -> Result<String> {
 
     let mut out = String::new();
     out.push_str(&format!(
-        "outline: {} ({} lines, {} bytes)\n",
+        "outline {} ({}L {}B, {} symbols)\n",
         path.display(),
         total_lines,
-        bytes.len()
+        bytes.len(),
+        symbols.len()
     ));
     if symbols.is_empty() {
-        // Fallback: header-only summary.
+        // Fallback: header-only summary. Didactic Read-hint dropped (agents
+        // calling tkr_outline_file already know about Read offset/limit).
         let preview = std::str::from_utf8(&bytes)
             .unwrap_or("(binary)")
             .lines()
             .find(|l| !l.trim().is_empty())
             .unwrap_or("");
-        out.push_str(&format!("(no outline; first line: {preview:?})\n"));
-        out.push_str("hint: pass --offset/--limit to native Read for partial views.\n");
+        out.push_str(&format!("(no symbols; first line: {preview:?})\n"));
         return Ok(out);
     }
-
-    out.push_str(&format!("\n{} symbols:\n", symbols.len()));
+    // No alignment padding: `{:<8}` + `{:<40}` was burning ~40 chars per row
+    // for visual alignment that the consumer (an LLM) doesn't use. Single
+    // space separators; `L{a}-{b}` collapsed to `{a}-{b}` since the column
+    // ordering already encodes "this is a line range".
     for s in &symbols {
         out.push_str(&format!(
-            "  {:<8} {:<40} L{}-L{}\n",
+            "{} {} {}-{}\n",
             s.kind, s.name, s.start_line, s.end_line
         ));
     }
@@ -323,7 +326,7 @@ pub struct Beta { x: u32 }
     fn unsupported_extension_falls_back_to_header() {
         let tmp = tempfile_write("plain.txt", "first line\nsecond line\n");
         let out = render_outline(&tmp.path).unwrap();
-        assert!(out.contains("(no outline"));
+        assert!(out.contains("(no symbols"));
         assert!(out.contains("first line"));
     }
 
