@@ -37,25 +37,17 @@ Structured code-intelligence tools over MCP. Your agent reads outlines and signa
 
 Supports **9 languages**: Rust, Python, Go, TypeScript, JavaScript, Java, C, C++, Ruby. Set `TKR_TOON=1` for compact TOON (Token-Oriented Object Notation) tabular output — ~15% additional savings on top of the structured queries.
 
-Wire it into Claude Code's MCP config:
+Wire it into Claude Code with one command:
 
-```json
-{
-  "mcpServers": {
-    "tkr": { "command": "tkr", "args": ["mcp"] }
-  }
-}
+```sh
+tkr mcp install              # writes ./.mcp.json for the current repo
+tkr mcp install --scope=user # or update ~/.claude.json so tkr is available in every project
+tkr mcp install --print      # dry-run: show the snippet without writing
 ```
 
-Then, on first use in a repo, call `tkr_index_build` once (and optionally `tkr_index_watch` to auto-refresh on file edits). Add a `CLAUDE.md` hint so the agent prefers `tkr_outline_file` / `tkr_read_smart` over `Read` for large files. Example hint:
+The index builds on first query — no manual `tkr_index_build` step needed. (Optional: call `tkr_index_watch` once if you want the index to auto-refresh on file edits across long sessions.)
 
-```markdown
-Prefer tkr MCP tools over native Read/Grep:
-- File > 200 lines: use tkr_outline_file
-- Looking for a symbol: use tkr_find_symbol
-- "Where is X done?" type questions: use tkr_read_smart
-- Recursive search across many files: use tkr_grep_summary
-```
+Tool descriptions in tkr-mcp are written to compete directly against native `Read` / `Grep` for the agent's attention — each tool's first line says *which* native tool it should replace and the byte-cost ratio. No CLAUDE.md hint required.
 
 ### 3. (Early) sandboxed agent runtime
 
