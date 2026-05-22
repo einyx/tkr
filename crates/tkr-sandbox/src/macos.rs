@@ -45,17 +45,66 @@ fn canonical(p: &std::path::Path) -> PathBuf {
 
 pub(crate) fn build_profile(policy: &SandboxPolicy) -> String {
     let mut s = String::from("(version 1)\n(deny default)\n");
+
+    // --- Baseline allows for any binary to reach main() ---
+    //
+    // `(deny default)` on macOS is more aggressive than its name suggests:
+    // it blocks mach traps, process-info self-introspection, file-read-metadata
+    // (stat), file-map-executable (dyld dylib load), and POSIX shm — all of
+    // which dyld + libsystem touch *before* the child's own `main` runs.
+    // Without these, sandbox-exec SIGKILLs the child during image load and
+    // emits its denial only to the kernel log, so the parent sees a silent
+    // exit with empty stdout/stderr (v0.3.0 bug).
+    //
+    // Drawn from Apple's open-sourced profiles in
+    //   /System/Library/Sandbox/Profiles/{bsd,system}.sb
+    // and from WebKit's `com.apple.WebKit.WebContent.sb`.
+
     s.push_str("(allow process-fork process-exec)\n");
-    s.push_str("(allow mach-lookup)\n");
-    s.push_str("(allow sysctl-read)\n");
+    s.push_str("(allow process-info* (target self))\n");
     s.push_str("(allow signal (target self))\n");
+    s.push_str("(allow mach-lookup)\n");
+    s.push_str("(allow mach-priv-host-port)\n");
+    s.push_str("(allow mach-register)\n");
+    s.push_str("(allow sysctl-read)\n");
+    s.push_str("(allow ipc-posix-shm)\n");
+    s.push_str("(allow ipc-posix-sem)\n");
+    // stat()/getattr on arbitrary paths — dyld and libsystem need this to
+    // even decide whether a dylib exists before reading it.
+    s.push_str("(allow file-read-metadata)\n");
+    // mmap PROT_EXEC of a readable file — dyld loads dylibs this way.
+    s.push_str("(allow file-map-executable)\n");
+    // ioctls on inherited tty/pty fds. Pipe stdio doesn't touch this, but
+    // `tkr sandbox claude` is interactive and will inherit tty fds.
+    s.push_str("(allow file-ioctl)\n");
+
+    // /dev nodes every binary touches at startup.
+    s.push_str(
+        "(allow file-read* \
+         (literal \"/dev/null\") \
+         (literal \"/dev/zero\") \
+         (literal \"/dev/random\") \
+         (literal \"/dev/urandom\") \
+         (literal \"/dev/autofs_nowait\") \
+         (literal \"/dev/dtracehelper\"))\n",
+    );
+    s.push_str(
+        "(allow file-write* \
+         (literal \"/dev/null\") \
+         (literal \"/dev/dtracehelper\"))\n",
+    );
+
+    // System paths the child needs to load its binary + dylibs. These are
+    // redundant with the policy.fs_read entries that `cmds/sandbox.rs`
+    // injects on `--system=true` (the default), but we keep them so a
+    // policy built directly via the library API (no CLI defaults) still
+    // gets a runnable child.
     s.push_str("(allow file-read* (subpath \"/usr/lib\"))\n");
     s.push_str("(allow file-read* (subpath \"/usr/bin\"))\n");
+    s.push_str("(allow file-read* (subpath \"/bin\"))\n");
     s.push_str("(allow file-read* (subpath \"/System/Library\"))\n");
     s.push_str("(allow file-read* (subpath \"/Library/Apple/System\"))\n");
     s.push_str("(allow file-read* (subpath \"/private/var/folders\"))\n");
-    s.push_str("(allow file-read* (literal \"/dev/null\") (literal \"/dev/urandom\"))\n");
-    s.push_str("(allow file-write* (literal \"/dev/null\"))\n");
     for p in &policy.fs_read {
         let canon = canonical(p);
         let path_str = canon.to_string_lossy();
@@ -127,6 +176,46 @@ mod tests {
     fn profile_contains_deny_default() {
         let s = build_profile(&SandboxPolicy::default());
         assert!(s.contains("(deny default)"));
+    }
+    #[test]
+    fn profile_has_baseline_allows_for_dyld() {
+        // Regression: v0.3.0 shipped without these and every sandboxed
+        // child was SIGKILLed during image load (silent exit, empty stdout).
+        let s = build_profile(&SandboxPolicy::default());
+        for needle in [
+            "(allow file-read-metadata)",
+            "(allow file-map-executable)",
+            "(allow ipc-posix-shm)",
+            "(allow process-info* (target self))",
+            "(allow mach-priv-host-port)",
+        ] {
+            assert!(s.contains(needle), "profile missing baseline allow: {needle}");
+        }
+    }
+    // End-to-end: actually invoke sandbox-exec and assert the child runs
+    // and its stdout reaches us. The unit-level `profile_*` tests above
+    // only check string contents; they would have happily passed even
+    // for the broken v0.3.0 profile. Only this test catches "child dies
+    // silently mid-dyld."
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn echo_runs_under_default_sandbox() {
+        use crate::exec::run_sandboxed;
+        use crate::policy::SandboxPolicy;
+        let policy = SandboxPolicy::builder()
+            .allow_read("/usr/lib")
+            .allow_read("/usr/bin")
+            .allow_read("/bin")
+            .allow_read("/System")
+            .build();
+        let out = run_sandboxed("/bin/echo", &["hi"], &policy)
+            .expect("sandbox-exec should not error");
+        assert_eq!(out.exit, 0, "stderr was: {}", String::from_utf8_lossy(&out.stderr));
+        assert_eq!(
+            String::from_utf8_lossy(&out.stdout).trim(),
+            "hi",
+            "stdout empty — profile likely SIGKILLed child during dyld load"
+        );
     }
     #[test]
     fn profile_includes_writable_paths() {
