@@ -88,7 +88,7 @@ pub fn tools_catalog() -> Value {
         "tools": [
             {
                 "name": "tkr_outline_file",
-                "description": "Return a structured outline (symbol kind + name + line range) for a source file instead of its full contents. Use this when you only need to know what a file contains, not the implementation details. Currently supports Rust; falls back to a header-line summary for other languages.",
+                "description": "USE BEFORE `Read` on any source file >200 lines. Returns symbol kind + name + line range (no bodies) — typically 5-15% the byte cost of reading the file. Workflow: outline first to find the right line range, THEN native Read with offset/limit for the body. Supports rust/python/go/ts/js/java/c/c++/ruby. Errors helpfully if you pass a directory (use tkr_grep_summary or tkr_find_symbol instead).",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -102,7 +102,7 @@ pub fn tools_catalog() -> Value {
             },
             {
                 "name": "tkr_find_symbol",
-                "description": "Find definitions of a symbol (function, struct, type, etc.) under a directory. Returns file:line locations + the symbol kind. Drastically smaller token cost than recursive Grep when you know what you're looking for.",
+                "description": "USE INSTEAD OF `Grep` when you know the exact symbol name (function/struct/type/method). One indexed lookup returns every definition site in the repo at <100B per response. Native Grep on the same name typically returns 50-500× more bytes because it matches every call site, comment, and string literal too. Requires tkr_index_build to have run once.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -120,7 +120,7 @@ pub fn tools_catalog() -> Value {
             },
             {
                 "name": "tkr_grep_summary",
-                "description": "Like grep -r, but returns matches grouped by file with per-file caps. Use instead of native Grep when expecting many matches across many files.",
+                "description": "USE INSTEAD OF `Grep` for any pattern likely to hit >10 files. Returns matches grouped by file with per-file caps (default 3 matches/file, 30 files total) — bounded output even when the pattern matches thousands of lines. Native Grep dumps everything; this gives you a navigable digest. For exact symbol-name lookups prefer tkr_find_symbol (even cheaper).",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -165,7 +165,7 @@ pub fn tools_catalog() -> Value {
             },
             {
                 "name": "tkr_callers_of",
-                "description": "List call sites that invoke a symbol by name. Cheap call-graph lookup from the index. Note: name resolution is unqualified — `foo` matches any call to `foo()` regardless of module/receiver type. Requires tkr_index_build.",
+                "description": "USE INSTEAD OF `Grep \"\\bfoo\\(\"` when answering 'where is X called?'. Returns every call site of a symbol by name from the indexed refs table, grouped per caller with line lists. Name resolution is unqualified (matches any `foo()` regardless of module/receiver). Requires tkr_index_build.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -177,7 +177,7 @@ pub fn tools_catalog() -> Value {
             },
             {
                 "name": "tkr_callees_of",
-                "description": "List the unresolved callees referenced inside a symbol (function/method/class). Useful for 'what does this function actually do' triage without reading its body. Requires tkr_index_build.",
+                "description": "USE INSTEAD OF reading a function's body to figure out 'what does X actually do?'. Returns the list of unresolved callees referenced inside the symbol, deduped with call-site line lists. Reading the body costs N×line-bytes; this is ~50B regardless of body size. Requires tkr_index_build.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -189,7 +189,7 @@ pub fn tools_catalog() -> Value {
             },
             {
                 "name": "tkr_call_path",
-                "description": "Shortest call-path between two symbols by name (BFS over the refs table). Returns the chain `from -> A -> B -> to` with per-hop call-site line numbers, or 'no path within depth N'. Cheap way to answer 'does X eventually reach Y?' without reading every function body in between. Names are unqualified (same caveat as tkr_callers_of). Requires tkr_index_build.",
+                "description": "USE INSTEAD OF walking callees by hand for 'does X eventually reach Y?' questions. Shortest call-path between two symbols via BFS, bounded depth, cycle-safe. One call replaces ~depth × callees_of invocations. Returns the chain `from -> A -> B -> to` with per-hop lines, or 'no path'. Requires tkr_index_build.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -208,7 +208,7 @@ pub fn tools_catalog() -> Value {
             },
             {
                 "name": "tkr_signature",
-                "description": "Look up the signature (one-line declaration) of a symbol by name. Tiny output — just kind, name, signature line, file:line. Use when you only need to know a function's shape, not its body. Requires tkr_index_build to have run.",
+                "description": "USE INSTEAD OF `Read` on a file just to see a function's signature. Returns kind + name + the one-line declaration + file:line. ~50B vs reading 500-5000B of file just to find the signature. Pairs with tkr_read_smart (which gives location, then this gives shape). Requires tkr_index_build.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -220,7 +220,7 @@ pub fn tools_catalog() -> Value {
             },
             {
                 "name": "tkr_read_smart",
-                "description": "Ranked search across all indexed symbols using a natural-language question. Default output is terse: kind/name/location only (NOT the signature, NOT the file contents). For 'find the relevant part' triage, that's enough — follow up with tkr_signature for shape or native Read with the line range for body. Pass verbose=true to inline signatures. Requires tkr_index_build to have run.",
+                "description": "USE FIRST for 'where is X done in this codebase?' questions instead of guessing files. FTS-ranked symbol search via natural-language query. Returns the top-K best-matched symbols with kind/name/location — no bodies, no signatures by default. Then drill in: tkr_signature for shape, native Read with the line range for body. Pass verbose=true to inline signatures when you specifically need them. Requires tkr_index_build.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
