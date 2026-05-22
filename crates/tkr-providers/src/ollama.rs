@@ -253,18 +253,20 @@ impl Provider for OllamaProvider {
     ) -> Result<ProviderResponse> {
         let body = self.build_request(system, messages, tools, max_tokens);
         let url = format!("{}/v1/chat/completions", self.base_url);
-        let resp = ureq::post(&url)
-            .set("content-type", "application/json")
-            .send_json(body);
-        let resp = match resp {
-            Ok(r) => r,
-            Err(ureq::Error::Status(code, r)) => {
-                let body = r.into_string().unwrap_or_default();
-                return Err(anyhow!("ollama api {code}: {body}"));
-            }
-            Err(e) => return Err(anyhow!(e)),
-        };
-        let raw = resp.into_string()?;
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .http_status_as_error(false)
+            .build()
+            .into();
+        let resp = agent
+            .post(&url)
+            .header("content-type", "application/json")
+            .send_json(&body)
+            .map_err(|e| anyhow!(e))?;
+        let status = resp.status().as_u16();
+        let raw = resp.into_body().read_to_string()?;
+        if !(200..300).contains(&status) {
+            return Err(anyhow!("ollama api {status}: {raw}"));
+        }
         Self::parse_response(&raw)
     }
 }

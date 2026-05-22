@@ -59,7 +59,7 @@ pub fn init(vault_root: &Path, mode: InitMode) -> Result<i32> {
             }
             use age::secrecy::SecretString;
             use std::io::Write;
-            let enc = age::Encryptor::with_user_passphrase(SecretString::new(p.to_string()));
+            let enc = age::Encryptor::with_user_passphrase(SecretString::from(p.to_string()));
             let mut wrapped = Vec::new();
             let mut writer = enc.wrap_output(&mut wrapped).context("wrap master")?;
             writer.write_all(&master)?;
