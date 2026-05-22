@@ -23,6 +23,21 @@ pub fn render_outline(path: &Path) -> Result<String> {
     let path = path
         .canonicalize()
         .with_context(|| format!("canonicalize {}", path.display()))?;
+    // Real transcript evidence: agents pass a directory here when they
+    // want a "high-level view of the repo." Returning a raw fs::read error
+    // ("Is a directory (os error 21)") sends them back to native Read/Grep
+    // — we lose the call. Instead, redirect with explicit tool names so
+    // the next agent attempt lands on the right tool.
+    if path.is_dir() {
+        return Ok(format!(
+            "tkr_outline_file expects a single FILE, got directory: {}\n\
+             For directory-level orientation try one of:\n  \
+             - tkr_grep_summary  — pattern across many files\n  \
+             - tkr_find_symbol   — locate a specific name\n  \
+             - tkr_read_smart    — natural-language question across the index\n",
+            path.display()
+        ));
+    }
     let bytes = fs::read(&path).with_context(|| format!("read {}", path.display()))?;
     let total_lines = bytes.iter().filter(|b| **b == b'\n').count() + 1;
 
@@ -314,6 +329,21 @@ pub struct Beta { x: u32 }
         assert!(out.contains("alpha"), "{out}");
         assert!(out.contains("Beta"), "{out}");
         assert!(out.contains("class") || out.contains("fn"));
+    }
+
+    #[test]
+    fn directory_path_redirects_to_other_tools() {
+        // Real transcript evidence: agent passed `/home/alessio/tkr` (a
+        // directory) instead of a file. Should produce a helpful redirect
+        // pointing at the right tool, not an `Is a directory (os error 21)`.
+        let dir = tempfile::tempdir().unwrap();
+        let out = render_outline(dir.path()).unwrap();
+        assert!(
+            out.contains("expects a single FILE"),
+            "missing helpful redirect:\n{out}"
+        );
+        assert!(out.contains("tkr_grep_summary"), "no redirect to grep_summary:\n{out}");
+        assert!(out.contains("tkr_find_symbol"), "no redirect to find_symbol:\n{out}");
     }
 
     #[test]
