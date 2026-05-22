@@ -188,6 +188,25 @@ pub fn tools_catalog() -> Value {
                 }
             },
             {
+                "name": "tkr_call_path",
+                "description": "Shortest call-path between two symbols by name (BFS over the refs table). Returns the chain `from -> A -> B -> to` with per-hop call-site line numbers, or 'no path within depth N'. Cheap way to answer 'does X eventually reach Y?' without reading every function body in between. Names are unqualified (same caveat as tkr_callers_of). Requires tkr_index_build.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "from": { "type": "string", "description": "Caller name — search starts here." },
+                        "to":   { "type": "string", "description": "Target name — search ends when any symbol with this name is reached." },
+                        "max_depth": {
+                            "type": "integer",
+                            "description": "Hop cap (default 6). Larger = more chance of finding deep paths, but slower and noisier on dense graphs.",
+                            "minimum": 1,
+                            "maximum": 32
+                        },
+                        "root": { "type": "string" }
+                    },
+                    "required": ["from", "to"]
+                }
+            },
+            {
                 "name": "tkr_signature",
                 "description": "Look up the signature (one-line declaration) of a symbol by name. Tiny output — just kind, name, signature line, file:line. Use when you only need to know a function's shape, not its body. Requires tkr_index_build to have run.",
                 "inputSchema": {
