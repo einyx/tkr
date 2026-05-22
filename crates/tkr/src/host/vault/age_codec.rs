@@ -58,12 +58,16 @@ pub fn decrypt(key: &[u8; 32], ciphertext: &[u8]) -> Result<Zeroizing<Vec<u8>>> 
 /// with the fast format.
 fn decrypt_legacy_age(key: &[u8; 32], ciphertext: &[u8]) -> Result<Zeroizing<Vec<u8>>> {
     use age::secrecy::SecretString;
-    let dec = match age::Decryptor::new(ciphertext).context("parse age header")? {
-        age::Decryptor::Passphrase(d) => d,
-        age::Decryptor::Recipients(_) => return Err(anyhow!("unexpected recipients ciphertext")),
-    };
-    let passphrase = SecretString::new(hex::encode(key));
-    let mut reader = dec.decrypt(&passphrase, None).context("decrypt")?;
+    // age 0.11 unified Decryptor: no more Passphrase/Recipients enum variants.
+    // Both passphrase and recipient flows now go through `.decrypt(identities)`.
+    // For passphrase-wrapped blobs we pass an `age::scrypt::Identity`.
+    let decryptor = age::Decryptor::new(ciphertext).context("parse age header")?;
+    let passphrase: SecretString = hex::encode(key).into();
+    let identity = age::scrypt::Identity::new(passphrase);
+    let identities: [&dyn age::Identity; 1] = [&identity];
+    let mut reader = decryptor
+        .decrypt(identities.iter().copied())
+        .context("decrypt")?;
     let mut out = Zeroizing::new(Vec::new());
     reader.read_to_end(&mut out)?;
     Ok(out)
@@ -107,7 +111,7 @@ mod tests {
         use age::secrecy::SecretString;
         use std::io::Write;
         let key = [3u8; 32];
-        let passphrase = SecretString::new(hex::encode(key));
+        let passphrase: SecretString = hex::encode(key).into();
         let enc = age::Encryptor::with_user_passphrase(passphrase);
         let mut legacy = Vec::new();
         let mut w = enc.wrap_output(&mut legacy).unwrap();

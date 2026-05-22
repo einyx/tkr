@@ -157,14 +157,15 @@ fn emit_ingest(command: &str, exit: i32, truncated: bool, duration_ms: u64) {
         "truncated": truncated,
         "duration_ms": duration_ms,
     });
-    let agent = ureq::AgentBuilder::new()
-        .timeout(std::time::Duration::from_secs(2))
-        .build();
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(std::time::Duration::from_secs(2)))
+        .build()
+        .into();
     let _ = agent
         .post(&url)
-        .set("authorization", &format!("Bearer {token}"))
-        .set("content-type", "application/json")
-        .send_json(body);
+        .header("authorization", &format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .send_json(&body);
 }
 
 /// `tkr sandbox claude` — launch Claude Code (or any agent CLI) inside

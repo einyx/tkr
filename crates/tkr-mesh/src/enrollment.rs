@@ -173,31 +173,32 @@ pub fn enroll(
         display_name,
     };
 
-    let agent = ureq::AgentBuilder::new()
-        .timeout(Duration::from_secs(JOIN_TIMEOUT_SECS))
-        .build();
+    // ureq 3.x: AgentBuilder replaced by Agent::config_builder.
+    // http_status_as_error(false) preserves the old behavior where a non-2xx
+    // response is returned with body intact (we read it for error context).
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(JOIN_TIMEOUT_SECS)))
+        .http_status_as_error(false)
+        .build()
+        .into();
 
     let mut request = agent
         .post(&join_url)
-        .set("content-type", "application/json");
+        .header("content-type", "application/json");
     // Brokers that gate /join behind a session cookie (e.g. tkr-server
     // post-hardening) accept the same TKR_MESH_WS_COOKIE used for the WS
     // upgrade. Forward it on enrollment too.
     if let Ok(cookie) = std::env::var("TKR_MESH_WS_COOKIE") {
-        request = request.set("cookie", &format!("tkr_session={cookie}"));
+        request = request.header("cookie", &format!("tkr_session={cookie}"));
     }
-    let response = request
-        .send_json(serde_json::to_value(&body).map_err(|e| Error::Encoding(e.to_string()))?);
+    let resp = request
+        .send_json(serde_json::to_value(&body).map_err(|e| Error::Encoding(e.to_string()))?)
+        .map_err(|e| Error::Encoding(format!("broker unreachable: {e}")))?;
 
-    let resp = match response {
-        Ok(r) => r,
-        Err(ureq::Error::Status(_, r)) => r, // we still want to read the body
-        Err(e) => return Err(Error::Encoding(format!("broker unreachable: {e}"))),
-    };
-
-    let status = resp.status();
+    let status = resp.status().as_u16();
     let raw = resp
-        .into_string()
+        .into_body()
+        .read_to_string()
         .map_err(|e| Error::Encoding(format!("broker response read: {e}")))?;
     let parsed: JoinResponse = serde_json::from_str(&raw).map_err(|e| {
         let snippet = if raw.len() > 200 {
