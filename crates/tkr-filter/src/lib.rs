@@ -3,7 +3,7 @@ pub mod v2;
 pub use v2::all_filters_v2;
 
 use anyhow::Result;
-use rules::{CompiledRule, Rule};
+use rules::{compile_group, CompiledRule, Rule};
 use serde::Deserialize;
 use tkr_api::{FilterResult, LegacyPlugin as Plugin};
 
@@ -61,11 +61,7 @@ impl FilterPlugin {
         let group = FilterGroup {
             command: def.command,
             subcommands: def.subcommands,
-            rules: def
-                .rules
-                .into_iter()
-                .map(|r| r.compile())
-                .collect::<Result<Vec<_>>>()?,
+            rules: compile_group(def.rules)?,
         };
         Ok(Self {
             groups: vec![group],
@@ -87,15 +83,10 @@ impl FilterPlugin {
                 if path.extension().is_some_and(|e| e == "toml") {
                     let text = std::fs::read_to_string(&path)?;
                     let def: FilterDef = toml::from_str(&text)?;
-                    let rules = def
-                        .rules
-                        .into_iter()
-                        .map(|r| r.compile())
-                        .collect::<Result<Vec<_>>>()?;
                     self.groups.push(FilterGroup {
                         command: def.command,
                         subcommands: def.subcommands,
-                        rules,
+                        rules: compile_group(def.rules)?,
                     });
                 }
             }
@@ -111,15 +102,10 @@ impl FilterPlugin {
         }
         let text = std::fs::read_to_string(path)?;
         let def: FilterDef = toml::from_str(&text)?;
-        let rules = def
-            .rules
-            .into_iter()
-            .map(|r| r.compile())
-            .collect::<Result<Vec<_>>>()?;
         self.groups.push(FilterGroup {
             command: def.command,
             subcommands: def.subcommands,
-            rules,
+            rules: compile_group(def.rules)?,
         });
         Ok(())
     }

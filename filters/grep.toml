@@ -43,7 +43,7 @@ type = "truncate_long"
 max_len = 200
 
 # Group remaining matches by file (the "path:" prefix grep emits).
-# Caps at 2 lines per file, 50 total — beyond which we emit "(+N more)"
+# Caps at 2 lines per file, 50 total — beyond which we emit "(+N)"
 # rather than streaming everything. This is the single biggest win on
 # repos with thousands of hits.
 [[rules]]

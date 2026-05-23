@@ -1,5 +1,5 @@
 use indexmap::IndexMap;
-use regex::{Captures, Regex, RegexBuilder};
+use regex::{Captures, Regex, RegexBuilder, RegexSet};
 use serde::Deserialize;
 use std::collections::HashMap;
 use tkr_api::FilterResult;
@@ -132,6 +132,14 @@ pub enum CompiledRule {
     SuppressRegex {
         re: Regex,
     },
+    /// Coalesced run of consecutive `SuppressRegex` rules — matches any of
+    /// the patterns in one DFA traversal. Inserted by `compile_group`; never
+    /// constructed from a TOML `[[rules]]` entry directly. (KeepRegex is not
+    /// similarly coalesced because chained KeepRegex is AND/intersection
+    /// semantics, which RegexSet's OR/union behavior would break.)
+    SuppressRegexSet {
+        set: RegexSet,
+    },
     KeepRegex {
         re: Regex,
     },
@@ -143,6 +151,14 @@ pub enum CompiledRule {
     TruncateMatch {
         re: Regex,
         replace: String,
+    },
+    /// Coalesced run of consecutive `TruncateMatch` rules — one `RegexSet`
+    /// precheck per line; only the first-indexed matching rule's replacement
+    /// actually runs, matching the dispatch loop's first-match-wins behavior.
+    /// Inserted by `compile_group`; never built from a TOML entry directly.
+    TruncateMatchSet {
+        precheck: RegexSet,
+        rules: Vec<(Regex, String)>,
     },
     CollapseRun {
         re: Regex,
@@ -163,6 +179,7 @@ pub enum CompiledRule {
     TruncateLong {
         max_len: usize,
         ellipsis: String,
+        ellipsis_chars: usize,
     },
     ContextWindow {
         re: Regex,
@@ -233,7 +250,12 @@ impl Rule {
                 count: 0,
             },
             Rule::TruncateLong { max_len, ellipsis } => {
-                CompiledRule::TruncateLong { max_len, ellipsis }
+                let ellipsis_chars = ellipsis.chars().count();
+                CompiledRule::TruncateLong {
+                    max_len,
+                    ellipsis,
+                    ellipsis_chars,
+                }
             }
             Rule::ContextWindow { pattern, around } => CompiledRule::ContextWindow {
                 re: Regex::new(&pattern)?,
@@ -293,6 +315,61 @@ impl Rule {
     }
 }
 
+/// Compile a group's rule list, coalescing consecutive `SuppressRegex` rules
+/// into a single `SuppressRegexSet` and consecutive `TruncateMatch` rules
+/// into a single `TruncateMatchSet`. Both convert per-line N-regex cost into
+/// (roughly) one DFA traversal. Order is otherwise preserved.
+pub fn compile_group(rules: Vec<Rule>) -> anyhow::Result<Vec<CompiledRule>> {
+    let mut out = Vec::with_capacity(rules.len());
+    let mut iter = rules.into_iter().peekable();
+    while let Some(rule) = iter.next() {
+        match rule {
+            Rule::SuppressRegex { pattern } => {
+                let mut patterns = vec![pattern];
+                while matches!(iter.peek(), Some(Rule::SuppressRegex { .. })) {
+                    if let Some(Rule::SuppressRegex { pattern }) = iter.next() {
+                        patterns.push(pattern);
+                    }
+                }
+                if patterns.len() == 1 {
+                    out.push(CompiledRule::SuppressRegex {
+                        re: Regex::new(&patterns[0])?,
+                    });
+                } else {
+                    out.push(CompiledRule::SuppressRegexSet {
+                        set: RegexSet::new(&patterns)?,
+                    });
+                }
+            }
+            Rule::TruncateMatch { pattern, replace } => {
+                let mut pairs = vec![(pattern, replace)];
+                while matches!(iter.peek(), Some(Rule::TruncateMatch { .. })) {
+                    if let Some(Rule::TruncateMatch { pattern, replace }) = iter.next() {
+                        pairs.push((pattern, replace));
+                    }
+                }
+                if pairs.len() == 1 {
+                    let (pattern, replace) = pairs.into_iter().next().unwrap();
+                    out.push(CompiledRule::TruncateMatch {
+                        re: Regex::new(&pattern)?,
+                        replace,
+                    });
+                } else {
+                    let patterns: Vec<&str> = pairs.iter().map(|(p, _)| p.as_str()).collect();
+                    let precheck = RegexSet::new(&patterns)?;
+                    let rules = pairs
+                        .into_iter()
+                        .map(|(p, r)| Ok::<_, anyhow::Error>((Regex::new(&p)?, r)))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    out.push(CompiledRule::TruncateMatchSet { precheck, rules });
+                }
+            }
+            other => out.push(other.compile()?),
+        }
+    }
+    Ok(out)
+}
+
 impl CompiledRule {
     /// Returns `Some(FilterResult)` if this rule has an opinion, `None` to defer.
     pub fn apply(&mut self, line: &str) -> Option<FilterResult> {
@@ -311,6 +388,13 @@ impl CompiledRule {
                     None
                 }
             }
+            CompiledRule::SuppressRegexSet { set } => {
+                if set.is_match(line) {
+                    Some(FilterResult::Suppress)
+                } else {
+                    None
+                }
+            }
             CompiledRule::KeepRegex { re } => {
                 if re.is_match(line) {
                     None
@@ -319,11 +403,23 @@ impl CompiledRule {
                 }
             }
             CompiledRule::TruncateMatch { re, replace } => {
-                let new = re.replace_all(line, replace.as_str());
-                if new == line {
-                    None
-                } else {
-                    Some(FilterResult::Replace(new.into_owned()))
+                // replace_all returns Cow::Borrowed when no substitution
+                // happens, so checking the Cow variant is cheaper than the
+                // byte-equality check the old code did.
+                match re.replace_all(line, replace.as_str()) {
+                    std::borrow::Cow::Borrowed(_) => None,
+                    std::borrow::Cow::Owned(s) => Some(FilterResult::Replace(s)),
+                }
+            }
+            CompiledRule::TruncateMatchSet { precheck, rules } => {
+                let matches = precheck.matches(line);
+                let Some(first_idx) = matches.iter().next() else {
+                    return None;
+                };
+                let (re, replace) = &rules[first_idx];
+                match re.replace_all(line, replace.as_str()) {
+                    std::borrow::Cow::Borrowed(_) => None,
+                    std::borrow::Cow::Owned(s) => Some(FilterResult::Replace(s)),
                 }
             }
             CompiledRule::CollapseCommonPrefix {
@@ -332,17 +428,32 @@ impl CompiledRule {
                 last_prefix,
                 count,
             } => {
-                if line.len() < *prefix_len {
+                // Walk char_indices to find the byte cutoff for the first
+                // `prefix_len` chars without allocating. Bail early if the
+                // line has fewer chars than that — matches the original
+                // `line.len() < prefix_len` reset semantics.
+                let mut cutoff = 0;
+                let mut chars_seen = 0;
+                for (i, c) in line.char_indices() {
+                    if chars_seen == *prefix_len {
+                        cutoff = i;
+                        break;
+                    }
+                    chars_seen += 1;
+                    cutoff = i + c.len_utf8();
+                }
+                if chars_seen < *prefix_len {
                     *last_prefix = None;
                     *count = 0;
                     return None;
                 }
-                let cur: String = line.chars().take(*prefix_len).collect();
-                let new_count = match last_prefix.as_ref() {
-                    Some(p) if p == &cur => *count + 1,
-                    _ => 1,
-                };
-                *last_prefix = Some(cur);
+                let cur = &line[..cutoff];
+                let matches_prev = last_prefix.as_deref() == Some(cur);
+                let new_count = if matches_prev { *count + 1 } else { 1 };
+                // Only allocate when the prefix actually changes.
+                if !matches_prev {
+                    *last_prefix = Some(cur.to_string());
+                }
                 *count = new_count;
                 if new_count > *keep_first {
                     Some(FilterResult::SuppressWithNote(0))
@@ -396,14 +507,34 @@ impl CompiledRule {
                     None
                 }
             }
-            CompiledRule::TruncateLong { max_len, ellipsis } => {
-                let char_count = line.chars().count();
-                if char_count <= *max_len {
+            CompiledRule::TruncateLong {
+                max_len,
+                ellipsis,
+                ellipsis_chars,
+            } => {
+                // Two byte-length shortcuts before any char walk:
+                //   line.len() <= max_len    => char count <= max_len (skip)
+                //   line.len() > max_len * 4 => char count > max_len (truncate)
+                // (UTF-8 is 1-4 bytes/char, so byte length bounds char count.)
+                // Only the middle band needs a bounded chars().nth() walk.
+                if line.len() <= *max_len {
                     return None;
                 }
-                let ellipsis_chars = ellipsis.chars().count();
-                let keep = max_len.saturating_sub(ellipsis_chars);
-                let mut out: String = line.chars().take(keep).collect();
+                if line.len() <= max_len.saturating_mul(4)
+                    && line.chars().nth(*max_len).is_none()
+                {
+                    return None;
+                }
+                let keep = max_len.saturating_sub(*ellipsis_chars);
+                // Slice once at the char boundary instead of materializing a
+                // Vec of chars and rebuilding a String.
+                let cutoff = line
+                    .char_indices()
+                    .nth(keep)
+                    .map(|(i, _)| i)
+                    .unwrap_or(line.len());
+                let mut out = String::with_capacity(cutoff + ellipsis.len());
+                out.push_str(&line[..cutoff]);
                 out.push_str(ellipsis);
                 Some(FilterResult::Replace(out))
             }
@@ -437,10 +568,9 @@ impl CompiledRule {
                         None => matched.to_string(),
                     }
                 });
-                if new == line {
-                    None
-                } else {
-                    Some(FilterResult::Replace(new.into_owned()))
+                match new {
+                    std::borrow::Cow::Borrowed(_) => None,
+                    std::borrow::Cow::Owned(s) => Some(FilterResult::Replace(s)),
                 }
             }
             CompiledRule::EmptyResultSubstitute {
@@ -458,14 +588,16 @@ impl CompiledRule {
                     return None;
                 };
                 let group_idx = key_capture.unwrap_or(1);
-                let key = caps
-                    .get(group_idx)
-                    .or_else(|| caps.get(0))
-                    .map(|m| m.as_str().to_string())
-                    .unwrap_or_default();
-                seen.entry(key)
-                    .and_modify(|(_, c)| *c += 1)
-                    .or_insert_with(|| (line.to_string(), 1));
+                let key_match = caps.get(group_idx).or_else(|| caps.get(0));
+                let key_str = key_match.map(|m| m.as_str()).unwrap_or("");
+                // Hit path: avoid allocating a new String when we already
+                // have an entry for this key. IndexMap supports get_mut(&str)
+                // even though entry() requires owned.
+                if let Some(slot) = seen.get_mut(key_str) {
+                    slot.1 += 1;
+                } else {
+                    seen.insert(key_str.to_string(), (line.to_string(), 1));
+                }
                 Some(FilterResult::Suppress)
             }
             CompiledRule::GroupByCapture {
@@ -482,12 +614,16 @@ impl CompiledRule {
                     return None;
                 };
                 let group_idx = key_capture.unwrap_or(1);
-                let key = caps
-                    .get(group_idx)
-                    .or_else(|| caps.get(0))
-                    .map(|m| m.as_str().to_string())
-                    .unwrap_or_default();
-                let bucket = buckets.entry(key).or_insert_with(|| (Vec::new(), 0));
+                let key_match = caps.get(group_idx).or_else(|| caps.get(0));
+                let key_str = key_match.map(|m| m.as_str()).unwrap_or("");
+                // Hit path uses get_mut(&str) to avoid the per-line key alloc.
+                let bucket = if buckets.contains_key(key_str) {
+                    buckets.get_mut(key_str).expect("just checked")
+                } else {
+                    buckets
+                        .entry(key_str.to_string())
+                        .or_insert_with(|| (Vec::new(), 0))
+                };
                 let under_per_key = (bucket.0.len() as u32) < *cap_per_key;
                 let under_total = *total_kept < *total_cap;
                 if under_per_key && under_total {
@@ -551,11 +687,11 @@ impl CompiledRule {
                     out.push_str(": ");
                     out.push_str(&lines.join(", "));
                     if *overflow > 0 {
-                        out.push_str(&format!(" (+{overflow} more)"));
+                        out.push_str(&format!(" (+{overflow})"));
                     }
                 }
                 if *global_overflow > 0 {
-                    out.push_str(&format!("\n  (+{global_overflow} more dropped past total cap)"));
+                    out.push_str(&format!("\n  (+{global_overflow} dropped)"));
                 }
                 Some(out)
             }
@@ -594,6 +730,87 @@ fn preserve_case(original: &str, abbrev: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compile_group_coalesces_consecutive_suppress_regex() {
+        let rules = vec![
+            Rule::SuppressRegex {
+                pattern: "^foo".into(),
+            },
+            Rule::SuppressRegex {
+                pattern: "^bar".into(),
+            },
+            Rule::SuppressRegex {
+                pattern: "^baz".into(),
+            },
+        ];
+        let compiled = compile_group(rules).expect("compile");
+        assert_eq!(compiled.len(), 1);
+        assert!(matches!(&compiled[0], CompiledRule::SuppressRegexSet { .. }));
+        let mut compiled = compiled;
+        assert_eq!(compiled[0].apply("foo line"), Some(FilterResult::Suppress));
+        assert_eq!(compiled[0].apply("bar line"), Some(FilterResult::Suppress));
+        assert_eq!(compiled[0].apply("baz line"), Some(FilterResult::Suppress));
+        assert_eq!(compiled[0].apply("other line"), None);
+    }
+
+    #[test]
+    fn compile_group_does_not_coalesce_across_other_rules() {
+        let rules = vec![
+            Rule::SuppressRegex {
+                pattern: "^foo".into(),
+            },
+            Rule::TruncateMatch {
+                pattern: "x".into(),
+                replace: "y".into(),
+            },
+            Rule::SuppressRegex {
+                pattern: "^bar".into(),
+            },
+        ];
+        let compiled = compile_group(rules).expect("compile");
+        // Order preserved: suppress, truncate, suppress — no coalescing across
+        // the TruncateMatch barrier.
+        assert_eq!(compiled.len(), 3);
+        assert!(matches!(&compiled[0], CompiledRule::SuppressRegex { .. }));
+        assert!(matches!(&compiled[1], CompiledRule::TruncateMatch { .. }));
+        assert!(matches!(&compiled[2], CompiledRule::SuppressRegex { .. }));
+    }
+
+    #[test]
+    fn compile_group_coalesces_consecutive_truncate_match() {
+        let rules = vec![
+            Rule::TruncateMatch {
+                pattern: r"\b[a-f0-9]{40}\b".into(),
+                replace: "<sha>".into(),
+            },
+            Rule::TruncateMatch {
+                pattern: r"/home/[^/]+/".into(),
+                replace: "~/".into(),
+            },
+        ];
+        let compiled = compile_group(rules).expect("compile");
+        assert_eq!(compiled.len(), 1);
+        assert!(matches!(&compiled[0], CompiledRule::TruncateMatchSet { .. }));
+        let mut compiled = compiled;
+        // First-match-wins semantics: only one replacement applies per line.
+        match compiled[0].apply("abcdef0123456789abcdef0123456789abcdef01") {
+            Some(FilterResult::Replace(s)) => assert!(s.contains("<sha>")),
+            other => panic!("expected Replace, got {other:?}"),
+        }
+        // Line that matches neither pattern: None.
+        assert_eq!(compiled[0].apply("nothing interesting here"), None);
+    }
+
+    #[test]
+    fn compile_group_keeps_single_suppress_regex_uncoalesced() {
+        let rules = vec![Rule::SuppressRegex {
+            pattern: "^foo".into(),
+        }];
+        let compiled = compile_group(rules).expect("compile");
+        assert_eq!(compiled.len(), 1);
+        assert!(matches!(&compiled[0], CompiledRule::SuppressRegex { .. }));
+    }
 
     #[test]
     fn collapse_repeats_drops_consecutive_same_capture() {
@@ -835,7 +1052,7 @@ mod tests {
         assert!(summary.contains("fileA"), "got {summary:?}");
         assert!(summary.contains("hit 1"), "got {summary:?}");
         assert!(summary.contains("hit 2"), "got {summary:?}");
-        assert!(summary.contains("(+1 more)"), "got {summary:?}");
+        assert!(summary.contains("(+1)"), "got {summary:?}");
         assert!(summary.contains("fileB"), "got {summary:?}");
     }
 
@@ -853,6 +1070,6 @@ mod tests {
         compiled.apply("b: 1");
         compiled.apply("c: 1"); // exceeds total_cap
         let summary = compiled.flush_summary().expect("summary");
-        assert!(summary.contains("(+1 more"), "got {summary:?}");
+        assert!(summary.contains("(+1 dropped)"), "got {summary:?}");
     }
 }
