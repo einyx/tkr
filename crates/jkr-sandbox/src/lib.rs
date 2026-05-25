@@ -11,6 +11,9 @@ mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
 
+#[cfg(feature = "docker")]
+pub mod session;
+
 pub use error::SandboxError;
-pub use exec::{run_sandboxed, SandboxOutput};
+pub use exec::{run_sandboxed, run_sandboxed_interactive, SandboxOutput};
 pub use policy::{PolicyBuilder, SandboxPolicy};
