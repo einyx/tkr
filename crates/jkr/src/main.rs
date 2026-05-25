@@ -342,6 +342,7 @@ fn main() -> anyhow::Result<()> {
         Some(Commands::Bench { command }) => cmds::bench::run(&command),
         Some(Commands::Agent { cmd }) => match cmd {
             AgentCmd::Run { manifest, stream } => agent_cmd::run_agent(&manifest, stream),
+            AgentCmd::Push { manifest } => agent_cmd::push_agent(&manifest),
         },
         Some(Commands::Update { check, force }) => cmds::update::run(check, force),
         None => {

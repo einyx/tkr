@@ -9,6 +9,42 @@ use jkr_providers::AnthropicProvider;
 
 use jkr::run_record;
 
+/// Parse + validate a manifest string client-side before pushing.
+pub fn validate_manifest_str(s: &str) -> Result<Manifest> {
+    Manifest::parse(s)
+}
+
+/// Push a manifest to the server's registry under the caller's token.
+pub fn push_agent(manifest_path: &Path) -> Result<()> {
+    let body = std::fs::read_to_string(manifest_path)
+        .with_context(|| format!("reading manifest {}", manifest_path.display()))?;
+    validate_manifest_str(&body)
+        .with_context(|| format!("invalid manifest {}", manifest_path.display()))?;
+    let base = std::env::var("JKR_SERVER_URL")
+        .unwrap_or_else(|_| "https://tkr.prysm.sh".into());
+    let token = std::env::var("JKR_TOKEN")
+        .map_err(|_| anyhow!("set JKR_TOKEN to push agents"))?;
+    let url = format!("{}/v1/agents", base.trim_end_matches('/'));
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(std::time::Duration::from_secs(30)))
+        .build()
+        .into();
+    let resp = agent
+        .post(&url)
+        .header("x-jkr-token", &token)
+        .header("content-type", "application/toml")
+        .send(body.as_bytes())
+        .map_err(|e| anyhow!("request failed: {e}"))?;
+    let status = resp.status();
+    let resp_body = resp.into_body().read_to_string().context("reading response body")?;
+    if status.is_success() {
+        println!("{resp_body}");
+        Ok(())
+    } else {
+        Err(anyhow!("server returned {status}: {resp_body}"))
+    }
+}
+
 /// Writes each event as one NDJSON line, flushing per line so a reader
 /// (e.g. a Docker log stream) sees events as they happen.
 pub struct NdjsonSink<W: Write> {
@@ -138,6 +174,13 @@ pub fn run_agent(manifest_path: &Path, stream: bool) -> Result<()> {
 mod tests {
     use super::*;
     use jkr_api::{AgentEvent, AgentEventKind};
+
+    #[test]
+    fn validate_rejects_bad_manifest_and_accepts_good() {
+        assert!(validate_manifest_str("name = 123").is_err());
+        let good = "name=\"x\"\ntask=\"t\"\n[model]\nprovider=\"anthropic\"\nname=\"m\"\n";
+        assert!(validate_manifest_str(good).is_ok());
+    }
 
     #[test]
     fn ndjson_sink_writes_one_line_per_event() {

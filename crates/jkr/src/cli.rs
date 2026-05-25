@@ -595,4 +595,9 @@ pub enum AgentCmd {
         #[arg(long)]
         stream: bool,
     },
+    /// Push an agent manifest to the server registry
+    Push {
+        /// Path to a TOML manifest
+        manifest: std::path::PathBuf,
+    },
 }
