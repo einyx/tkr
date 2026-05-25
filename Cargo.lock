@@ -727,7 +727,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -738,7 +738,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1259,6 +1259,49 @@ dependencies = [
 ]
 
 [[package]]
+name = "bollard"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c9d0a013e3d3ee4edd61e779adf117944c08902d375f18630a0c5b8f95659734"
+dependencies = [
+ "base64 0.22.1",
+ "bollard-stubs",
+ "bytes",
+ "futures-core",
+ "futures-util",
+ "hex",
+ "http",
+ "http-body-util",
+ "hyper",
+ "hyper-named-pipe",
+ "hyper-util",
+ "hyperlocal",
+ "log",
+ "pin-project-lite",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "serde_urlencoded",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tower-service",
+ "url",
+ "winapi",
+]
+
+[[package]]
+name = "bollard-stubs"
+version = "1.53.1-rc.29.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce412eb6f7096743011dc3cb5c674caeb24ced61d8c498fe07cf7998a4fea889"
+dependencies = [
+ "serde",
+ "serde_json",
+ "serde_repr",
+]
+
+[[package]]
 name = "bstr"
 version = "1.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1488,7 +1531,7 @@ version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "faf9468729b8cbcea668e36183cb69d317348c2e08e994829fb56ebfdfbaac34"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2178,7 +2221,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.2",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2381,7 +2424,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3135,6 +3178,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyper-named-pipe"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73b7d8abf35697b81a825e386fc151e0d503e8cb5fcb93cc8669c376dfd6f278"
+dependencies = [
+ "hex",
+ "hyper",
+ "hyper-util",
+ "pin-project-lite",
+ "tokio",
+ "tower-service",
+ "winapi",
+]
+
+[[package]]
 name = "hyper-rustls"
 version = "0.27.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3189,6 +3247,21 @@ dependencies = [
  "tower-service",
  "tracing",
  "windows-registry",
+]
+
+[[package]]
+name = "hyperlocal"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "986c5ce3b994526b3cd75578e62554abd09f0899d6206de48b3e96ab34ccc8c7"
+dependencies = [
+ "hex",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "pin-project-lite",
+ "tokio",
+ "tower-service",
 ]
 
 [[package]]
@@ -3660,6 +3733,267 @@ name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
+
+[[package]]
+name = "jkr"
+version = "0.3.3"
+dependencies = [
+ "age",
+ "alloy",
+ "anyhow",
+ "chacha20poly1305",
+ "chrono",
+ "clap",
+ "crossterm 0.27.0",
+ "dirs 5.0.1",
+ "fastembed",
+ "flate2",
+ "hex",
+ "hkdf",
+ "hostname",
+ "jkr-agent",
+ "jkr-analytics",
+ "jkr-api",
+ "jkr-filter",
+ "jkr-mcp",
+ "jkr-mesh",
+ "jkr-providers",
+ "jkr-sandbox",
+ "jkr-session-recorder",
+ "jsonschema",
+ "k256",
+ "keyring",
+ "libloading",
+ "rand 0.8.6",
+ "ratatui",
+ "regex",
+ "rusqlite",
+ "self_update",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlite-vec",
+ "tar",
+ "tempfile",
+ "tokio",
+ "toml 0.8.23",
+ "ureq 3.3.0",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
+name = "jkr-agent"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "jkr-api",
+ "jkr-filter",
+ "jkr-providers",
+ "jkr-sandbox",
+ "mockito",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "toml 0.8.23",
+]
+
+[[package]]
+name = "jkr-analytics"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "dirs 5.0.1",
+ "jkr-api",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "jkr-api"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "jkr-filter"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "indexmap",
+ "jkr-api",
+ "regex",
+ "serde",
+ "toml 0.8.23",
+]
+
+[[package]]
+name = "jkr-index"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "flate2",
+ "hex",
+ "ignore",
+ "notify",
+ "notify-debouncer-full",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tree-sitter",
+ "tree-sitter-c",
+ "tree-sitter-cpp",
+ "tree-sitter-go",
+ "tree-sitter-java",
+ "tree-sitter-javascript",
+ "tree-sitter-python",
+ "tree-sitter-ruby",
+ "tree-sitter-rust",
+ "tree-sitter-typescript",
+]
+
+[[package]]
+name = "jkr-mcp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ignore",
+ "jkr-index",
+ "regex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tree-sitter",
+ "tree-sitter-go",
+ "tree-sitter-javascript",
+ "tree-sitter-python",
+ "tree-sitter-rust",
+ "tree-sitter-typescript",
+ "walkdir",
+]
+
+[[package]]
+name = "jkr-mesh"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm",
+ "anyhow",
+ "base64 0.22.1",
+ "futures-util",
+ "hex",
+ "hex-literal",
+ "hkdf",
+ "k256",
+ "mockito",
+ "rand 0.8.6",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sha3",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-tungstenite",
+ "ureq 3.3.0",
+]
+
+[[package]]
+name = "jkr-model"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "hex",
+ "jkr-mesh",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sha3",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "jkr-providers"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "jkr-agent",
+ "json5",
+ "mockito",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "ureq 3.3.0",
+]
+
+[[package]]
+name = "jkr-sandbox"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bollard",
+ "futures-util",
+ "jkr-api",
+ "landlock",
+ "libc",
+ "nix",
+ "rlimit",
+ "serde",
+ "serde_json",
+ "syscalls",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "toml 0.8.23",
+]
+
+[[package]]
+name = "jkr-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "bytes",
+ "deadpool-redis",
+ "futures-util",
+ "hex",
+ "http",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "jkr-mesh",
+ "jkr-sandbox",
+ "k256",
+ "rand 0.8.6",
+ "redis",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "tokio",
+ "tokio-tungstenite",
+ "ureq 3.3.0",
+]
+
+[[package]]
+name = "jkr-session-recorder"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "jkr-api",
+ "rand 0.8.6",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "jni"
@@ -5612,7 +5946,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5691,7 +6025,7 @@ dependencies = [
  "security-framework 3.7.0",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6169,7 +6503,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6628,7 +6962,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6759,262 +7093,6 @@ name = "tinyvec_macros"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
-
-[[package]]
-name = "tkr"
-version = "0.3.3"
-dependencies = [
- "age",
- "alloy",
- "anyhow",
- "chacha20poly1305",
- "chrono",
- "clap",
- "crossterm 0.27.0",
- "dirs 5.0.1",
- "fastembed",
- "flate2",
- "hex",
- "hkdf",
- "hostname",
- "jsonschema",
- "k256",
- "keyring",
- "libloading",
- "rand 0.8.6",
- "ratatui",
- "regex",
- "rusqlite",
- "self_update",
- "serde",
- "serde_json",
- "sha2",
- "sqlite-vec",
- "tar",
- "tempfile",
- "tkr-agent",
- "tkr-analytics",
- "tkr-api",
- "tkr-filter",
- "tkr-mcp",
- "tkr-mesh",
- "tkr-providers",
- "tkr-sandbox",
- "tkr-session-recorder",
- "tokio",
- "toml 0.8.23",
- "ureq 3.3.0",
- "uuid",
- "zeroize",
-]
-
-[[package]]
-name = "tkr-agent"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "mockito",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tkr-api",
- "tkr-filter",
- "tkr-providers",
- "tkr-sandbox",
- "toml 0.8.23",
-]
-
-[[package]]
-name = "tkr-analytics"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "dirs 5.0.1",
- "rusqlite",
- "serde",
- "serde_json",
- "tempfile",
- "tkr-api",
-]
-
-[[package]]
-name = "tkr-api"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "tkr-filter"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "indexmap",
- "regex",
- "serde",
- "tkr-api",
- "toml 0.8.23",
-]
-
-[[package]]
-name = "tkr-index"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "flate2",
- "hex",
- "ignore",
- "notify",
- "notify-debouncer-full",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "tree-sitter",
- "tree-sitter-c",
- "tree-sitter-cpp",
- "tree-sitter-go",
- "tree-sitter-java",
- "tree-sitter-javascript",
- "tree-sitter-python",
- "tree-sitter-ruby",
- "tree-sitter-rust",
- "tree-sitter-typescript",
-]
-
-[[package]]
-name = "tkr-mcp"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "ignore",
- "regex",
- "rusqlite",
- "serde",
- "serde_json",
- "tempfile",
- "tkr-index",
- "tree-sitter",
- "tree-sitter-go",
- "tree-sitter-javascript",
- "tree-sitter-python",
- "tree-sitter-rust",
- "tree-sitter-typescript",
- "walkdir",
-]
-
-[[package]]
-name = "tkr-mesh"
-version = "0.1.0"
-dependencies = [
- "aes-gcm",
- "anyhow",
- "base64 0.22.1",
- "futures-util",
- "hex",
- "hex-literal",
- "hkdf",
- "k256",
- "mockito",
- "rand 0.8.6",
- "serde",
- "serde_json",
- "sha2",
- "sha3",
- "thiserror 1.0.69",
- "tokio",
- "tokio-tungstenite",
- "ureq 3.3.0",
-]
-
-[[package]]
-name = "tkr-model"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "hex",
- "serde",
- "serde_json",
- "sha2",
- "sha3",
- "thiserror 1.0.69",
- "tkr-mesh",
-]
-
-[[package]]
-name = "tkr-providers"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "json5",
- "mockito",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tkr-agent",
- "ureq 3.3.0",
-]
-
-[[package]]
-name = "tkr-sandbox"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "landlock",
- "libc",
- "nix",
- "rlimit",
- "serde",
- "serde_json",
- "syscalls",
- "tempfile",
- "thiserror 1.0.69",
- "toml 0.8.23",
-]
-
-[[package]]
-name = "tkr-server"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64 0.22.1",
- "bytes",
- "deadpool-redis",
- "futures-util",
- "hex",
- "http",
- "http-body-util",
- "hyper",
- "hyper-util",
- "k256",
- "rand 0.8.6",
- "redis",
- "regex",
- "serde",
- "serde_json",
- "sha2",
- "sqlx",
- "tkr-mesh",
- "tkr-sandbox",
- "tokio",
- "tokio-tungstenite",
- "ureq 3.3.0",
-]
-
-[[package]]
-name = "tkr-session-recorder"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "rand 0.8.6",
- "serde",
- "serde_json",
- "tkr-api",
-]
 
 [[package]]
 name = "tokenizers"
@@ -7986,7 +8064,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

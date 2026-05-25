@@ -1,21 +1,29 @@
 [package]
-name = "tkr-sandbox"
+name = "jkr-sandbox"
 publish = false
 version = "0.1.0"
 edition = "2021"
 rust-version.workspace = true
-description = "Sandboxing primitives (landlock/macOS sandbox) for the tkr CLI proxy"
-repository = "https://github.com/einyx/tkr"
+description = "Sandboxing primitives (landlock/macOS sandbox) for the jkr CLI proxy"
+repository = "https://github.com/einyx/jkr"
 license = "Apache-2.0"
 
 [lib]
-name = "tkr_sandbox"
+name = "jkr_sandbox"
 crate-type = ["rlib"]
+
+[features]
+docker = ["dep:bollard", "dep:tokio", "dep:jkr-api", "dep:futures-util", "dep:async-trait"]
 
 [dependencies]
 anyhow = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
+bollard = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+jkr-api = { path = "../jkr-api", version = "0.1.0", optional = true }
+futures-util = { workspace = true, optional = true }
+async-trait = { workspace = true, optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock = { workspace = true }

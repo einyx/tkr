@@ -1,19 +1,19 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/tkr-api",
-    "crates/tkr-filter",
-    "crates/tkr-analytics",
-    "crates/tkr-session-recorder",
-    "crates/tkr-agent",
-    "crates/tkr-providers",
-    "crates/tkr-sandbox",
-    "crates/tkr-mesh",
-    "crates/tkr-mcp",
-    "crates/tkr-model",
-    "crates/tkr-index",
-    "crates/tkr",
-    "crates/tkr-server",
+    "crates/jkr-api",
+    "crates/jkr-filter",
+    "crates/jkr-analytics",
+    "crates/jkr-session-recorder",
+    "crates/jkr-agent",
+    "crates/jkr-providers",
+    "crates/jkr-sandbox",
+    "crates/jkr-mesh",
+    "crates/jkr-mcp",
+    "crates/jkr-model",
+    "crates/jkr-index",
+    "crates/jkr",
+    "crates/jkr-server",
 ]
 
 # MSRV — keep in sync with rust-toolchain.toml (transitive crates: time, darling, …).
@@ -46,7 +46,7 @@ sha2 = "0.10"
 hkdf = "0.12"
 rusqlite = { version = "0.31", features = ["bundled", "serialize"] }
 sqlite-vec = "0.1"
-# Server-side persistence (tkr-server only):
+# Server-side persistence (jkr-server only):
 #   * Postgres for durable, queryable state — sessions, receipts queue,
 #     audit rings.
 #   * Redis for ephemeral hot state with TTLs — OAuth login state,
@@ -65,11 +65,14 @@ http = "=1.4.0"
 http-body-util = "=0.1.3"
 bytes = "=1.11.1"
 base64 = "=0.22.1"
+bollard = "0.21"
+futures-util = "0.3"
+async-trait = "0.1"
 
 [profile.release]
 opt-level = 3
-# Disabled: fat/thin LTO can fail when linking `tkr` against `cdylib` workspace
-# members and bundled C crates (`rusqlite`) — e.g. `cargo install --path crates/tkr`.
+# Disabled: fat/thin LTO can fail when linking `jkr` against `cdylib` workspace
+# members and bundled C crates (`rusqlite`) — e.g. `cargo install --path crates/jkr`.
 lto = false
 codegen-units = 1
 strip = true
