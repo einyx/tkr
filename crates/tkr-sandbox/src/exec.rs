@@ -1,3 +1,4 @@
+use crate::capture::trace::SandboxTrace;
 use crate::error::SandboxError;
 use crate::policy::{SandboxLimits, SandboxPolicy};
 use std::io::Read;
@@ -23,7 +24,7 @@ pub struct SandboxOutput {
     pub truncated: bool,
 }
 
-pub fn run_sandboxed(
+pub fn run_sandboxed_output_only(
     command: &str,
     args: &[&str],
     policy: &SandboxPolicy,
@@ -47,6 +48,14 @@ pub fn run_sandboxed(
         let _ = (command, args);
         Err(SandboxError::Unsupported)
     }
+}
+
+pub fn run_sandboxed(
+    command: &str,
+    args: &[&str],
+    policy: &SandboxPolicy,
+) -> Result<(SandboxOutput, SandboxTrace), SandboxError> {
+    crate::capture::run_with_capture(command, args, policy)
 }
 
 fn run_unsandboxed(
@@ -186,14 +195,14 @@ mod tests {
     fn rejects_relative_paths_in_policy() {
         let p = SandboxPolicy::builder().allow_read("rel").build();
         let r = run_sandboxed("/bin/true", &[], &p);
-        assert!(matches!(r, Err(SandboxError::PolicyViolation(_))));
+        assert!(matches!(r, Err(SandboxError::PolicyViolation(_))),);
     }
 
     #[test]
     fn disabled_policy_runs_unsandboxed() {
         let mut p = SandboxPolicy::deny_all();
         p.disabled = true;
-        let r = run_sandboxed("/bin/echo", &["hi"], &p).unwrap();
+        let (r, _trace) = run_sandboxed("/bin/echo", &["hi"], &p).unwrap();
         assert_eq!(r.exit, 0);
         assert!(String::from_utf8_lossy(&r.stdout).contains("hi"));
         assert!(!r.truncated);

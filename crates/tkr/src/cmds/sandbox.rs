@@ -86,7 +86,7 @@ pub fn run(
     let result = run_sandboxed(&cmd, &arg_refs, &policy);
     let duration_ms = started.elapsed().as_millis() as u64;
     match result {
-        Ok(out) => {
+        Ok((out, _trace)) => {
             // Pass-through stdout/stderr, then propagate the child's exit code.
             use std::io::Write;
             let _ = std::io::stdout().write_all(&out.stdout);

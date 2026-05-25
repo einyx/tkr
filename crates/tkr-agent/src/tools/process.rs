@@ -82,7 +82,7 @@ impl Tool for ProcessTool {
     fn run(&mut self, input: &Value) -> Result<ToolResult> {
         let args = self.render_args(input)?;
         let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        let out = run_sandboxed(&self.command, &arg_refs, &self.policy)
+        let (out, _trace) = run_sandboxed(&self.command, &arg_refs, &self.policy)
             .map_err(|e| anyhow::anyhow!("sandbox: {e}"))?;
         let mut content = String::from_utf8_lossy(&out.stdout).into_owned();
         if !out.stderr.is_empty() {

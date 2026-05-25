@@ -208,7 +208,7 @@ mod tests {
             .allow_read("/bin")
             .allow_read("/System")
             .build();
-        let out = run_sandboxed("/bin/echo", &["hi"], &policy)
+        let (out, _trace) = run_sandboxed("/bin/echo", &["hi"], &policy)
             .expect("sandbox-exec should not error");
         assert_eq!(out.exit, 0, "stderr was: {}", String::from_utf8_lossy(&out.stderr));
         assert_eq!(
