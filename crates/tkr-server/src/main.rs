@@ -3810,6 +3810,7 @@ async fn handle_sandbox_run(req: Request<Incoming>, state: AppState) -> Response
     let result = tokio::task::spawn_blocking(move || {
         let arg_refs: Vec<&str> = payload.args.iter().map(String::as_str).collect();
         tkr_sandbox::exec::run_sandboxed(&payload.command, &arg_refs, &policy)
+            .map(|(out, _trace)| out)
     })
     .await;
 

@@ -12,7 +12,7 @@ fn run_test() {
         .build();
 
     // Allowed write must succeed.
-    let r1 = run_sandboxed(
+    let (r1, _trace) = run_sandboxed(
         "/usr/bin/touch",
         &[allowed_target.to_str().unwrap()],
         &policy,
@@ -25,7 +25,7 @@ fn run_test() {
     );
 
     // Denied write must fail or produce no file.
-    let r2 = run_sandboxed(
+    let (r2, _trace) = run_sandboxed(
         "/usr/bin/touch",
         &[denied_target.to_str().unwrap()],
         &policy,
