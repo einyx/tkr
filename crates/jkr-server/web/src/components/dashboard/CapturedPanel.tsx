@@ -1,4 +1,4 @@
-// Captured-bodies panel. Only useful when `TKR_CAPTURE_BODIES=true`
+// Captured-bodies panel. Only useful when `JKR_CAPTURE_BODIES=true`
 // on the server — otherwise renders an "off; flip the env" copy
 // with no body table. When enabled, lists the most recent calls
 // with click-to-expand <details> for the scrubbed request +
@@ -63,7 +63,7 @@ export function CapturedPanel() {
       ) : !enabled ? (
         <div className="empty">
           body capture is off. set{" "}
-          <code>TKR_CAPTURE_BODIES=true</code> on the server to start
+          <code>JKR_CAPTURE_BODIES=true</code> on the server to start
           stashing the scrubbed request + response bodies of every
           proxied call (ring of {data.capacity}, {Math.round(data.max_body_bytes / 1024)} KiB cap per side).
           off by default so the &ldquo;your prompts never leave&rdquo; claim
@@ -97,7 +97,11 @@ export function CapturedPanel() {
                 <span className="muted">{fmtRelative(e.ts)}</span>
                 <span>{e.provider}</span>
                 <span className="muted">{e.model || "—"}</span>
-                <span className="num">{e.input_tokens} → {e.output_tokens}</span>
+                <span className="num">
+                  {e.input_tokens === 0 && e.output_tokens === 0
+                    ? "—"
+                    : `${e.input_tokens} → ${e.output_tokens}`}
+                </span>
                 <span className={e.status >= 400 ? "err-inline" : "ok"}>
                   {e.status}
                 </span>
@@ -131,7 +135,7 @@ function downloadJsonl(entries: CapturedCall[]) {
   const a = document.createElement("a");
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   a.href = url;
-  a.download = `tkr-captured-${stamp}.jsonl`;
+  a.download = `jkr-captured-${stamp}.jsonl`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

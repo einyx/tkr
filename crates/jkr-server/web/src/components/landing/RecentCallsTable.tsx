@@ -33,8 +33,12 @@ export function RecentCallsTable({ entries }: Props) {
         <div key={`${e.ts}-${idx}`} className="lp-llm-row">
           <span className="lp-llm-time">{fmtRelative(e.ts)}</span>
           <span className="lp-llm-model">{e.model || "—"}</span>
-          <span className="lp-llm-num">{e.input_tokens}</span>
-          <span className="lp-llm-num">{e.output_tokens}</span>
+          <span className="lp-llm-num">
+            {e.input_tokens === 0 && e.output_tokens === 0 ? "—" : e.input_tokens}
+          </span>
+          <span className="lp-llm-num">
+            {e.input_tokens === 0 && e.output_tokens === 0 ? "—" : e.output_tokens}
+          </span>
           <span className="lp-llm-num">{e.duration_ms}</span>
           <span className={e.status >= 400 ? "lp-llm-bad" : "lp-llm-ok"}>
             {e.status}
