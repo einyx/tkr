@@ -1,4 +1,4 @@
-//! `tkr sandbox run` — execute a command under tkr-sandbox.
+//! `jkr sandbox run` — execute a command under jkr-sandbox.
 //!
 //! Defaults are deliberately strict: deny-all fs, empty env, 16 MiB output cap,
 //! no timeout. Operators opt in to fs/env/resource grants via flags.
@@ -6,7 +6,11 @@
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use std::time::Instant;
-use tkr_sandbox::{run_sandboxed, SandboxError, SandboxPolicy};
+use jkr_sandbox::capture::trace::{CaptureKind, SandboxTrace};
+use jkr_sandbox::exec::run_sandboxed_output_only;
+use jkr_sandbox::{
+    run_sandboxed, run_sandboxed_interactive, SandboxError, SandboxPolicy, VerdictLevel,
+};
 
 #[allow(clippy::too_many_arguments)]
 pub fn run(
@@ -21,6 +25,9 @@ pub fn run(
     no_network: bool,
     allow_connect: Vec<u16>,
     allow_bind: Vec<u16>,
+    trace: bool,
+    trace_json: bool,
+    interactive: bool,
     argv: Vec<String>,
 ) -> Result<()> {
     let (cmd, args) = argv
@@ -83,24 +90,46 @@ pub fn run(
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     let started = Instant::now();
-    let result = run_sandboxed(&cmd, &arg_refs, &policy);
+    // Three execution modes:
+    //   interactive  -> Landlock-only, inherited tty (agent TUIs). No ptrace.
+    //   trace flags  -> ptrace capture backend (the only path that builds a
+    //                   real SandboxTrace; ~3.5x slower, so opt-in).
+    //   default      -> Landlock-only, captured+printed output. No ptrace.
+    let result = if interactive {
+        run_sandboxed_interactive(&cmd, &arg_refs, &policy).map(|o| (o, SandboxTrace::none()))
+    } else if trace || trace_json {
+        run_sandboxed(&cmd, &arg_refs, &policy)
+    } else {
+        run_sandboxed_output_only(&cmd, &arg_refs, &policy).map(|o| (o, SandboxTrace::none()))
+    };
     let duration_ms = started.elapsed().as_millis() as u64;
     match result {
-        Ok((out, _trace)) => {
+        Ok((out, sbx_trace)) => {
             // Pass-through stdout/stderr, then propagate the child's exit code.
             use std::io::Write;
             let _ = std::io::stdout().write_all(&out.stdout);
             let _ = std::io::stderr().write_all(&out.stderr);
+            // Behavioral trace goes to stderr only: on the Linux ptrace path the
+            // child's real stdout is streamed live, so anything on stdout here
+            // would corrupt a downstream pipe.
+            if trace_json {
+                match serde_json::to_string(&sbx_trace) {
+                    Ok(j) => eprintln!("{j}"),
+                    Err(e) => eprintln!("jkr sandbox: trace serialize failed: {e}"),
+                }
+            } else if trace {
+                eprint!("{}", format_trace_summary(&sbx_trace));
+            }
             emit_ingest(&cmd, out.exit, false, duration_ms);
             std::process::exit(out.exit);
         }
         Err(SandboxError::Timeout(ms)) => {
-            eprintln!("tkr sandbox: timeout after {ms}ms");
+            eprintln!("jkr sandbox: timeout after {ms}ms");
             emit_ingest(&cmd, 124, false, duration_ms);
             std::process::exit(124); // GNU timeout convention.
         }
         Err(SandboxError::OutputCapExceeded(n)) => {
-            eprintln!("tkr sandbox: child exceeded {n}-byte output cap");
+            eprintln!("jkr sandbox: child exceeded {n}-byte output cap");
             emit_ingest(&cmd, 125, true, duration_ms);
             std::process::exit(125);
         }
@@ -112,7 +141,7 @@ pub fn run(
             let msg = e.to_string();
             if msg.contains("Permission denied") || msg.contains("os error 13") {
                 eprintln!(
-                    "tkr sandbox: {msg}\n\
+                    "jkr sandbox: {msg}\n\
                      hint: the child couldn't exec `{cmd}`. \
                      If you passed `--system=false`, make sure --read \
                      includes the binary's directory + /lib + /lib64 + /etc."
@@ -123,24 +152,67 @@ pub fn run(
     }
 }
 
-/// Fire-and-forget POST to tkr-server's `/api/v1/sandbox/ingest` so
+fn level_str(level: &VerdictLevel) -> &'static str {
+    match level {
+        VerdictLevel::Clean => "clean",
+        VerdictLevel::Notable => "notable",
+        VerdictLevel::Suspicious => "suspicious",
+    }
+}
+
+/// Render a token-tight, human-readable trace summary (house style: no
+/// column padding, no didactic footer). Pure over the DTO so it can be
+/// unit-tested without spawning a child.
+fn format_trace_summary(t: &SandboxTrace) -> String {
+    // Platforms without a capture backend (macOS today) return an empty
+    // CaptureKind::None trace — say so rather than print a fake "clean".
+    if t.capture_kind == CaptureKind::None {
+        return "jkr sandbox: behavioral trace not captured on this platform\n".to_string();
+    }
+    let mut s = String::new();
+    let n = t.verdict.flags.len();
+    s.push_str(&format!(
+        "jkr sandbox: verdict={} ({n} flag{})\n",
+        level_str(&t.verdict.level),
+        if n == 1 { "" } else { "s" }
+    ));
+    for f in &t.verdict.flags {
+        s.push_str(&format!(
+            "  [{}] {}: {}\n",
+            level_str(&f.severity),
+            f.kind,
+            f.detail
+        ));
+    }
+    s.push_str(&format!(
+        "files={} net={} exec={} denied={}{}\n",
+        t.summary.files_total,
+        t.summary.net_total,
+        t.summary.exec_total,
+        t.summary.denied_total,
+        if t.truncated { " (truncated)" } else { "" }
+    ));
+    s
+}
+
+/// Fire-and-forget POST to jkr-server's `/api/v1/sandbox/ingest` so
 /// the local run shows up in the dashboard's sandbox panel. Silent
 /// on every failure mode (env unset, DNS, non-2xx, JSON encode) —
 /// the CLI's job is not to break the user's local cmd flow. The 2s
 /// timeout keeps tail latency bounded if the server is unreachable.
 fn emit_ingest(command: &str, exit: i32, truncated: bool, duration_ms: u64) {
-    // Preferred: credentials minted via `tkr login` and stored in
+    // Preferred: credentials minted via `jkr login` and stored in
     // the OS keychain. Fallback: legacy env vars for headless setups
-    // (CI, server boxes) where running `tkr login` interactively
+    // (CI, server boxes) where running `jkr login` interactively
     // doesn't make sense.
     let (base, token) = match crate::cmds::login::stored_credentials() {
         Some((u, t)) => (u, t),
         None => {
-            let base = std::env::var("TKR_INGEST_URL")
+            let base = std::env::var("JKR_INGEST_URL")
                 .ok()
                 .filter(|v| !v.trim().is_empty())
                 .map(|v| v.trim().trim_end_matches('/').to_string());
-            let token = std::env::var("TKR_INGEST_TOKEN")
+            let token = std::env::var("JKR_INGEST_TOKEN")
                 .ok()
                 .filter(|v| !v.trim().is_empty())
                 .map(|v| v.trim().to_string());
@@ -168,7 +240,7 @@ fn emit_ingest(command: &str, exit: i32, truncated: bool, duration_ms: u64) {
         .send_json(&body);
 }
 
-/// `tkr sandbox claude` — launch Claude Code (or any agent CLI) inside
+/// `jkr sandbox claude` — launch Claude Code (or any agent CLI) inside
 /// the same Landlock/sandbox-exec jail `sandbox run` uses, with
 /// defaults shaped for agent workflows:
 ///   * Read access to system libraries, the user's `~/.claude` config,
@@ -185,6 +257,21 @@ fn emit_ingest(command: &str, exit: i32, truncated: bool, duration_ms: u64) {
 /// opt out entirely and grant individual paths/env explicitly via
 /// `--read` / `--write` / `--env`.
 #[allow(clippy::too_many_arguments)]
+/// Default gateway the `claude` preset routes API calls through, so
+/// traffic hits the proxy's redaction + capture path instead of going
+/// straight to the provider.
+const DEFAULT_GATEWAY_URL: &str = "https://tkr.prysm.sh";
+
+/// Decide whether to inject `ANTHROPIC_BASE_URL`. Returns the URL to
+/// set when the var is absent, or `None` when the operator already set
+/// it (respect override — including a deliberate empty value).
+fn gateway_base_url_override(current: Option<&std::ffi::OsStr>) -> Option<&'static str> {
+    match current {
+        Some(_) => None,
+        None => Some(DEFAULT_GATEWAY_URL),
+    }
+}
+
 pub fn claude(
     extra_read: Vec<PathBuf>,
     extra_write: Vec<PathBuf>,
@@ -210,6 +297,12 @@ pub fn claude(
         let read_defaults = [
             cwd.clone(),
             home.join(".claude"),
+            // Claude Code's primary config/state + auth lives in this single
+            // file directly under $HOME (not inside ~/.claude). Without read
+            // access the agent stalls at startup loading its config; without
+            // write it can't persist updates.
+            home.join(".claude.json"),
+            home.join(".cache").join("claude-cli-nodejs"),
             home.join(".npm"),
             home.join(".nvm"),
             PathBuf::from("/usr"),
@@ -236,11 +329,30 @@ pub fn claude(
         // Write: only what the agent legitimately needs to modify.
         // The cwd is the workspace; ~/.claude needs write so caches +
         // tool databases update; /tmp for transient scratch.
-        let write_defaults = [cwd, home.join(".claude"), PathBuf::from("/tmp")];
+        let write_defaults = [
+            cwd,
+            home.join(".claude"),
+            home.join(".claude.json"),
+            home.join(".cache").join("claude-cli-nodejs"),
+            PathBuf::from("/tmp"),
+        ];
         for p in write_defaults {
             if p.exists() || p.starts_with("/tmp") {
                 write.push(p);
             }
+        }
+
+        // Route the agent's API calls through the jkr gateway so they
+        // hit the proxy's redaction + capture path instead of going
+        // straight to api.anthropic.com. Respect an explicit override:
+        // if the operator already exported ANTHROPIC_BASE_URL we leave
+        // it untouched. Setting it here (rather than pushing a
+        // name=value) means the ANTHROPIC_ prefix pass below forwards
+        // it like any other inherited var.
+        if let Some(url) =
+            gateway_base_url_override(std::env::var_os("ANTHROPIC_BASE_URL").as_deref())
+        {
+            std::env::set_var("ANTHROPIC_BASE_URL", url);
         }
 
         // Env vars: forward exact-match names that are essential, plus
@@ -276,7 +388,7 @@ pub fn claude(
     env.extend(extra_env);
 
     eprintln!(
-        "tkr sandbox claude: launching `{bin}` in jail \
+        "jkr sandbox claude: launching `{bin}` in jail \
          ({} read paths, {} write paths, {} env vars forwarded)",
         read.len(),
         write.len(),
@@ -292,5 +404,81 @@ pub fn claude(
     // `--allow-connect 443`.
     // Claude path supplies its own curated read defaults — don't
     // layer system paths on top.
-    run(false, read, write, env, None, None, None, None, false, vec![], vec![], argv)
+    run(
+        false, read, write, env, None, None, None, None, false, vec![], vec![], false, false, true,
+        argv,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use jkr_sandbox::capture::trace::{Flag, TraceSummary, Verdict};
+
+    #[test]
+    fn gateway_injected_when_base_url_absent() {
+        assert_eq!(
+            gateway_base_url_override(None),
+            Some(DEFAULT_GATEWAY_URL),
+            "absent ANTHROPIC_BASE_URL should default to the gateway"
+        );
+    }
+
+    #[test]
+    fn gateway_respects_existing_override() {
+        let custom = std::ffi::OsString::from("https://proxy.example");
+        assert_eq!(
+            gateway_base_url_override(Some(&custom)),
+            None,
+            "an operator-set URL must not be clobbered"
+        );
+        // A deliberate empty value is still "set" — leave it alone.
+        let empty = std::ffi::OsString::from("");
+        assert_eq!(gateway_base_url_override(Some(&empty)), None);
+    }
+
+    fn trace_with(level: VerdictLevel, flags: Vec<Flag>, summary: TraceSummary) -> SandboxTrace {
+        let mut t = SandboxTrace::none();
+        t.capture_kind = CaptureKind::Full;
+        t.verdict = Verdict { level, flags };
+        t.summary = summary;
+        t
+    }
+
+    #[test]
+    fn summary_reports_none_capture() {
+        let s = format_trace_summary(&SandboxTrace::none());
+        assert!(s.contains("not captured on this platform"));
+    }
+
+    #[test]
+    fn summary_clean_has_zero_flags() {
+        let s = format_trace_summary(&trace_with(
+            VerdictLevel::Clean,
+            vec![],
+            TraceSummary::default(),
+        ));
+        assert!(s.contains("verdict=clean (0 flags)"));
+    }
+
+    #[test]
+    fn summary_lists_flags_and_counts() {
+        let s = format_trace_summary(&trace_with(
+            VerdictLevel::Suspicious,
+            vec![Flag {
+                kind: "sensitive_path".into(),
+                severity: VerdictLevel::Suspicious,
+                detail: "read /home/u/.ssh/id_rsa".into(),
+            }],
+            TraceSummary {
+                files_total: 12,
+                net_total: 2,
+                exec_total: 1,
+                denied_total: 4,
+            },
+        ));
+        assert!(s.contains("verdict=suspicious (1 flag)"));
+        assert!(s.contains("[suspicious] sensitive_path: read /home/u/.ssh/id_rsa"));
+        assert!(s.contains("files=12 net=2 exec=1 denied=4"));
+    }
 }
