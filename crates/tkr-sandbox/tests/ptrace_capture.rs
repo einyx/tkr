@@ -15,8 +15,7 @@ fn base_reads(extra: PathBuf) -> Vec<PathBuf> {
     vec![extra, "/usr".into(), "/bin".into(), "/lib".into(), "/lib64".into(), "/etc".into()]
 }
 
-#[test]
-fn captures_allowed_read() {
+fn scenario_allowed_read() {
     let tmp = tempfile::tempdir().unwrap();
     let f = tmp.path().join("hello.txt");
     std::fs::write(&f, b"hi").unwrap();
@@ -28,8 +27,7 @@ fn captures_allowed_read() {
         "expected an allowed read of hello.txt; got: {:?}", trace.files);
 }
 
-#[test]
-fn captures_denied_read_of_unlisted_path() {
+fn scenario_denied_read() {
     let secret_dir = tempfile::tempdir().unwrap();
     let secret = secret_dir.path().join("secret");
     std::fs::write(&secret, b"x").unwrap();
@@ -42,8 +40,7 @@ fn captures_denied_read_of_unlisted_path() {
     assert!(ev.unwrap().errno.is_some());
 }
 
-#[test]
-fn follows_process_children() {
+fn scenario_follows_children() {
     let tmp = tempfile::tempdir().unwrap();
     let f = tmp.path().join("data");
     std::fs::write(&f, b"hi").unwrap();
@@ -55,4 +52,11 @@ fn follows_process_children() {
         || trace.files.iter().any(|e| e.path.ends_with("data")),
         "should have traced the child process spawned by sh; execs={:?} files={:?}",
         trace.execs, trace.files);
+}
+
+#[test]
+fn ptrace_capture_scenarios() {
+    scenario_allowed_read();
+    scenario_denied_read();
+    scenario_follows_children();
 }
