@@ -4,6 +4,13 @@
 // with click-to-expand <details> for the scrubbed request +
 // response bodies.
 //
+// Rows are scoped to the logged-in owner server-side: a call is
+// attributed to you only when it carries your CLI token (`x-jkr-token`,
+// injected by `jkr sandbox claude`). So "armed · 0 captured" usually
+// means you haven't run a token-attributed session yet, not that
+// capture is broken — the empty state says as much and points at the
+// CLI tokens panel.
+//
 // Types are defined locally rather than in api.ts because that file
 // is currently root-owned (linter-locked); the local shape mirrors
 // `LlmCapturedCall` on the server.
@@ -47,8 +54,8 @@ export function CapturedPanel() {
     ? "…"
     : enabled
       ? entries.length === 0
-        ? "armed · 0 captured"
-        : `${entries.length} captured · cap ${data.capacity}`
+        ? "armed · 0 yours"
+        : `${entries.length} yours · cap ${data.capacity}`
       : "disabled";
 
   return (
@@ -71,8 +78,13 @@ export function CapturedPanel() {
         </div>
       ) : entries.length === 0 ? (
         <div className="empty">
-          armed. waiting for the first proxied call — capture only
-          happens after the response is back from upstream.
+          armed — but nothing is attributed to you yet. captured calls
+          are scoped per-user: a call shows up here only when it carries
+          your CLI token. mint one in the <strong>CLI tokens</strong>{" "}
+          panel below and launch your agent with{" "}
+          <code>jkr sandbox claude</code> — it injects the token as{" "}
+          <code>x-jkr-token</code> so every proxied call lands in your
+          bucket.
         </div>
       ) : (
         <>
