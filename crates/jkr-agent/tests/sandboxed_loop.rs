@@ -1,8 +1,8 @@
 use serde_json::json;
 use std::cell::RefCell;
-use tkr_agent::provider::{ContentBlock, Message, Provider, ProviderResponse, StopReason};
-use tkr_agent::{Manifest, ProcessTool, ToolRegistry};
-use tkr_sandbox::SandboxPolicy;
+use jkr_agent::provider::{ContentBlock, Message, Provider, ProviderResponse, StopReason};
+use jkr_agent::{Manifest, ProcessTool, ToolRegistry};
+use jkr_sandbox::SandboxPolicy;
 
 struct ScriptedProvider {
     script: RefCell<Vec<ProviderResponse>>,
@@ -70,7 +70,7 @@ name = "x"
     .unwrap();
     let mut tools = ToolRegistry::new();
     tools.register(Box::new(process_tool));
-    let outcome = tkr_agent::run(&manifest, &provider, &mut tools, None).unwrap();
+    let outcome = jkr_agent::run(&manifest, &provider, &mut tools, None, None).unwrap();
     assert_eq!(outcome.steps, 2);
     assert_eq!(outcome.final_text, "fin");
     assert!(outcome.raw_bytes_total > 0);

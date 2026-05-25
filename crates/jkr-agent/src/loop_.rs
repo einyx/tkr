@@ -1,8 +1,9 @@
+use crate::events::{EventSink, SeqEmitter};
 use crate::manifest::Manifest;
 use crate::provider::{ContentBlock, Message, Provider, StopReason};
 use crate::tool::{ToolRegistry, ToolResult};
 use anyhow::{anyhow, Result};
-use jkr_api::{FilterResult, LegacyPlugin as Plugin};
+use jkr_api::{AgentEventKind, FilterResult, LegacyPlugin as Plugin};
 use jkr_filter::FilterPlugin;
 
 #[derive(Debug, Clone)]
@@ -21,7 +22,17 @@ pub fn run(
     provider: &dyn Provider,
     tools: &mut ToolRegistry,
     filter: Option<&mut FilterPlugin>,
+    events: Option<&mut dyn EventSink>,
 ) -> Result<RunOutcome> {
+    let mut emitter = events.map(SeqEmitter::new);
+    macro_rules! emit {
+        ($k:expr) => {
+            if let Some(e) = emitter.as_mut() {
+                e.emit($k);
+            }
+        };
+    }
+
     let schemas = tools.schemas();
 
     let mut messages: Vec<Message> = vec![Message::User {
@@ -40,9 +51,15 @@ pub fn run(
 
     while steps < manifest.max_steps {
         steps += 1;
+        emit!(AgentEventKind::Step { step: steps, max: manifest.max_steps });
         let resp = provider.send(manifest.system.as_deref(), &messages, &schemas, 1024)?;
         input_tokens_total += resp.input_tokens;
         output_tokens_total += resp.output_tokens;
+
+        let text = collect_text(&resp.content);
+        if !text.is_empty() {
+            emit!(AgentEventKind::Token { text: text.clone() });
+        }
 
         messages.push(Message::Assistant {
             content: resp.content.clone(),
@@ -50,7 +67,8 @@ pub fn run(
 
         match resp.stop_reason {
             StopReason::EndTurn | StopReason::MaxTokens => {
-                final_text = collect_text(&resp.content);
+                final_text = text;
+                emit!(AgentEventKind::Done { exit: 0, steps });
                 return Ok(RunOutcome {
                     final_text,
                     steps,
@@ -62,7 +80,7 @@ pub fn run(
                 });
             }
             StopReason::ToolUse => {
-                let raw_results = run_tool_calls(&resp.content, tools)?;
+                let raw_results = run_tool_calls_with_events(&resp.content, tools, emitter.as_mut())?;
                 let mut blocks = Vec::with_capacity(raw_results.len());
                 for (id, mut tr, tool_name) in raw_results {
                     raw_bytes_total += tr.raw_bytes;
@@ -80,6 +98,7 @@ pub fn run(
                 messages.push(Message::User { content: blocks });
             }
             StopReason::Other(s) => {
+                emit!(AgentEventKind::Error { kind: "stop_reason".into(), msg: s.clone() });
                 return Err(anyhow!("unexpected stop reason: {s}"));
             }
         }
@@ -107,17 +126,28 @@ fn collect_text(blocks: &[ContentBlock]) -> String {
         .join("\n")
 }
 
-fn run_tool_calls(
+fn run_tool_calls_with_events(
     blocks: &[ContentBlock],
     tools: &mut ToolRegistry,
+    mut emitter: Option<&mut SeqEmitter<'_>>,
 ) -> Result<Vec<(String, ToolResult, String)>> {
     let mut out = Vec::new();
     for b in blocks {
         if let ContentBlock::ToolUse { id, name, input } = b {
+            if let Some(e) = emitter.as_deref_mut() {
+                e.emit(AgentEventKind::ToolStart { tool: name.clone(), args: input.clone() });
+            }
             let tool = tools
                 .get_mut(name)
                 .ok_or_else(|| anyhow!("unknown tool: {name}"))?;
             let res = tool.run(input)?;
+            if let Some(e) = emitter.as_deref_mut() {
+                e.emit(AgentEventKind::ToolOutput {
+                    tool: name.clone(),
+                    bytes: res.raw_bytes,
+                    text: res.content.clone(),
+                });
+            }
             out.push((id.clone(), res, name.clone()));
         }
     }
@@ -229,7 +259,7 @@ mod tests {
             }]),
         };
         let mut tools = ToolRegistry::new();
-        let out = run(&manifest(), &provider, &mut tools, None).unwrap();
+        let out = run(&manifest(), &provider, &mut tools, None, None).unwrap();
         assert_eq!(out.final_text, "hi back");
         assert_eq!(out.steps, 1);
     }
@@ -260,7 +290,7 @@ mod tests {
         };
         let mut tools = ToolRegistry::new();
         tools.register(Box::new(LoudEcho));
-        let out = run(&manifest(), &provider, &mut tools, None).unwrap();
+        let out = run(&manifest(), &provider, &mut tools, None, None).unwrap();
         assert_eq!(out.steps, 2);
         assert_eq!(out.final_text, "done");
         assert_eq!(out.raw_bytes_total, 3);
@@ -288,7 +318,7 @@ mod tests {
         tools.register(Box::new(LoudEcho));
         let mut m = manifest();
         m.max_steps = 3;
-        let out = run(&m, &provider, &mut tools, None).unwrap();
+        let out = run(&m, &provider, &mut tools, None, None).unwrap();
         assert_eq!(out.steps, 3);
     }
 
@@ -347,7 +377,7 @@ pattern = "^DROP "
         };
         let mut tools = ToolRegistry::new();
         tools.register(Box::new(NoisyEcho));
-        let out = run(&manifest(), &provider, &mut tools, Some(&mut filter)).unwrap();
+        let out = run(&manifest(), &provider, &mut tools, Some(&mut filter), None).unwrap();
         assert!(out.filtered_bytes_total < out.raw_bytes_total);
     }
 }

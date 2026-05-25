@@ -2,10 +2,10 @@ use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
 use std::path::Path;
 use std::time::Instant;
-use tkr_agent::{tools::echo::EchoTool, ContentBlock, Manifest, Message, RunReceipt, ToolRegistry};
-use tkr_providers::AnthropicProvider;
+use jkr_agent::{tools::echo::EchoTool, ContentBlock, Manifest, Message, RunReceipt, ToolRegistry};
+use jkr_providers::AnthropicProvider;
 
-use tkr::run_record;
+use jkr::run_record;
 
 pub fn run_agent(manifest_path: &Path) -> Result<()> {
     let manifest_toml = std::fs::read_to_string(manifest_path)
@@ -37,7 +37,7 @@ pub fn run_agent(manifest_path: &Path) -> Result<()> {
     let started_at = Utc::now();
     let clock = Instant::now();
 
-    let run_result = tkr_agent::run(&manifest, &provider, &mut tools, None);
+    let run_result = jkr_agent::run(&manifest, &provider, &mut tools, None, None);
     let duration_ms = clock.elapsed().as_millis() as u64;
 
     match run_result {
@@ -59,7 +59,7 @@ pub fn run_agent(manifest_path: &Path) -> Result<()> {
 
             match run_record::persist(&record) {
                 Ok(path) => println!("   record:        {}", path.display()),
-                Err(e) => eprintln!("tkr: warning: could not persist run record: {e}"),
+                Err(e) => eprintln!("jkr: warning: could not persist run record: {e}"),
             }
 
             Ok(())
@@ -67,7 +67,7 @@ pub fn run_agent(manifest_path: &Path) -> Result<()> {
         Err(err) => {
             // Build a synthetic outcome with an error message appended as an assistant block
             let error_text = format!("error: {err:#}");
-            let error_outcome = tkr_agent::RunOutcome {
+            let error_outcome = jkr_agent::RunOutcome {
                 final_text: error_text.clone(),
                 steps: 0,
                 input_tokens_total: 0,
@@ -93,7 +93,7 @@ pub fn run_agent(manifest_path: &Path) -> Result<()> {
             );
 
             if let Err(persist_err) = run_record::persist(&record) {
-                eprintln!("tkr: warning: could not persist run record: {persist_err}");
+                eprintln!("jkr: warning: could not persist run record: {persist_err}");
             }
 
             Err(err)
