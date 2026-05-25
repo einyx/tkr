@@ -1,4 +1,4 @@
-//! tkr plugin contract.
+//! jkr plugin contract.
 //!
 //! v1 (legacy C-ABI line-filter) types live under `legacy::*` and are
 //! re-exported here for backwards compatibility while v2 is built out.
@@ -10,6 +10,9 @@ pub use error::{Error, Result};
 
 pub mod manifest;
 pub use manifest::SensitivityClass;
+
+pub mod agent_event;
+pub use agent_event::{AgentEvent, AgentEventKind};
 
 pub mod bus;
 pub mod capability;
