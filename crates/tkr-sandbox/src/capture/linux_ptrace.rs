@@ -1,5 +1,5 @@
 use crate::capture::trace::{CaptureKind, SandboxTrace};
-use crate::capture::{verdict, CaptureBackend, EventCollector};
+use crate::capture::{CaptureBackend, EventCollector};
 use crate::error::SandboxError;
 use crate::exec::SandboxOutput;
 use crate::policy::SandboxPolicy;
@@ -190,6 +190,7 @@ fn run_tracer(
                 let _ = ptrace::syscall(pid, None);
             }
             WaitStatus::PtraceEvent(pid, _, _) => {
+                // PTRACE_EVENT_EXEC resets the tracee's registers but does NOT flip at_entry, so entry/exit pairing may be stale for that pid after exec.
                 let _ = ptrace::syscall(pid, None);
             }
             WaitStatus::Exited(pid, code) => {
@@ -224,7 +225,6 @@ fn run_tracer(
     }
 
     let mut trace = collector.finish();
-    trace.verdict = verdict::compute_verdict(&trace.files, &trace.net, &writable);
     trace.capture_kind = CaptureKind::Full;
 
     let out = SandboxOutput {

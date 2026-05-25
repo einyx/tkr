@@ -40,9 +40,7 @@ pub fn run_with_capture(
 }
 
 use std::collections::HashMap;
-use trace::{
-    ExecEvent, FileEvent, FileOp, NetEvent, TraceSummary, Verdict, VerdictLevel, TRACE_EVENT_CAP,
-};
+use trace::{ExecEvent, FileEvent, FileOp, NetEvent, TraceSummary, TRACE_EVENT_CAP};
 
 #[allow(dead_code)]
 pub(crate) enum PendingKind {
@@ -91,7 +89,8 @@ impl EventCollector {
                 .filter(|n| !n.allowed)
                 .map(|n| n.count)
                 .sum::<u32>();
-        let _ = TRACE_EVENT_CAP;
+        // Compute verdict before field moves consume self.files / self.net.
+        let verdict = crate::capture::verdict::compute_verdict(&self.files, &self.net, &self.writable_roots);
         SandboxTrace {
             summary: TraceSummary {
                 files_total: self.files.iter().map(|f| f.count).sum(),
@@ -102,10 +101,7 @@ impl EventCollector {
             files: self.files,
             net: self.net,
             execs: self.execs,
-            verdict: Verdict {
-                level: VerdictLevel::Clean,
-                flags: vec![],
-            },
+            verdict,
             capture_kind: trace::CaptureKind::Full,
             truncated: self.truncated,
         }
@@ -223,6 +219,7 @@ impl EventCollector {
             },
             Sysno::execve => {
                 let argv0 = lp::read_cstr(pid, lp::arg(&regs, 0));
+                // argv_preview mirrors argv0 for now; full argv reconstruction is not yet implemented.
                 PendingKind::Exec {
                     argv0: argv0.clone(),
                     argv_preview: argv0,
