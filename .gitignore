@@ -15,6 +15,7 @@ docs/superpowers/
 # Runtime secrets — never commit. The example template is checked in
 # at deploy/jkr-server.env.example.
 /jkr-server.env
+/tkr-server.env
 .env
 deploy/keys/*
 !deploy/keys/README.md
@@ -22,3 +23,8 @@ data/
 
 # jkr-index local index DB
 .jkr/
+.tkr/
+
+# Local docker-compose overrides + editor scratch backups
+docker-compose.override.yml
+*.bak

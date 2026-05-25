@@ -1,7 +1,0 @@
-# Work around Docker embedded DNS NXDOMAIN when tkr-server is attached
-# to external prysm_prysm (see monitoring/grafana extra_hosts notes).
-services:
-  tkr-server:
-    extra_hosts:
-      - "tkr-postgres:172.18.0.2"
-      - "tkr-redis:172.18.0.3"
