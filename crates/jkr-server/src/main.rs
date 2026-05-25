@@ -58,18 +58,18 @@ struct StateInner {
     /// receipt in the bucket is older than `AGGREGATOR_MAX_AGE_SECS`.
     aggregator: Mutex<BTreeMap<String, Vec<QueuedReceipt>>>,
     /// Upstream EVM JSON-RPC URL. When set, /api/v1/chain/rpc proxies POST
-    /// bodies here. Configure via TKR_CHAIN_RPC_URL; defaults to none
+    /// bodies here. Configure via JKR_CHAIN_RPC_URL; defaults to none
     /// (the route returns 503 unless configured).
     chain_rpc_url: Option<String>,
     /// Upstream Anthropic Messages API base URL. When set, /v1/messages
     /// passthrough-proxies to `<base>/v1/messages`. Configure via
-    /// TKR_ANTHROPIC_UPSTREAM (e.g. http://127.0.0.1:8080 for a local
+    /// JKR_ANTHROPIC_UPSTREAM (e.g. http://127.0.0.1:8080 for a local
     /// mock, or http://api.anthropic.com once TLS lands). Only http://
     /// is supported in this MVP; the route returns 503 unless set.
     anthropic_upstream: Option<String>,
     /// Upstream OpenAI Chat Completions API base URL. When set,
     /// /v1/chat/completions passthrough-proxies to
-    /// `<base>/v1/chat/completions`. Configure via TKR_OPENAI_UPSTREAM
+    /// `<base>/v1/chat/completions`. Configure via JKR_OPENAI_UPSTREAM
     /// (typically `https://api.openai.com`). Same passthrough +
     /// receipt-extraction shape as the Anthropic path; differs only in
     /// auth headers (`Authorization: Bearer …`) and the usage field
@@ -79,7 +79,7 @@ struct StateInner {
     /// pushed to the front; capped at `MAX_RECENT_LLM_CALLS`. This is the
     /// "grab analysis" hook from the gateway vision — it's what
     /// /api/v1/llm/recent surfaces. Each entry is also the natural
-    /// precursor to an on-chain receipt; see `tkr_proxy_gap` memo.
+    /// precursor to an on-chain receipt; see `jkr_proxy_gap` memo.
     recent_llm: Mutex<VecDeque<LlmCallReceipt>>,
     /// FIFO audit queue: every receipt also lands here so an external
     /// relayer can poll `GET /api/v1/llm/receipts/stats` + drain via
@@ -96,7 +96,7 @@ struct StateInner {
     /// dropped. Surfaced on `/stats` so a missing drainer fails loud.
     llm_receipts_dropped: AtomicU64,
     /// Logto OIDC config — None when not configured (the routes 503).
-    /// Set by TKR_LOGTO_{ENDPOINT,APP_ID,APP_SECRET,REDIRECT_URI}.
+    /// Set by JKR_LOGTO_{ENDPOINT,APP_ID,APP_SECRET,REDIRECT_URI}.
     logto: Option<LogtoConfig>,
     /// In-flight OIDC state→PKCE-verifier map. Entries TTL'd at
     /// `LOGTO_PENDING_TTL_SECS` to bound memory under abuse.
@@ -114,20 +114,20 @@ struct StateInner {
     /// blocking ureq task and holds it until the task finishes
     /// (including the entire SSE stream lifetime for streaming
     /// requests). Above the cap, callers get a 429. Sized via
-    /// TKR_UPSTREAM_MAX_CONCURRENT (default 64).
+    /// JKR_UPSTREAM_MAX_CONCURRENT (default 64).
     upstream_concurrency: Arc<tokio::sync::Semaphore>,
     /// Cumulative 429s returned because the concurrency cap was at
     /// max. Surfaced in /api/v1/filter/stats so operators can see
     /// "the proxy is shedding load" the moment it starts happening.
     upstream_throttled: AtomicU64,
     /// secp256k1 signer used to stamp every LLM call receipt. Loaded
-    /// from `TKR_RECEIPT_SIGNING_KEY_PATH` (default
-    /// `/var/lib/tkr/receipt-signing-key`) at startup, or generated
+    /// from `JKR_RECEIPT_SIGNING_KEY_PATH` (default
+    /// `/var/lib/jkr/receipt-signing-key`) at startup, or generated
     /// + persisted there on first run. Falls back to an ephemeral
     /// in-memory key if the path's parent isn't writable — operators
     /// see a startup warning so they know to mount a volume.
     receipt_signer: Arc<ReceiptSigner>,
-    /// When set (`TKR_CAPTURE_BODIES=true`), every proxied LLM call
+    /// When set (`JKR_CAPTURE_BODIES=true`), every proxied LLM call
     /// has its (already-scrubbed) request + response bodies stashed
     /// in `captured_calls` for the dashboard to surface. Defaults to
     /// false so the public-landing "your prompts never leave" claim
@@ -135,7 +135,7 @@ struct StateInner {
     /// consciously when they need on-instance auditability.
     capture_bodies: bool,
     captured_calls: Mutex<VecDeque<LlmCapturedCall>>,
-    /// When set (`TKR_SANDBOX_EXEC=true`), exposes
+    /// When set (`JKR_SANDBOX_EXEC=true`), exposes
     /// `POST /api/v1/sandbox/exec`. Off by default because running
     /// arbitrary (allowlisted) commands server-side is a meaningful
     /// expansion of the proxy's attack surface — operators opt in
@@ -156,7 +156,7 @@ struct StateInner {
     sandbox_recent: Mutex<VecDeque<SandboxLastRun>>,
     /// Shared-secret bearer token authorizing CLI-side sandbox runs
     /// to ingest into the server's `sandbox_recent` ring via
-    /// `POST /api/v1/sandbox/ingest`. Set via `TKR_INGEST_TOKEN`. When
+    /// `POST /api/v1/sandbox/ingest`. Set via `JKR_INGEST_TOKEN`. When
     /// `None`, the ingest endpoint is closed (501) — the safer default
     /// for self-hosted deployments where no laptop CLI is reporting.
     ingest_token: Option<String>,
@@ -175,6 +175,11 @@ struct StateInner {
 /// Server-side ring capacity for sandbox runs. Matches the spirit of
 /// `LLM_RECENT_CAP` (a few minutes of normal activity, bounded memory).
 const SANDBOX_RECENT_CAP: usize = 64;
+
+/// Sentinel exit code recorded in `sandbox_recent` for an off-allowlist
+/// denial (the command never executed, so it has no real exit code). The
+/// stats query separates these from executed runs to compute `denied`.
+const SANDBOX_DENIED_EXIT: i32 = -2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SandboxLastRun {
@@ -205,6 +210,11 @@ const MAX_CAPTURED_BYTES: usize = 64 * 1024;
 struct LlmCapturedCall {
     /// Unix-seconds when the call completed.
     ts: u64,
+    /// jkr user_id this call is attributed to, resolved from the
+    /// caller's `x-jkr-token`. Empty string = unattributed (no token
+    /// presented). Reads are filtered to the logged-in user's id.
+    #[serde(default)]
+    owner: String,
     provider: String,
     model: String,
     status: u16,
@@ -237,8 +247,10 @@ fn truncate_for_capture(bytes: &[u8]) -> String {
 
 /// Push a freshly-completed call into the captured ring. No-op if
 /// `capture_bodies` is disabled — the caller doesn't have to guard.
+#[allow(clippy::too_many_arguments)]
 fn push_captured(
     state: &AppState,
+    owner: &str,
     provider: &str,
     model: &str,
     status: u16,
@@ -254,6 +266,7 @@ fn push_captured(
     }
     let entry = LlmCapturedCall {
         ts: unix_ts(),
+        owner: owner.to_string(),
         provider: provider.to_string(),
         model: model.to_string(),
         status,
@@ -279,11 +292,12 @@ fn push_captured(
         tokio::spawn(async move {
             let res = sqlx::query(
                 "INSERT INTO captured_calls \
-                 (ts, provider, model, status, input_tokens, output_tokens, \
+                 (ts, owner, provider, model, status, input_tokens, output_tokens, \
                   duration_ms, streaming, request, response) \
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
             )
             .bind(entry.ts as i64)
+            .bind(&entry.owner)
             .bind(&entry.provider)
             .bind(&entry.model)
             .bind(entry.status as i32)
@@ -296,12 +310,19 @@ fn push_captured(
             .execute(&pool)
             .await;
             if let Err(e) = res {
-                eprintln!("tkr-server: captured_calls insert failed: {e}");
+                eprintln!("jkr-server: captured_calls insert failed: {e}");
                 return;
             }
+            // Trim per-owner so a chatty user can't evict another
+            // user's rows from a shared global cap. Keep the newest
+            // MAX_CAPTURED_CALLS rows within each owner bucket.
             let _ = sqlx::query(
                 "DELETE FROM captured_calls WHERE id NOT IN \
-                 (SELECT id FROM captured_calls ORDER BY id DESC LIMIT $1)",
+                 (SELECT id FROM \
+                    (SELECT id, ROW_NUMBER() OVER \
+                       (PARTITION BY owner ORDER BY id DESC) AS rn \
+                     FROM captured_calls) t \
+                  WHERE t.rn <= $1)",
             )
             .bind(MAX_CAPTURED_CALLS as i64)
             .execute(&pool)
@@ -337,7 +358,7 @@ impl ReceiptSigner {
                     Some(sk) => sk,
                     None => {
                         eprintln!(
-                            "tkr-server: existing key at {} is unparseable; \
+                            "jkr-server: existing key at {} is unparseable; \
                              generating ephemeral key",
                             path.display()
                         );
@@ -366,13 +387,13 @@ impl ReceiptSigner {
                             }
                         }
                         eprintln!(
-                            "tkr-server: minted new receipt-signing key at {}",
+                            "jkr-server: minted new receipt-signing key at {}",
                             path.display()
                         );
                     }
                     Err(e) => {
                         eprintln!(
-                            "tkr-server: could not persist receipt-signing key at {}: {} \
+                            "jkr-server: could not persist receipt-signing key at {}: {} \
                              — signatures will be ephemeral (mint a writable volume)",
                             path.display(),
                             e
@@ -430,7 +451,7 @@ impl ReceiptSigner {
 }
 
 /// Provisioned in Logto: an application configured with a redirect URI
-/// that points at this tkr-server's `/auth/logto/callback`. Discovery is
+/// that points at this jkr-server's `/auth/logto/callback`. Discovery is
 /// implicit — we hard-code the standard `/oidc/auth` and `/oidc/token`
 /// paths instead of fetching `/.well-known/openid-configuration`, since
 /// Logto's endpoints are stable. If we ever need a non-Logto IdP we'll
@@ -550,14 +571,14 @@ struct LlmCallReceipt {
     /// secp256k1 ECDSA signature of the canonical receipt message,
     /// 0x-prefixed hex of the compact 64-byte form.
     signature: String,
-    /// Compressed-form public key of the signer (the tkr-server
+    /// Compressed-form public key of the signer (the jkr-server
     /// instance), 0x-prefixed hex (33 bytes / 66 hex chars).
     signer_pubkey: String,
 }
 
 const INDEX_HTML: &str = include_str!("../static/index.html");
 
-// Wire types mirror crates/tkr-session-recorder/src/storage.rs. Kept inline
+// Wire types mirror crates/jkr-session-recorder/src/storage.rs. Kept inline
 // rather than depending on the recorder so the server doesn't pull in the
 // wasm-host trait surface.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -589,7 +610,7 @@ struct VaultMeta {
     agent: String,
     #[serde(default)]
     project_root: Option<String>,
-    tkr_version: String,
+    jkr_version: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -636,7 +657,7 @@ async fn sessions_get(state: &AppState, sid: &str) -> Option<SessionState> {
             Ok(Some((data,))) => serde_json::from_value(data).ok(),
             Ok(None) => None,
             Err(e) => {
-                eprintln!("tkr-server: sessions_get({sid}) postgres error: {e}");
+                eprintln!("jkr-server: sessions_get({sid}) postgres error: {e}");
                 None
             }
         };
@@ -701,7 +722,7 @@ async fn sessions_remove(state: &AppState, sid: &str) {
             .execute(pool)
             .await
         {
-            eprintln!("tkr-server: sessions_remove({sid}) postgres error: {e}");
+            eprintln!("jkr-server: sessions_remove({sid}) postgres error: {e}");
         }
         return;
     }
@@ -753,24 +774,24 @@ async fn async_main() -> anyhow::Result<()> {
         .parse()
         .with_context(|| format!("invalid listen address {host}:{port}"))?;
 
-    // Refuse to start with a public-facing bind unless TKR_ADMIN_PASSWORD is
+    // Refuse to start with a public-facing bind unless JKR_ADMIN_PASSWORD is
     // set. Loopback (127.0.0.1, ::1) gets a dev fallback so local development
     // continues to "just work".
-    let env_password = std::env::var("TKR_ADMIN_PASSWORD").ok();
+    let env_password = std::env::var("JKR_ADMIN_PASSWORD").ok();
     let is_loopback = addr.ip().is_loopback();
     let admin_password = match (env_password, is_loopback) {
         (Some(p), _) if p.len() >= 8 => p,
         (Some(_), _) => {
-            anyhow::bail!("TKR_ADMIN_PASSWORD must be at least 8 characters")
+            anyhow::bail!("JKR_ADMIN_PASSWORD must be at least 8 characters")
         }
         (None, true) => {
-            eprintln!("tkr-server: TKR_ADMIN_PASSWORD unset, using dev password 'correct' (loopback only)");
+            eprintln!("jkr-server: JKR_ADMIN_PASSWORD unset, using dev password 'correct' (loopback only)");
             "correct".to_string()
         }
         (None, false) => {
             anyhow::bail!(
-                "refusing to bind to non-loopback address {addr} without TKR_ADMIN_PASSWORD set \
-                 (use HOST=127.0.0.1 for local dev, or set TKR_ADMIN_PASSWORD for public bind)"
+                "refusing to bind to non-loopback address {addr} without JKR_ADMIN_PASSWORD set \
+                 (use HOST=127.0.0.1 for local dev, or set JKR_ADMIN_PASSWORD for public bind)"
             )
         }
     };
@@ -792,11 +813,11 @@ async fn async_main() -> anyhow::Result<()> {
                 .run(&pool)
                 .await
                 .context("apply migrations")?;
-            eprintln!("tkr-server: Postgres connected, migrations up");
+            eprintln!("jkr-server: Postgres connected, migrations up");
             Some(pool)
         }
         None => {
-            eprintln!("tkr-server: DATABASE_URL unset — sessions/receipts/audit will stay in-memory");
+            eprintln!("jkr-server: DATABASE_URL unset — sessions/receipts/audit will stay in-memory");
             None
         }
     };
@@ -814,11 +835,11 @@ async fn async_main() -> anyhow::Result<()> {
                 .query_async(&mut conn)
                 .await
                 .context("PING Redis")?;
-            eprintln!("tkr-server: Redis connected");
+            eprintln!("jkr-server: Redis connected");
             Some(pool)
         }
         None => {
-            eprintln!("tkr-server: REDIS_URL unset — OAuth state will stay in-memory");
+            eprintln!("jkr-server: REDIS_URL unset — OAuth state will stay in-memory");
             None
         }
     };
@@ -836,11 +857,11 @@ async fn async_main() -> anyhow::Result<()> {
             admin_password,
             broker: broker::BrokerState::new(),
             aggregator: Mutex::new(BTreeMap::new()),
-            chain_rpc_url: std::env::var("TKR_CHAIN_RPC_URL").ok().filter(|s| !s.is_empty()),
-            anthropic_upstream: std::env::var("TKR_ANTHROPIC_UPSTREAM")
+            chain_rpc_url: std::env::var("JKR_CHAIN_RPC_URL").ok().filter(|s| !s.is_empty()),
+            anthropic_upstream: std::env::var("JKR_ANTHROPIC_UPSTREAM")
                 .ok()
                 .filter(|s| !s.is_empty()),
-            openai_upstream: std::env::var("TKR_OPENAI_UPSTREAM")
+            openai_upstream: std::env::var("JKR_OPENAI_UPSTREAM")
                 .ok()
                 .filter(|s| !s.is_empty()),
             recent_llm: Mutex::new(VecDeque::with_capacity(MAX_RECENT_LLM_CALLS)),
@@ -851,7 +872,7 @@ async fn async_main() -> anyhow::Result<()> {
             redactor: Arc::new(RedactionEngine::new(RedactionEngine::default_rules())),
             injector: Arc::new(InjectionEngine::new(InjectionEngine::default_rules())),
             upstream_concurrency: Arc::new(tokio::sync::Semaphore::new(
-                std::env::var("TKR_UPSTREAM_MAX_CONCURRENT")
+                std::env::var("JKR_UPSTREAM_MAX_CONCURRENT")
                     .ok()
                     .and_then(|s| s.parse::<usize>().ok())
                     .unwrap_or(64),
@@ -859,16 +880,16 @@ async fn async_main() -> anyhow::Result<()> {
             upstream_throttled: AtomicU64::new(0),
             receipt_signer: Arc::new(ReceiptSigner::load_or_generate(
                 &std::path::PathBuf::from(
-                    std::env::var("TKR_RECEIPT_SIGNING_KEY_PATH")
-                        .unwrap_or_else(|_| "/var/lib/tkr/receipt-signing-key".to_string()),
+                    std::env::var("JKR_RECEIPT_SIGNING_KEY_PATH")
+                        .unwrap_or_else(|_| "/var/lib/jkr/receipt-signing-key".to_string()),
                 ),
             )),
-            capture_bodies: std::env::var("TKR_CAPTURE_BODIES")
+            capture_bodies: std::env::var("JKR_CAPTURE_BODIES")
                 .ok()
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false),
             captured_calls: Mutex::new(VecDeque::with_capacity(MAX_CAPTURED_CALLS)),
-            sandbox_enabled: std::env::var("TKR_SANDBOX_EXEC")
+            sandbox_enabled: std::env::var("JKR_SANDBOX_EXEC")
                 .ok()
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false),
@@ -877,7 +898,7 @@ async fn async_main() -> anyhow::Result<()> {
             sandbox_runs_denied: AtomicU64::new(0),
             sandbox_last: Mutex::new(None),
             sandbox_recent: Mutex::new(VecDeque::with_capacity(SANDBOX_RECENT_CAP)),
-            ingest_token: std::env::var("TKR_INGEST_TOKEN")
+            ingest_token: std::env::var("JKR_INGEST_TOKEN")
                 .ok()
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty()),
@@ -887,7 +908,7 @@ async fn async_main() -> anyhow::Result<()> {
     };
 
     let listener = TcpListener::bind(addr).await?;
-    eprintln!("tkr-server listening on http://{addr}");
+    eprintln!("jkr-server listening on http://{addr}");
 
     loop {
         let (stream, _) = listener.accept().await?;
@@ -900,7 +921,7 @@ async fn async_main() -> anyhow::Result<()> {
                 .with_upgrades()
                 .await
             {
-                eprintln!("tkr-server connection error: {err}");
+                eprintln!("jkr-server connection error: {err}");
             }
         });
     }
@@ -915,7 +936,7 @@ async fn route(req: Request<Incoming>, state: AppState) -> Result<Response<Body>
             StatusCode::OK,
             json!({
                 "ok": true,
-                "service": "tkr-server",
+                "service": "jkr-server",
                 "aiProvider": state.inner.ai_provider,
                 "dbConfigured": state.inner.db_configured
             }),
@@ -1077,7 +1098,7 @@ async fn handle_login(req: Request<Incoming>, state: AppState) -> Response<Body>
     res.headers_mut().insert(
         SET_COOKIE,
         HeaderValue::from_str(&format!(
-            "tkr_session={session_id}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=604800"
+            "jkr_session={session_id}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=604800"
         ))
         .expect("set-cookie"),
     );
@@ -1091,7 +1112,7 @@ async fn handle_logout(req: Request<Incoming>, state: AppState) -> Response<Body
     let mut res = json_response(req.headers(), StatusCode::OK, json!({ "ok": true }));
     res.headers_mut().insert(
         SET_COOKIE,
-        HeaderValue::from_static("tkr_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0"),
+        HeaderValue::from_static("jkr_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0"),
     );
     res
 }
@@ -1221,10 +1242,10 @@ async fn handle_stream(req: Request<Incoming>, state: AppState) -> Response<Body
         match hyper::upgrade::on(req).await {
             Ok(upgraded) => {
                 if let Err(err) = websocket_writer(upgraded, state_for_task).await {
-                    eprintln!("tkr-server stream error: {err:#}");
+                    eprintln!("jkr-server stream error: {err:#}");
                 }
             }
-            Err(err) => eprintln!("tkr-server upgrade error: {err}"),
+            Err(err) => eprintln!("jkr-server upgrade error: {err}"),
         }
     });
 
@@ -1308,7 +1329,7 @@ async fn handle_mesh_ws(req: Request<Incoming>, state: AppState) -> Response<Bod
                 .await;
                 broker::run_ws_session(broker, ws).await;
             }
-            Err(err) => eprintln!("tkr-server mesh upgrade error: {err}"),
+            Err(err) => eprintln!("jkr-server mesh upgrade error: {err}"),
         }
     });
 
@@ -1525,7 +1546,7 @@ async fn handle_chain_rpc(req: Request<Incoming>, state: AppState) -> Response<B
             return json_error(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "chain_rpc_unconfigured",
-                "TKR_CHAIN_RPC_URL is not set on this server",
+                "JKR_CHAIN_RPC_URL is not set on this server",
                 &origin_headers,
             )
         }
@@ -1539,7 +1560,7 @@ async fn handle_chain_rpc(req: Request<Incoming>, state: AppState) -> Response<B
             return json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "chain_rpc_misconfigured",
-                "TKR_CHAIN_RPC_URL must start with http://",
+                "JKR_CHAIN_RPC_URL must start with http://",
                 req.headers(),
             )
         }
@@ -1689,7 +1710,7 @@ async fn handle_chain_rpc(req: Request<Incoming>, state: AppState) -> Response<B
     builder.body(Full::new(bytes).boxed()).expect("response")
 }
 
-/// Parsed `TKR_ANTHROPIC_UPSTREAM`. Lifts URL handling out of the proxy
+/// Parsed `JKR_ANTHROPIC_UPSTREAM`. Lifts URL handling out of the proxy
 /// handler so we can unit-test scheme/host/port without a live server.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ParsedUpstream {
@@ -1752,14 +1773,14 @@ fn parse_anthropic_upstream(s: &str) -> Result<ParsedUpstream, &'static str> {
 /// Anthropic Messages API passthrough proxy.
 ///
 /// Wire-compatible with `POST https://api.anthropic.com/v1/messages` so an
-/// IDE agent (Claude Code, Cursor) can be pointed at tkr via
+/// IDE agent (Claude Code, Cursor) can be pointed at jkr via
 /// `ANTHROPIC_BASE_URL=http://localhost:<port>` and have its calls flow
-/// through tkr's instrumentation. This MVP forwards request/response
+/// through jkr's instrumentation. This MVP forwards request/response
 /// bytes verbatim — streaming, TLS upstream, and per-call receipt
-/// emission will land in follow-ups (see [[tkr-proxy-gap]]).
+/// emission will land in follow-ups (see [[jkr-proxy-gap]]).
 ///
 /// Headers forwarded to upstream: `x-api-key`, `authorization`,
-/// `anthropic-version`, `anthropic-beta`, plus `content-type`. tkr does
+/// `anthropic-version`, `anthropic-beta`, plus `content-type`. jkr does
 /// not synthesize an API key — callers supply their own credential.
 /// Everything that distinguishes one LLM-upstream proxy handler from
 /// another. The actual request shuttling lives in `proxy_llm_request`
@@ -1771,7 +1792,7 @@ struct ProviderProxy {
     /// Path suffix joined onto the configured upstream base.
     upstream_path: &'static str,
     /// Caller-supplied headers we relay to upstream. Everything else
-    /// (cookies, host, tkr-internal session headers) is dropped.
+    /// (cookies, host, jkr-internal session headers) is dropped.
     forward_headers: &'static [&'static str],
     /// json_error `code` slot when no upstream env is set.
     error_unconfigured: &'static str,
@@ -1799,7 +1820,7 @@ impl ProviderProxy {
         ],
         error_unconfigured: "anthropic_upstream_unconfigured",
         error_misconfigured: "anthropic_upstream_misconfigured",
-        unconfigured_msg: "TKR_ANTHROPIC_UPSTREAM is not set on this server",
+        unconfigured_msg: "JKR_ANTHROPIC_UPSTREAM is not set on this server",
     };
 
     const OPENAI: ProviderProxy = ProviderProxy {
@@ -1816,7 +1837,7 @@ impl ProviderProxy {
         ],
         error_unconfigured: "openai_upstream_unconfigured",
         error_misconfigured: "openai_upstream_misconfigured",
-        unconfigured_msg: "TKR_OPENAI_UPSTREAM is not set on this server",
+        unconfigured_msg: "JKR_OPENAI_UPSTREAM is not set on this server",
     };
 }
 
@@ -1834,6 +1855,16 @@ async fn proxy_llm_request(
 
     let start = std::time::Instant::now();
     let origin_headers = req.headers().clone();
+
+    // Attribute this call to a jkr user for per-user capture scoping.
+    // `x-jkr-token` is set by `jkr sandbox claude` via
+    // ANTHROPIC_CUSTOM_HEADERS and resolves to a user_id through the
+    // cli_tokens table. It is NOT in cfg.forward_headers, so it never
+    // reaches the upstream provider. Empty string = unattributed.
+    let owner = match origin_headers.get("x-jkr-token").and_then(|v| v.to_str().ok()) {
+        Some(tok) if !tok.is_empty() => cli_token_lookup(&state, tok).await.unwrap_or_default(),
+        _ => String::new(),
+    };
 
     let upstream_raw = match upstream.as_deref() {
         Some(u) => u,
@@ -1924,7 +1955,7 @@ async fn proxy_llm_request(
     }
 
     // Acquire upstream concurrency permit. Capacity is
-    // `TKR_UPSTREAM_MAX_CONCURRENT` (default 64) and held until the
+    // `JKR_UPSTREAM_MAX_CONCURRENT` (default 64) and held until the
     // blocking ureq task finishes — including the full SSE stream
     // lifetime for streaming responses. Over-cap = fast 429, which
     // protects the blocking-thread pool from a runaway client.
@@ -1953,6 +1984,7 @@ async fn proxy_llm_request(
     if is_streaming {
         return proxy_llm_streaming(
             state.clone(),
+            owner,
             cfg,
             upstream_url,
             body_bytes.to_vec(),
@@ -2003,7 +2035,7 @@ async fn proxy_llm_request(
                 let preview = String::from_utf8_lossy(&bytes);
                 let preview: String = preview.chars().take(512).collect();
                 eprintln!(
-                    "tkr-server: upstream {} returned {} — body: {}",
+                    "jkr-server: upstream {} returned {} — body: {}",
                     cfg.provider, code, preview
                 );
             }
@@ -2045,13 +2077,14 @@ async fn proxy_llm_request(
     // /api/v1/filter/stats view reports both directions.
     let response_body = state.inner.redactor.scrub_response_body(&response_body);
 
-    // Optional full-body capture (TKR_CAPTURE_BODIES=true). Stashes
+    // Optional full-body capture (JKR_CAPTURE_BODIES=true). Stashes
     // the *scrubbed* request + response bytes in a ring buffer for
     // operators who need on-instance transcript audit. No-op when
     // capture is off (the default).
     let (model_for_capture, in_tok, out_tok) = parse_usage_from_response(&response_body);
     push_captured(
         &state,
+        &owner,
         cfg.provider,
         &model_for_capture,
         status_code,
@@ -2077,7 +2110,7 @@ async fn proxy_llm_request(
 }
 
 /// Anthropic-wire proxy. Routes via `proxy_llm_request` with the
-/// Anthropic provider config + the `TKR_ANTHROPIC_UPSTREAM` value.
+/// Anthropic provider config + the `JKR_ANTHROPIC_UPSTREAM` value.
 async fn handle_anthropic_messages(
     req: Request<Incoming>,
     state: AppState,
@@ -2098,12 +2131,12 @@ impl UpstreamScheme {
 /// OpenAI Chat Completions API passthrough proxy.
 ///
 /// Wire-compatible with `POST https://api.openai.com/v1/chat/completions`
-/// so Codex / Cursor / any OpenAI-SDK app can be pointed at tkr via
+/// so Codex / Cursor / any OpenAI-SDK app can be pointed at jkr via
 /// `OPENAI_BASE_URL=http://localhost:<port>` and have its calls flow
-/// through tkr's instrumentation. Mirrors `handle_anthropic_messages`
+/// through jkr's instrumentation. Mirrors `handle_anthropic_messages`
 /// but with Bearer auth + OpenAI-shape usage extraction.
 /// OpenAI-wire proxy. Routes via `proxy_llm_request` with the OpenAI
-/// provider config + the `TKR_OPENAI_UPSTREAM` value.
+/// provider config + the `JKR_OPENAI_UPSTREAM` value.
 async fn handle_openai_chat_completions(
     req: Request<Incoming>,
     state: AppState,
@@ -2123,8 +2156,10 @@ async fn handle_openai_chat_completions(
 /// at the cost of one blocking thread per in-flight stream. An async
 /// hyper-rustls client would let us collapse this into the main
 /// handler.
+#[allow(clippy::too_many_arguments)]
 async fn proxy_llm_streaming(
     state: AppState,
+    owner: String,
     cfg: &'static ProviderProxy,
     url: String,
     body: Vec<u8>,
@@ -2190,6 +2225,18 @@ async fn proxy_llm_streaming(
         let redactor = state_clone.inner.redactor.clone();
         let mut reader = response.into_body().into_reader();
         let mut buf = vec![0u8; 8 * 1024];
+        // Accumulate the scrubbed stream (bounded) so the dashboard's
+        // captured-calls panel records streamed responses too — not just
+        // the non-streaming path. Only allocate when capture is enabled.
+        let capture_on = state_clone.inner.capture_bodies;
+        let mut captured_resp: Vec<u8> = Vec::new();
+        let mut capture_scrubbed = |bytes: &[u8]| {
+            if !capture_on || captured_resp.len() >= MAX_CAPTURED_BYTES {
+                return;
+            }
+            let room = MAX_CAPTURED_BYTES - captured_resp.len();
+            captured_resp.extend_from_slice(&bytes[..bytes.len().min(room)]);
+        };
         loop {
             use std::io::Read;
             let n = match reader.read(&mut buf) {
@@ -2200,6 +2247,7 @@ async fn proxy_llm_streaming(
             accumulator.feed(&buf[..n]);
             let rewritten = rewriter.process(&buf[..n], &redactor);
             if !rewritten.is_empty() {
+                capture_scrubbed(&rewritten);
                 let chunk = Bytes::from(rewritten);
                 if chunk_tx.blocking_send(chunk).is_err() {
                     // Client dropped the response — stop reading upstream.
@@ -2211,6 +2259,7 @@ async fn proxy_llm_streaming(
         // close without a final \n\n).
         let tail = rewriter.flush();
         if !tail.is_empty() {
+            capture_scrubbed(&tail);
             let _ = chunk_tx.blocking_send(Bytes::from(tail));
         }
         // Push the receipt FIRST, then drop the sender. The order
@@ -2220,6 +2269,20 @@ async fn proxy_llm_streaming(
         // could observe the call missing — a real race that widened
         // when signing was added to push_receipt (ECDSA sign adds a
         // few hundred µs of work).
+        // Capture before push_receipt, which moves accumulator.model.
+        push_captured(
+            &state_clone,
+            &owner,
+            cfg.provider,
+            &accumulator.model,
+            status,
+            accumulator.input_tokens,
+            accumulator.output_tokens,
+            start.elapsed().as_millis() as u64,
+            true,
+            &body,
+            &captured_resp,
+        );
         push_receipt(
             &state_clone,
             cfg.provider,
@@ -2650,7 +2713,7 @@ fn push_receipt(
             let receipt_json = match serde_json::to_value(&pg_entry) {
                 Ok(v) => v,
                 Err(e) => {
-                    eprintln!("tkr-server: receipts_queue serialize failed: {e}");
+                    eprintln!("jkr-server: receipts_queue serialize failed: {e}");
                     return;
                 }
             };
@@ -3091,7 +3154,7 @@ fn handle_filter_stats(req: &Request<Incoming>, state: AppState) -> Response<Bod
 
 /// 429 used by the concurrency cap. `Retry-After: 1` so well-behaved
 /// clients back off briefly instead of busy-looping. Body uses the
-/// same `json_error` shape as every other tkr error response.
+/// same `json_error` shape as every other jkr error response.
 fn throttled_response(origin_headers: &HeaderMap) -> Response<Body> {
     let mut resp = json_error(
         StatusCode::TOO_MANY_REQUESTS,
@@ -3171,7 +3234,7 @@ async fn handle_llm_receipts_stats(req: &Request<Incoming>, state: AppState) -> 
 /// the on-chain settlement contract once we have a server-signing
 /// story). All-or-nothing for simplicity: the entire queue is taken
 /// in one shot. If the relayer fails after this returns, it must keep
-/// the batch durable on its side; tkr-server has handed off ownership.
+/// the batch durable on its side; jkr-server has handed off ownership.
 async fn handle_llm_receipts_drain(req: &Request<Incoming>, state: AppState) -> Response<Body> {
     // Postgres path: claim a batch atomically with FOR UPDATE SKIP
     // LOCKED so concurrent drainers don't double-pull, then DELETE the
@@ -3291,7 +3354,7 @@ fn push_sandbox_run(state: &AppState, run: SandboxLastRun) {
             .execute(&pool)
             .await;
             if let Err(e) = res {
-                eprintln!("tkr-server: sandbox_recent insert failed: {e}");
+                eprintln!("jkr-server: sandbox_recent insert failed: {e}");
                 return;
             }
             // Trim to ring capacity. Done after insert so concurrent
@@ -3337,7 +3400,7 @@ async fn handle_sandbox_recent(req: &Request<Incoming>, state: AppState) -> Resp
                     .collect();
                 return json_response(req.headers(), StatusCode::OK, json!({ "entries": entries }));
             }
-            Err(e) => eprintln!("tkr-server: sandbox_recent read failed: {e}"),
+            Err(e) => eprintln!("jkr-server: sandbox_recent read failed: {e}"),
         }
     }
     let ring = state.inner.sandbox_recent.lock().expect("sandbox_recent");
@@ -3348,18 +3411,23 @@ async fn handle_sandbox_recent(req: &Request<Incoming>, state: AppState) -> Resp
 /// Sandbox stats endpoint. Surfaces total/failed/denied counters +
 /// last-run snapshot + whether the sandbox endpoint is enabled.
 async fn handle_sandbox_stats(req: &Request<Incoming>, state: AppState) -> Response<Body> {
-    // Postgres-first: total / failed / last are derivable from
-    // sandbox_recent and therefore survive restart. `denied` stays on
-    // the AtomicU64 — denied runs never reach sandbox_recent (they're
-    // rejected before exec) and dedicating a table for the rare denial
-    // counter isn't worth it; resetting on restart is acceptable.
+    // Postgres-first: total / failed / denied / last are all derived from
+    // sandbox_recent and survive restart (denials are persisted there with
+    // the SANDBOX_DENIED_EXIT sentinel). The AtomicU64 below is the
+    // no-Postgres fallback only.
     let denied = state.inner.sandbox_runs_denied.load(Ordering::Relaxed);
     if let Some(pool) = state.inner.pg_pool.as_ref() {
-        let row: Result<(i64, i64), _> = sqlx::query_as(
-            "SELECT COUNT(*)::BIGINT, \
-             COUNT(*) FILTER (WHERE exit_code <> 0)::BIGINT \
+        // `total`/`failed` count executed runs only; `denied` counts the
+        // sentinel rows. Deriving all three from the same persisted table
+        // keeps them consistent and lets `denied` survive a restart.
+        let row: Result<(i64, i64, i64), _> = sqlx::query_as(
+            "SELECT \
+             COUNT(*) FILTER (WHERE exit_code <> $1)::BIGINT, \
+             COUNT(*) FILTER (WHERE exit_code <> 0 AND exit_code <> $1)::BIGINT, \
+             COUNT(*) FILTER (WHERE exit_code = $1)::BIGINT \
              FROM sandbox_recent",
         )
+        .bind(SANDBOX_DENIED_EXIT)
         .fetch_one(pool)
         .await;
         let last_row: Result<Option<(i64, String, i32, bool, i64)>, _> = sqlx::query_as(
@@ -3368,7 +3436,7 @@ async fn handle_sandbox_stats(req: &Request<Incoming>, state: AppState) -> Respo
         )
         .fetch_optional(pool)
         .await;
-        if let (Ok((total, failed)), Ok(last_opt)) = (row, last_row) {
+        if let (Ok((total, failed, denied)), Ok(last_opt)) = (row, last_row) {
             let success_rate = if total == 0 {
                 None
             } else {
@@ -3388,7 +3456,7 @@ async fn handle_sandbox_stats(req: &Request<Incoming>, state: AppState) -> Respo
                     "enabled": state.inner.sandbox_enabled,
                     "total": total as u64,
                     "failed": failed as u64,
-                    "denied": denied,
+                    "denied": denied as u64,
                     "success_rate_pct": success_rate,
                     "allowed_commands": SANDBOX_ALLOWED_COMMANDS,
                     "last": last,
@@ -3429,7 +3497,7 @@ struct SandboxRunRequest {
 }
 
 /// `POST /api/v1/sandbox/exec` — run an allowlisted binary inside
-/// the tkr-sandbox jail and return the result. Auth-gated to Logto
+/// the jkr-sandbox jail and return the result. Auth-gated to Logto
 /// sessions. The allowlist is hard-coded
 /// (`SANDBOX_ALLOWED_COMMANDS`); requests for anything outside it
 /// bump `runs_denied` and return 403.
@@ -3484,12 +3552,12 @@ async fn handle_cli_token_mint(req: Request<Incoming>, state: AppState) -> Respo
         .take(64)
         .collect::<String>();
 
-    // 32 random bytes hex-encoded → 64-char token. Prefix `tkr_` so
+    // 32 random bytes hex-encoded → 64-char token. Prefix `jkr_` so
     // operators can grep logs for accidental leaks of the token shape.
     let mut bytes = [0u8; 32];
     use rand::RngCore;
     rand::rngs::OsRng.fill_bytes(&mut bytes);
-    let token = format!("tkr_{}", hex::encode(bytes));
+    let token = format!("jkr_{}", hex::encode(bytes));
     let hash = token_sha256(&token);
     let now = unix_ts() as i64;
 
@@ -3505,7 +3573,7 @@ async fn handle_cli_token_mint(req: Request<Incoming>, state: AppState) -> Respo
     .execute(&pool)
     .await;
     if let Err(e) = res {
-        eprintln!("tkr-server: cli_tokens insert failed: {e}");
+        eprintln!("jkr-server: cli_tokens insert failed: {e}");
         return json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             "mint_failed",
@@ -3563,7 +3631,7 @@ async fn handle_cli_tokens_list(req: &Request<Incoming>, state: AppState) -> Res
             json_response(req.headers(), StatusCode::OK, json!({"tokens": tokens}))
         }
         Err(e) => {
-            eprintln!("tkr-server: cli_tokens list failed: {e}");
+            eprintln!("jkr-server: cli_tokens list failed: {e}");
             json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "list_failed",
@@ -3659,7 +3727,7 @@ async fn cli_token_lookup(state: &AppState, raw_token: &str) -> Option<String> {
 /// runs commands under its own client-side sandbox and does NOT call
 /// `/sandbox/exec`) report finished runs so they appear in the
 /// dashboard alongside server-side runs. Auth is a shared-secret
-/// bearer token (`TKR_INGEST_TOKEN`): when unset, this endpoint
+/// bearer token (`JKR_INGEST_TOKEN`): when unset, this endpoint
 /// returns 501 — the safer default for self-hosted deployments where
 /// no laptop CLI is reporting. Constant-time compare avoids timing
 /// disclosure of the token's length.
@@ -3679,10 +3747,10 @@ async fn handle_sandbox_ingest(req: Request<Incoming>, state: AppState) -> Respo
         );
     }
     // Two accepted shapes: (1) the server-wide shared secret from
-    // `TKR_INGEST_TOKEN`, kept for backwards-compat and machine-room
+    // `JKR_INGEST_TOKEN`, kept for backwards-compat and machine-room
     // setups where there's no human Logto session to mint a token;
     // (2) a per-user CLI token minted via `POST /api/v1/auth/cli-token`
-    // (preferred — `tkr login` populates this on user laptops).
+    // (preferred — `jkr login` populates this on user laptops).
     let env_ok = state
         .inner
         .ingest_token
@@ -3693,7 +3761,7 @@ async fn handle_sandbox_ingest(req: Request<Incoming>, state: AppState) -> Respo
         return json_error(
             StatusCode::UNAUTHORIZED,
             "bad_token",
-            "token not recognized; run `tkr login` to mint one",
+            "token not recognized; run `jkr login` to mint one",
             &origin_headers,
         );
     }
@@ -3772,7 +3840,7 @@ async fn handle_sandbox_run(req: Request<Incoming>, state: AppState) -> Response
         return json_error(
             StatusCode::SERVICE_UNAVAILABLE,
             "sandbox_disabled",
-            "TKR_SANDBOX_EXEC is not enabled on this server",
+            "JKR_SANDBOX_EXEC is not enabled on this server",
             &origin_headers,
         );
     }
@@ -3804,6 +3872,19 @@ async fn handle_sandbox_run(req: Request<Incoming>, state: AppState) -> Response
 
     if !SANDBOX_ALLOWED_COMMANDS.contains(&payload.command.as_str()) {
         state.inner.sandbox_runs_denied.fetch_add(1, Ordering::Relaxed);
+        // Persist the denial so the dashboard's `denied` tile survives a
+        // restart (the AtomicU64 above is the no-Postgres fallback). Denied
+        // attempts are stored in sandbox_recent with the SANDBOX_DENIED_EXIT
+        // sentinel so the stats query can separate them from executed runs.
+        let run = SandboxLastRun {
+            ts: unix_ts(),
+            command: payload.command.clone(),
+            exit: SANDBOX_DENIED_EXIT,
+            truncated: false,
+            duration_ms: 0,
+        };
+        push_sandbox_run(&state, run.clone());
+        *state.inner.sandbox_last.lock().expect("sandbox_last") = Some(run);
         return json_error(
             StatusCode::FORBIDDEN,
             "command_not_allowed",
@@ -3822,7 +3903,7 @@ async fn handle_sandbox_run(req: Request<Incoming>, state: AppState) -> Response
     let cmd_for_log = payload.command.clone();
     let result = tokio::task::spawn_blocking(move || {
         let arg_refs: Vec<&str> = payload.args.iter().map(String::as_str).collect();
-        tkr_sandbox::exec::run_sandboxed(&payload.command, &arg_refs, &policy)
+        jkr_sandbox::exec::run_sandboxed(&payload.command, &arg_refs, &policy)
             .map(|(out, _trace)| out)
     })
     .await;
@@ -3892,8 +3973,8 @@ async fn handle_sandbox_run(req: Request<Incoming>, state: AppState) -> Response
     json_response(&origin_headers, status, body)
 }
 
-fn build_sandbox_policy(timeout_ms: u64) -> tkr_sandbox::policy::SandboxPolicy {
-    use tkr_sandbox::policy::{NetworkPolicy, SandboxLimits, SandboxPolicy};
+fn build_sandbox_policy(timeout_ms: u64) -> jkr_sandbox::policy::SandboxPolicy {
+    use jkr_sandbox::policy::{NetworkPolicy, SandboxLimits, SandboxPolicy};
     SandboxPolicy {
         fs_read: vec![
             std::path::PathBuf::from("/usr/bin"),
@@ -3917,7 +3998,7 @@ fn build_sandbox_policy(timeout_ms: u64) -> tkr_sandbox::policy::SandboxPolicy {
 }
 
 /// Captured-call read endpoint. Returns `enabled: false` + empty list
-/// when `TKR_CAPTURE_BODIES` isn't on — clients (the dashboard panel)
+/// when `JKR_CAPTURE_BODIES` isn't on — clients (the dashboard panel)
 /// then know to render the "capture is off; flip the env to turn it
 /// on" copy instead of a confusing empty table.
 async fn handle_llm_captured(req: &Request<Incoming>, state: AppState) -> Response<Body> {
@@ -3933,17 +4014,33 @@ async fn handle_llm_captured(req: &Request<Incoming>, state: AppState) -> Respon
             }),
         );
     }
+    // Captured bodies are per-user now: a logged-in session only sees
+    // calls attributed to its own user_id (set on the proxy from the
+    // caller's x-jkr-token). No session → no data; the buffer is no
+    // longer world-readable.
+    let owner = match require_session(&state, req.headers()).await {
+        Some(s) => s.user_id,
+        None => {
+            return json_error(
+                StatusCode::UNAUTHORIZED,
+                "unauthenticated",
+                "log in to view captured calls",
+                req.headers(),
+            )
+        }
+    };
     // PG-first so the panel survives restart. Falls back to the
     // in-memory ring for tests with no DATABASE_URL.
     if let Some(pool) = state.inner.pg_pool.as_ref() {
         let rows: Result<
-            Vec<(i64, String, String, i32, i64, i64, i64, bool, String, String)>,
+            Vec<(i64, String, String, String, i32, i64, i64, i64, bool, String, String)>,
             _,
         > = sqlx::query_as(
-            "SELECT ts, provider, model, status, input_tokens, output_tokens, \
+            "SELECT ts, owner, provider, model, status, input_tokens, output_tokens, \
              duration_ms, streaming, request, response \
-             FROM captured_calls ORDER BY id DESC LIMIT $1",
+             FROM captured_calls WHERE owner = $1 ORDER BY id DESC LIMIT $2",
         )
+        .bind(&owner)
         .bind(MAX_CAPTURED_CALLS as i64)
         .fetch_all(pool)
         .await;
@@ -3952,9 +4049,10 @@ async fn handle_llm_captured(req: &Request<Incoming>, state: AppState) -> Respon
                 let entries: Vec<LlmCapturedCall> = rows
                     .into_iter()
                     .map(
-                        |(ts, provider, model, status, input, output, dur, streaming, req_body, resp_body)| {
+                        |(ts, owner, provider, model, status, input, output, dur, streaming, req_body, resp_body)| {
                             LlmCapturedCall {
                                 ts: ts as u64,
+                                owner,
                                 provider,
                                 model,
                                 status: status as u16,
@@ -3979,11 +4077,11 @@ async fn handle_llm_captured(req: &Request<Incoming>, state: AppState) -> Respon
                     }),
                 );
             }
-            Err(e) => eprintln!("tkr-server: captured_calls read failed: {e}"),
+            Err(e) => eprintln!("jkr-server: captured_calls read failed: {e}"),
         }
     }
     let buf = state.inner.captured_calls.lock().expect("captured_calls");
-    let entries: Vec<&LlmCapturedCall> = buf.iter().collect();
+    let entries: Vec<&LlmCapturedCall> = buf.iter().filter(|e| e.owner == owner).collect();
     json_response(
         req.headers(),
         StatusCode::OK,
@@ -4040,7 +4138,7 @@ async fn handle_llm_recent(req: &Request<Incoming>, state: AppState) -> Response
                     json!({ "entries": entries, "capacity": MAX_RECENT_LLM_CALLS }),
                 );
             }
-            Err(e) => eprintln!("tkr-server: llm_recent read failed: {e}"),
+            Err(e) => eprintln!("jkr-server: llm_recent read failed: {e}"),
         }
     }
     let buf = state.inner.recent_llm.lock().expect("recent_llm lock");
@@ -4322,12 +4420,12 @@ fn sha1_digest(input: &[u8]) -> [u8; 20] {
 
 /// Hard cap on JSON request bodies. Anything larger is rejected without
 /// reading it into memory — protects against trivial OOM via oversized
-/// ingest/join payloads. Tune via TKR_MAX_BODY_BYTES if needed.
+/// ingest/join payloads. Tune via JKR_MAX_BODY_BYTES if needed.
 const MAX_BODY_BYTES: usize = 4 * 1024 * 1024;
 
 async fn read_json(req: Request<Incoming>) -> anyhow::Result<serde_json::Value> {
     use http_body_util::{BodyExt, Limited};
-    let cap = std::env::var("TKR_MAX_BODY_BYTES")
+    let cap = std::env::var("JKR_MAX_BODY_BYTES")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(MAX_BODY_BYTES);
@@ -4399,7 +4497,7 @@ fn apply_cors_headers(dst: &mut HeaderMap, src: &HeaderMap) {
         "http://127.0.0.1:4000",
         "https://tkr.prysm.sh",
     ];
-    let extra_allowed = std::env::var("TKR_ALLOWED_ORIGIN").ok();
+    let extra_allowed = std::env::var("JKR_ALLOWED_ORIGIN").ok();
     if let Some(o) = origin {
         let permitted =
             allowed.iter().any(|a| *a == o) || extra_allowed.as_deref() == Some(o);
@@ -4426,7 +4524,7 @@ fn session_cookie(headers: &HeaderMap) -> Option<String> {
             value.split(';').find_map(|part| {
                 let trimmed = part.trim();
                 trimmed
-                    .strip_prefix("tkr_session=")
+                    .strip_prefix("jkr_session=")
                     .map(|session| session.to_string())
             })
         })
@@ -4447,7 +4545,7 @@ async fn handle_logto_start(state: AppState) -> Response<Body> {
             return json_error(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "logto_unconfigured",
-                "TKR_LOGTO_{ENDPOINT,APP_ID,APP_SECRET,REDIRECT_URI} must be set",
+                "JKR_LOGTO_{ENDPOINT,APP_ID,APP_SECRET,REDIRECT_URI} must be set",
                 &HeaderMap::new(),
             )
         }
@@ -4485,7 +4583,7 @@ async fn handle_logto_start(state: AppState) -> Response<Body> {
 ///    credentials (HTTP Basic auth — Logto accepts client_secret_basic).
 /// 3. Decode the `id_token` payload (signature trust delegated to TLS;
 ///    see `decode_id_token_payload` for why).
-/// 4. Mint a `tkr_session` cookie using the same machinery the password
+/// 4. Mint a `jkr_session` cookie using the same machinery the password
 ///    login uses, and 302 the browser to `/`.
 async fn handle_logto_callback(req: Request<Incoming>, state: AppState) -> Response<Body> {
     let cfg = match state.inner.logto.as_ref() {
@@ -4494,7 +4592,7 @@ async fn handle_logto_callback(req: Request<Incoming>, state: AppState) -> Respo
             return json_error(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "logto_unconfigured",
-                "TKR_LOGTO_{ENDPOINT,APP_ID,APP_SECRET,REDIRECT_URI} must be set",
+                "JKR_LOGTO_{ENDPOINT,APP_ID,APP_SECRET,REDIRECT_URI} must be set",
                 &HeaderMap::new(),
             )
         }
@@ -4634,7 +4732,7 @@ async fn handle_logto_callback(req: Request<Incoming>, state: AppState) -> Respo
         username: None,
     });
 
-    // Mint a tkr_session cookie. Reuses the same machinery as the
+    // Mint a jkr_session cookie. Reuses the same machinery as the
     // password login — see handle_login for the original shape. The
     // Logto id_token claims feed the session so /api/auth/me + the UI
     // dashboard can show the real user instead of the dev placeholder.
@@ -4668,7 +4766,7 @@ async fn handle_logto_callback(req: Request<Incoming>, state: AppState) -> Respo
     headers.insert(
         SET_COOKIE,
         HeaderValue::from_str(&format!(
-            "tkr_session={session_id}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=604800"
+            "jkr_session={session_id}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=604800"
         ))
         .expect("set-cookie"),
     );
@@ -4747,14 +4845,14 @@ fn new_session_id() -> String {
 
 // ───────── Logto OIDC helpers ──────────────────────────────────────
 
-/// Read TKR_LOGTO_* env vars into a config. Returns None if any
+/// Read JKR_LOGTO_* env vars into a config. Returns None if any
 /// required var is missing — the routes 503 in that case rather than
-/// crashing the server, so tkr-server still runs without Logto wired up.
+/// crashing the server, so jkr-server still runs without Logto wired up.
 fn load_logto_config() -> Option<LogtoConfig> {
-    let endpoint = std::env::var("TKR_LOGTO_ENDPOINT").ok().filter(|s| !s.is_empty())?;
-    let app_id = std::env::var("TKR_LOGTO_APP_ID").ok().filter(|s| !s.is_empty())?;
-    let app_secret = std::env::var("TKR_LOGTO_APP_SECRET").ok().filter(|s| !s.is_empty())?;
-    let redirect_uri = std::env::var("TKR_LOGTO_REDIRECT_URI").ok().filter(|s| !s.is_empty())?;
+    let endpoint = std::env::var("JKR_LOGTO_ENDPOINT").ok().filter(|s| !s.is_empty())?;
+    let app_id = std::env::var("JKR_LOGTO_APP_ID").ok().filter(|s| !s.is_empty())?;
+    let app_secret = std::env::var("JKR_LOGTO_APP_SECRET").ok().filter(|s| !s.is_empty())?;
+    let redirect_uri = std::env::var("JKR_LOGTO_REDIRECT_URI").ok().filter(|s| !s.is_empty())?;
     Some(LogtoConfig {
         endpoint: endpoint.trim_end_matches('/').to_string(),
         app_id,
@@ -4838,7 +4936,7 @@ fn urlencode(s: &str) -> String {
 }
 
 /// JWT `id_token` claims we care about. Logto returns more (iss, aud,
-/// exp, iat, nonce, …) but we extract only what tkr-server uses to
+/// exp, iat, nonce, …) but we extract only what jkr-server uses to
 /// upsert a session.
 #[derive(Debug, Deserialize)]
 struct IdTokenClaims {
@@ -4990,7 +5088,7 @@ mod tests {
             endpoint: "https://auth.example.com".into(),
             app_id: "abc123".into(),
             app_secret: "ignored-here".into(),
-            redirect_uri: "https://tkr.example.com/auth/logto/callback".into(),
+            redirect_uri: "https://jkr.example.com/auth/logto/callback".into(),
         };
         let url = build_logto_authorize_url(&cfg, "STATE_X", "CHALLENGE_Y");
         // The crucial bits: endpoint, response_type=code, client_id,
@@ -5000,7 +5098,7 @@ mod tests {
         assert!(url.contains("response_type=code"));
         assert!(url.contains("client_id=abc123"));
         assert!(
-            url.contains("redirect_uri=https%3A%2F%2Ftkr.example.com%2Fauth%2Flogto%2Fcallback"),
+            url.contains("redirect_uri=https%3A%2F%2Fjkr.example.com%2Fauth%2Flogto%2Fcallback"),
             "redirect_uri not url-encoded; got: {url}"
         );
         assert!(url.contains("state=STATE_X"));
@@ -5391,7 +5489,7 @@ data: {\"unrelated\":\"value\"}\n\
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.subsec_nanos())
             .unwrap_or(0);
-        let path = std::env::temp_dir().join(format!("tkr-test-key-{pid}-{nanos}"));
+        let path = std::env::temp_dir().join(format!("jkr-test-key-{pid}-{nanos}"));
         let s = ReceiptSigner::load_or_generate(&path);
         (s, path)
     }
@@ -5436,13 +5534,13 @@ data: {\"unrelated\":\"value\"}\n\
     fn signer_persists_key_across_loads() {
         // Two ReceiptSigners loaded from the same path produce the
         // same public key — required so signatures stay verifiable
-        // across tkr-server restarts.
+        // across jkr-server restarts.
         let pid = std::process::id();
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.subsec_nanos())
             .unwrap_or(0);
-        let path = std::env::temp_dir().join(format!("tkr-test-persist-{pid}-{nanos}"));
+        let path = std::env::temp_dir().join(format!("jkr-test-persist-{pid}-{nanos}"));
         let first = ReceiptSigner::load_or_generate(&path);
         let second = ReceiptSigner::load_or_generate(&path);
         assert_eq!(

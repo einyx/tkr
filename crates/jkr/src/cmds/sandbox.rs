@@ -264,11 +264,17 @@ const DEFAULT_GATEWAY_URL: &str = "https://tkr.prysm.sh";
 
 /// Decide whether to inject `ANTHROPIC_BASE_URL`. Returns the URL to
 /// set when the var is absent, or `None` when the operator already set
-/// it (respect override — including a deliberate empty value).
-fn gateway_base_url_override(current: Option<&std::ffi::OsStr>) -> Option<&'static str> {
+/// it (respect override — including a deliberate empty value). When the
+/// user has logged in (`jkr login`), that server's URL takes precedence
+/// over the compiled-in default so traffic lands on the same gateway
+/// the captures are scoped against.
+fn gateway_base_url_override(
+    current: Option<&std::ffi::OsStr>,
+    logged_in: Option<&str>,
+) -> Option<String> {
     match current {
         Some(_) => None,
-        None => Some(DEFAULT_GATEWAY_URL),
+        None => Some(logged_in.unwrap_or(DEFAULT_GATEWAY_URL).to_string()),
     }
 }
 
@@ -349,10 +355,27 @@ pub fn claude(
         // it untouched. Setting it here (rather than pushing a
         // name=value) means the ANTHROPIC_ prefix pass below forwards
         // it like any other inherited var.
+        let creds = crate::cmds::login::stored_credentials();
+        let logged_in_url = creds.as_ref().map(|(u, _)| u.as_str());
         if let Some(url) =
-            gateway_base_url_override(std::env::var_os("ANTHROPIC_BASE_URL").as_deref())
+            gateway_base_url_override(std::env::var_os("ANTHROPIC_BASE_URL").as_deref(), logged_in_url)
         {
             std::env::set_var("ANTHROPIC_BASE_URL", url);
+        }
+
+        // Attach the user's CLI token as a custom header so the gateway
+        // can attribute captured calls to them (per-user scoping). Claude
+        // Code forwards ANTHROPIC_CUSTOM_HEADERS onto every request; the
+        // gateway reads `x-jkr-token` and never relays it upstream. Skip
+        // if the user already set their own custom headers, or isn't
+        // logged in.
+        if std::env::var_os("ANTHROPIC_CUSTOM_HEADERS").is_none() {
+            if let Some((_, token)) = creds.as_ref() {
+                std::env::set_var(
+                    "ANTHROPIC_CUSTOM_HEADERS",
+                    format!("x-jkr-token: {token}"),
+                );
+            }
         }
 
         // Env vars: forward exact-match names that are essential, plus
@@ -418,9 +441,18 @@ mod tests {
     #[test]
     fn gateway_injected_when_base_url_absent() {
         assert_eq!(
-            gateway_base_url_override(None),
+            gateway_base_url_override(None, None).as_deref(),
             Some(DEFAULT_GATEWAY_URL),
             "absent ANTHROPIC_BASE_URL should default to the gateway"
+        );
+    }
+
+    #[test]
+    fn gateway_prefers_logged_in_url() {
+        assert_eq!(
+            gateway_base_url_override(None, Some("https://my.gw")).as_deref(),
+            Some("https://my.gw"),
+            "the logged-in server URL should win over the compiled default"
         );
     }
 
@@ -428,13 +460,13 @@ mod tests {
     fn gateway_respects_existing_override() {
         let custom = std::ffi::OsString::from("https://proxy.example");
         assert_eq!(
-            gateway_base_url_override(Some(&custom)),
+            gateway_base_url_override(Some(&custom), Some("https://my.gw")),
             None,
-            "an operator-set URL must not be clobbered"
+            "an operator-set URL must not be clobbered, even when logged in"
         );
         // A deliberate empty value is still "set" — leave it alone.
         let empty = std::ffi::OsString::from("");
-        assert_eq!(gateway_base_url_override(Some(&empty)), None);
+        assert_eq!(gateway_base_url_override(Some(&empty), None), None);
     }
 
     fn trace_with(level: VerdictLevel, flags: Vec<Flag>, summary: TraceSummary) -> SandboxTrace {
