@@ -1,10 +1,10 @@
-/// emit-fixtures — writes 3 plausible mock RunRecord files to ~/.tkr/runs/
+/// emit-fixtures — writes 3 plausible mock RunRecord files to ~/.jkr/runs/
 /// for dashboard development and smoke testing.
 ///
 /// Usage: cargo run --example emit-fixtures
 use anyhow::Result;
 use chrono::{Duration, Utc};
-use tkr::run_record::{persist, ReceiptRecord, RunRecord};
+use jkr::run_record::{persist, ReceiptRecord, RunRecord};
 
 #[allow(clippy::too_many_arguments)]
 fn make_fixture(
@@ -21,9 +21,9 @@ fn make_fixture(
     minutes_ago: i64,
 ) -> RunRecord {
     let started_at = Utc::now() - Duration::minutes(minutes_ago);
-    let cost_cents = tkr::run_record::estimate_cost_cents(model, input_tokens, output_tokens);
+    let cost_cents = jkr::run_record::estimate_cost_cents(model, input_tokens, output_tokens);
     let cost_saved_cents =
-        tkr::run_record::estimate_savings_cents(model, raw_bytes, filtered_bytes);
+        jkr::run_record::estimate_savings_cents(model, raw_bytes, filtered_bytes);
 
     RunRecord {
         id: id.to_string(),
@@ -106,6 +106,6 @@ fn main() -> Result<()> {
         println!("wrote: {}", path.display());
     }
 
-    println!("\n3 fixture files written to ~/.tkr/runs/");
+    println!("\n3 fixture files written to ~/.jkr/runs/");
     Ok(())
 }

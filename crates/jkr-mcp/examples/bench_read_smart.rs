@@ -1,12 +1,12 @@
-//! Compare `tkr_read_smart` output size vs the naive baseline of reading
+//! Compare `jkr_read_smart` output size vs the naive baseline of reading
 //! every file that contains the question's keywords.
 //!
 //! Run from repo root:
-//!   cargo run -p tkr-mcp --example bench_read_smart -- <root> "question one" "another question"
+//!   cargo run -p jkr-mcp --example bench_read_smart -- <root> "question one" "another question"
 
 use std::fs;
 use std::path::PathBuf;
-use tkr_mcp::index_backed;
+use jkr_mcp::index_backed;
 
 fn main() -> anyhow::Result<()> {
     let mut args = std::env::args().skip(1);

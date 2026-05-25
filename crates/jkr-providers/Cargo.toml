@@ -1,19 +1,19 @@
 [package]
-name = "tkr-providers"
+name = "jkr-providers"
 publish = false
 version = "0.1.0"
 edition = "2021"
 rust-version.workspace = true
-description = "LLM provider integrations for the tkr CLI proxy"
-repository = "https://github.com/einyx/tkr"
+description = "LLM provider integrations for the jkr CLI proxy"
+repository = "https://github.com/einyx/jkr"
 license = "Apache-2.0"
 
 [lib]
-name = "tkr_providers"
+name = "jkr_providers"
 crate-type = ["rlib"]
 
 [dependencies]
-tkr-agent = { path = "../tkr-agent", version = "0.1.0" }
+jkr-agent = { path = "../jkr-agent", version = "0.1.0" }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

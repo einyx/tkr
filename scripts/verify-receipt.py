@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Verify a tkr-server-emitted receipt signature offline.
+Verify a jkr-server-emitted receipt signature offline.
 
 Reads a receipt JSON from stdin (or from a file path), reconstructs
 the canonical-message bytes the server signed, and verifies the
@@ -10,7 +10,7 @@ if the signature is valid, 1 otherwise.
 This is a reference implementation: the canonical-message format is
 documented in docs/operations.md and locked by the
 `signer_canonical_message_is_stable` test in
-crates/tkr-server/src/main.rs. Re-implement in your language of
+crates/jkr-server/src/main.rs. Re-implement in your language of
 choice and the same bytes-in produce the same verdict.
 
 Dependencies (one of):
@@ -43,7 +43,7 @@ def canonical_message(r: dict[str, Any]) -> bytes:
     """Reconstruct the exact UTF-8 bytes the server signed.
 
     Format pinned by `ReceiptSigner::canonical_message` in
-    crates/tkr-server/src/main.rs. Newline-separated, `v1\\n` prefix,
+    crates/jkr-server/src/main.rs. Newline-separated, `v1\\n` prefix,
     no trailing newline. Field order is fixed.
     """
     lines = [

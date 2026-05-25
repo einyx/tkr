@@ -1,6 +1,6 @@
 // Sandbox panel — pulls live counters from /api/v1/sandbox/stats.
 //
-// When the server has `TKR_SANDBOX_EXEC=true`, the panel shows real
+// When the server has `JKR_SANDBOX_EXEC=true`, the panel shows real
 // metrics (runs, denied, success rate, last command). When disabled
 // (the default), it keeps the teaser copy describing what the
 // sandbox does, with a small "armed: 0 runs" header so the panel
@@ -91,7 +91,7 @@ export function SandboxPanel({ stats }: Props) {
           <div className="lp-stats lp-stats-3" style={{ padding: "12px" }}>
             <Stat value={String(total)} label="total runs" />
             <Stat value={String(failed)} label="failed" />
-            <Stat value={String(denied)} label="denied (off allowlist)" />
+            <Stat value={String(denied)} label="denied · server-exec" />
             <Stat
               value={successPct != null ? `${successPct}%` : "—"}
               label="success rate"
@@ -169,9 +169,9 @@ export function SandboxPanel({ stats }: Props) {
             <li>lifetime · ends when the task ends</li>
           </ul>
           <p className="sandbox-pitch" style={{ marginTop: 12, fontSize: 12 }}>
-            tkr-server also ships a sandboxed-exec endpoint at{" "}
+            jkr-server also ships a sandboxed-exec endpoint at{" "}
             <code>POST /api/v1/sandbox/exec</code>. flip{" "}
-            <code>TKR_SANDBOX_EXEC=true</code> on the server to enable it.
+            <code>JKR_SANDBOX_EXEC=true</code> on the server to enable it.
           </p>
         </div>
       )}

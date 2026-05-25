@@ -1,6 +1,6 @@
 use crate::host::vault::HostVault;
 use anyhow::Result;
-use tkr_api::vault::{SealState, Vault as VaultTrait};
+use jkr_api::vault::{SealState, Vault as VaultTrait};
 
 pub fn status(vault: &HostVault) -> Result<i32> {
     let state = match vault.state() {
@@ -17,7 +17,7 @@ pub fn status(vault: &HostVault) -> Result<i32> {
 use std::path::Path;
 
 pub enum InitMode<'a> {
-    /// Master key at `~/.tkr/vault/.tkr-vault.key` (0600); legacy OS keychain entries migrate once on read.
+    /// Master key at `~/.jkr/vault/.jkr-vault.key` (0600); legacy OS keychain entries migrate once on read.
     MasterKeyFile,
     Passphrase(&'a str),
 }
@@ -35,16 +35,16 @@ pub fn init(vault_root: &Path, mode: InitMode) -> Result<i32> {
         InitMode::MasterKeyFile => {
             let user = vault_root.to_string_lossy();
             // Idempotent if master key already exists (file or legacy keychain migration).
-            if keychain::get_master_key("tkr-vault", &user).is_ok() {
+            if keychain::get_master_key("jkr-vault", &user).is_ok() {
                 println!(
                     "vault already initialized at {} (master key already present)",
                     vault_root.display()
                 );
                 return Ok(0);
             }
-            keychain::set_master_key("tkr-vault", &user, &master)?;
+            keychain::set_master_key("jkr-vault", &user, &master)?;
             println!(
-                "vault initialized at {}; master key at ~/.tkr/vault/.tkr-vault.key (0600)",
+                "vault initialized at {}; master key at ~/.jkr/vault/.jkr-vault.key (0600)",
                 vault_root.display()
             );
         }
@@ -98,17 +98,17 @@ mod tests_init {
         assert_eq!(bytes_first, bytes_second);
     }
 
-    // Writes real ~/.tkr/vault/.tkr-vault.key — isolate HOME before running.
+    // Writes real ~/.jkr/vault/.jkr-vault.key — isolate HOME before running.
     #[test]
     #[ignore]
     fn init_master_key_file_smoke() {
         let d = tempdir().unwrap();
         let user = d.path().to_string_lossy().to_string();
-        let _ = keychain::delete_master_key("tkr-vault", &user);
+        let _ = keychain::delete_master_key("jkr-vault", &user);
         init(d.path(), InitMode::MasterKeyFile).unwrap();
-        let key = keychain::get_master_key("tkr-vault", &user).unwrap();
+        let key = keychain::get_master_key("jkr-vault", &user).unwrap();
         assert_eq!(key.len(), 32);
-        let _ = keychain::delete_master_key("tkr-vault", &user);
+        let _ = keychain::delete_master_key("jkr-vault", &user);
     }
 }
 
@@ -132,7 +132,7 @@ mod tests_status {
         v.unseal_full();
         assert_eq!(status(&v).unwrap(), 0);
         // Crude: re-fetch state to confirm fully unsealed
-        assert_eq!(v.state(), tkr_api::vault::SealState::FullyUnsealed);
+        assert_eq!(v.state(), jkr_api::vault::SealState::FullyUnsealed);
     }
 }
 
@@ -155,7 +155,7 @@ mod tests_seal {
     use super::*;
     use crate::host::vault::store::{MemStore, Store};
     use std::sync::Arc;
-    use tkr_api::vault::SealState;
+    use jkr_api::vault::SealState;
 
     #[test]
     fn unseal_promotes_to_fully_unsealed() {
@@ -181,7 +181,7 @@ mod tests_seal {
 // Re-encrypts every vault entry under a freshly generated master key and
 // atomically swaps the vault directory. The new master key is returned to the
 // caller via `new_master` out-parameter; the caller is responsible for
-// persisting it (rewrite ~/.tkr/vault/.tkr-vault.key or master.age). This responsibility
+// persisting it (rewrite ~/.jkr/vault/.jkr-vault.key or master.age). This responsibility
 // is deliberately left to the caller because the persistence strategy differs
 // between default file-backed mode and Passphrase modes — Task 5.5 / 6.3 will wire up the
 // appropriate callbacks when rotate is integrated into the CLI.
@@ -191,7 +191,7 @@ pub fn rotate(old: &HostVault, vault_root: &Path) -> Result<[u8; 32]> {
     use anyhow::Context;
     use rand::RngCore;
     use std::sync::Arc;
-    use tkr_api::manifest::SensitivityClass;
+    use jkr_api::manifest::SensitivityClass;
 
     // Fully unseal old vault so we can read every class.
     old.unseal_full();
@@ -477,7 +477,7 @@ mod tests_export_import {
     };
     use std::sync::Arc;
     use tempfile::tempdir;
-    use tkr_api::manifest::SensitivityClass;
+    use jkr_api::manifest::SensitivityClass;
 
     #[test]
     fn export_then_import_round_trip() {
@@ -544,7 +544,7 @@ mod tests_rotate {
     use crate::host::vault::store::{FsStore, Store};
     use std::sync::Arc;
     use tempfile::tempdir;
-    use tkr_api::manifest::SensitivityClass;
+    use jkr_api::manifest::SensitivityClass;
 
     #[test]
     fn rotate_preserves_entries_under_new_key() {

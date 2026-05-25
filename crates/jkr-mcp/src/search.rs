@@ -34,7 +34,7 @@ pub fn find_symbol(symbol_name: &str, root: &Path) -> Result<String> {
             Err(_) => continue,
         };
         // Reuse the outline extractor so symbol shapes match what
-        // tkr_outline_file would report.
+        // jkr_outline_file would report.
         let symbols = match outline_internal(&bytes) {
             Ok(s) => s,
             Err(_) => continue,

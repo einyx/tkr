@@ -1,5 +1,5 @@
 [package]
-name = "tkr-model"
+name = "jkr-model"
 publish = false
 version = "0.1.0"
 edition = "2021"
@@ -13,7 +13,7 @@ thiserror = { workspace = true }
 hex = { workspace = true }
 sha2 = "0.10"
 sha3 = "0.10"
-tkr-mesh = { path = "../tkr-mesh" }
+jkr-mesh = { path = "../jkr-mesh" }
 
 # IPFS via iroh — embedded, no daemon. Pin to a recent release before first build.
 # iroh = "0.28"

@@ -1,40 +1,40 @@
-# tkr-agent Runtime MVP — Implementation Plan (Plan 1 of 6)
+# jkr-agent Runtime MVP — Implementation Plan (Plan 1 of 6)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship a working `tkr agent run <manifest.toml>` that drives an Anthropic-backed agent loop, executes typed tools, filters their output through `tkr-filter` for the model, and prints a token-savings receipt.
+**Goal:** Ship a working `jkr agent run <manifest.toml>` that drives an Anthropic-backed agent loop, executes typed tools, filters their output through `jkr-filter` for the model, and prints a token-savings receipt.
 
-**Architecture:** Two new workspace crates. `tkr-agent` owns the manifest schema, the run loop, and the tool/provider traits. `tkr-providers` owns the Anthropic HTTP client. The existing `tkr-filter` crate is reused as the egress chokepoint between tool output and model context. The existing `tkr` binary gets a new `agent run` subcommand. Sandbox, vault, real infra tools, and the dashboard are all out of scope (Plans 2–6).
+**Architecture:** Two new workspace crates. `jkr-agent` owns the manifest schema, the run loop, and the tool/provider traits. `jkr-providers` owns the Anthropic HTTP client. The existing `jkr-filter` crate is reused as the egress chokepoint between tool output and model context. The existing `jkr` binary gets a new `agent run` subcommand. Sandbox, vault, real infra tools, and the dashboard are all out of scope (Plans 2–6).
 
 **Tech Stack:** Rust 2021, `tokio`-free (synchronous, like the rest of the repo), `ureq` for HTTP, `serde`+`toml` for manifests, `anyhow` for errors, `mockito` for HTTP tests, `clap` for CLI.
 
-**Spec reference:** `docs/superpowers/specs/2026-04-28-tkr-agents-platform-design.md` §7.3, §7.4, §8.
+**Spec reference:** `docs/superpowers/specs/2026-04-28-jkr-agents-platform-design.md` §7.3, §7.4, §8.
 
 ---
 
 ## File Structure
 
 **New crates:**
-- `crates/tkr-agent/Cargo.toml` — agent runtime crate manifest
-- `crates/tkr-agent/src/lib.rs` — public exports
-- `crates/tkr-agent/src/manifest.rs` — TOML manifest types + parser
-- `crates/tkr-agent/src/tool.rs` — `Tool` trait + `ToolResult` type + `ToolRegistry`
-- `crates/tkr-agent/src/provider.rs` — `Provider` trait + message types
-- `crates/tkr-agent/src/loop_.rs` — agent loop / executor
-- `crates/tkr-agent/src/receipt.rs` — `RunReceipt` struct + `Display`
-- `crates/tkr-agent/src/tools/echo.rs` — stub echo tool for tests + smoke runs
-- `crates/tkr-agent/src/tools/mod.rs` — tools module index
-- `crates/tkr-agent/tests/loop_integration.rs` — end-to-end with mock provider
+- `crates/jkr-agent/Cargo.toml` — agent runtime crate manifest
+- `crates/jkr-agent/src/lib.rs` — public exports
+- `crates/jkr-agent/src/manifest.rs` — TOML manifest types + parser
+- `crates/jkr-agent/src/tool.rs` — `Tool` trait + `ToolResult` type + `ToolRegistry`
+- `crates/jkr-agent/src/provider.rs` — `Provider` trait + message types
+- `crates/jkr-agent/src/loop_.rs` — agent loop / executor
+- `crates/jkr-agent/src/receipt.rs` — `RunReceipt` struct + `Display`
+- `crates/jkr-agent/src/tools/echo.rs` — stub echo tool for tests + smoke runs
+- `crates/jkr-agent/src/tools/mod.rs` — tools module index
+- `crates/jkr-agent/tests/loop_integration.rs` — end-to-end with mock provider
 
-- `crates/tkr-providers/Cargo.toml`
-- `crates/tkr-providers/src/lib.rs`
-- `crates/tkr-providers/src/anthropic.rs` — Anthropic Messages API client
+- `crates/jkr-providers/Cargo.toml`
+- `crates/jkr-providers/src/lib.rs`
+- `crates/jkr-providers/src/anthropic.rs` — Anthropic Messages API client
 
 **Modified:**
 - `Cargo.toml` (workspace) — add new members + workspace deps
-- `crates/tkr/Cargo.toml` — depend on `tkr-agent`, `tkr-providers`
-- `crates/tkr/src/cli.rs` — new `Agent { Run { manifest: PathBuf } }` subcommand
-- `crates/tkr/src/dispatch.rs` (or `main.rs`) — route `Agent::Run` to `tkr-agent`
+- `crates/jkr/Cargo.toml` — depend on `jkr-agent`, `jkr-providers`
+- `crates/jkr/src/cli.rs` — new `Agent { Run { manifest: PathBuf } }` subcommand
+- `crates/jkr/src/dispatch.rs` (or `main.rs`) — route `Agent::Run` to `jkr-agent`
 
 **New examples:**
 - `examples/hello.toml` — minimal manifest exercising the echo tool
@@ -44,27 +44,27 @@
 ## Task 1: Scaffold the two new crates
 
 **Files:**
-- Create: `crates/tkr-agent/Cargo.toml`
-- Create: `crates/tkr-agent/src/lib.rs`
-- Create: `crates/tkr-providers/Cargo.toml`
-- Create: `crates/tkr-providers/src/lib.rs`
+- Create: `crates/jkr-agent/Cargo.toml`
+- Create: `crates/jkr-agent/src/lib.rs`
+- Create: `crates/jkr-providers/Cargo.toml`
+- Create: `crates/jkr-providers/src/lib.rs`
 - Modify: `Cargo.toml` (workspace root)
 
 - [ ] **Step 1.1: Add workspace members + new workspace deps**
 
-Edit `/tmp/tkr-work/Cargo.toml`. Replace the `members = [...]` and `[workspace.dependencies]` sections:
+Edit `/tmp/jkr-work/Cargo.toml`. Replace the `members = [...]` and `[workspace.dependencies]` sections:
 
 ```toml
 [workspace]
 resolver = "2"
 members = [
-    "crates/tkr-api",
-    "crates/tkr-filter",
-    "crates/tkr-semantic",
-    "crates/tkr-analytics",
-    "crates/tkr-agent",
-    "crates/tkr-providers",
-    "crates/tkr",
+    "crates/jkr-api",
+    "crates/jkr-filter",
+    "crates/jkr-semantic",
+    "crates/jkr-analytics",
+    "crates/jkr-agent",
+    "crates/jkr-providers",
+    "crates/jkr",
 ]
 
 [workspace.dependencies]
@@ -82,24 +82,24 @@ thiserror = "1"
 mockito = "1"
 ```
 
-- [ ] **Step 1.2: Create `tkr-agent` crate manifest**
+- [ ] **Step 1.2: Create `jkr-agent` crate manifest**
 
-Create `crates/tkr-agent/Cargo.toml`:
+Create `crates/jkr-agent/Cargo.toml`:
 
 ```toml
 [package]
-name = "tkr-agent"
+name = "jkr-agent"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
 
 [lib]
-name = "tkr_agent"
+name = "jkr_agent"
 crate-type = ["rlib"]
 
 [dependencies]
-tkr-api = { path = "../tkr-api" }
-tkr-filter = { path = "../tkr-filter" }
+jkr-api = { path = "../jkr-api" }
+jkr-filter = { path = "../jkr-filter" }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -110,7 +110,7 @@ thiserror = { workspace = true }
 mockito = { workspace = true }
 ```
 
-- [ ] **Step 1.3: Create `tkr-agent/src/lib.rs` skeleton**
+- [ ] **Step 1.3: Create `jkr-agent/src/lib.rs` skeleton**
 
 ```rust
 pub mod manifest;
@@ -127,23 +127,23 @@ pub use loop_::{run, RunOutcome};
 pub use receipt::RunReceipt;
 ```
 
-- [ ] **Step 1.4: Create `tkr-providers` crate manifest**
+- [ ] **Step 1.4: Create `jkr-providers` crate manifest**
 
-Create `crates/tkr-providers/Cargo.toml`:
+Create `crates/jkr-providers/Cargo.toml`:
 
 ```toml
 [package]
-name = "tkr-providers"
+name = "jkr-providers"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
 
 [lib]
-name = "tkr_providers"
+name = "jkr_providers"
 crate-type = ["rlib"]
 
 [dependencies]
-tkr-agent = { path = "../tkr-agent" }
+jkr-agent = { path = "../jkr-agent" }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -154,7 +154,7 @@ thiserror = { workspace = true }
 mockito = { workspace = true }
 ```
 
-- [ ] **Step 1.5: Create `tkr-providers/src/lib.rs` skeleton**
+- [ ] **Step 1.5: Create `jkr-providers/src/lib.rs` skeleton**
 
 ```rust
 pub mod anthropic;
@@ -163,40 +163,40 @@ pub use anthropic::AnthropicProvider;
 
 - [ ] **Step 1.6: Create empty module files so workspace compiles**
 
-Create `crates/tkr-agent/src/manifest.rs`:
+Create `crates/jkr-agent/src/manifest.rs`:
 ```rust
 // filled in Task 2
 ```
-Create `crates/tkr-agent/src/tool.rs`:
+Create `crates/jkr-agent/src/tool.rs`:
 ```rust
 // filled in Task 3
 ```
-Create `crates/tkr-agent/src/provider.rs`:
+Create `crates/jkr-agent/src/provider.rs`:
 ```rust
 // filled in Task 5
 ```
-Create `crates/tkr-agent/src/loop_.rs`:
+Create `crates/jkr-agent/src/loop_.rs`:
 ```rust
 // filled in Task 8
 ```
-Create `crates/tkr-agent/src/receipt.rs`:
+Create `crates/jkr-agent/src/receipt.rs`:
 ```rust
 // filled in Task 9
 ```
-Create `crates/tkr-agent/src/tools/mod.rs`:
+Create `crates/jkr-agent/src/tools/mod.rs`:
 ```rust
 pub mod echo;
 ```
-Create `crates/tkr-agent/src/tools/echo.rs`:
+Create `crates/jkr-agent/src/tools/echo.rs`:
 ```rust
 // filled in Task 4
 ```
-Create `crates/tkr-providers/src/anthropic.rs`:
+Create `crates/jkr-providers/src/anthropic.rs`:
 ```rust
 // filled in Task 6
 ```
 
-`lib.rs` re-exports point at types defined in later tasks; we'll wire them up as those tasks land. For Step 1.6, change `tkr-agent/src/lib.rs` to:
+`lib.rs` re-exports point at types defined in later tasks; we'll wire them up as those tasks land. For Step 1.6, change `jkr-agent/src/lib.rs` to:
 
 ```rust
 pub mod manifest;
@@ -211,15 +211,15 @@ pub mod tools;
 
 - [ ] **Step 1.7: Verify workspace compiles**
 
-Run: `cd /tmp/tkr-work && cargo check --workspace`
+Run: `cd /tmp/jkr-work && cargo check --workspace`
 Expected: PASS — both new crates compile as empty libraries.
 
 - [ ] **Step 1.8: Commit**
 
 ```bash
-cd /tmp/tkr-work
-git add Cargo.toml crates/tkr-agent crates/tkr-providers
-git commit -m "scaffold tkr-agent and tkr-providers crates"
+cd /tmp/jkr-work
+git add Cargo.toml crates/jkr-agent crates/jkr-providers
+git commit -m "scaffold jkr-agent and jkr-providers crates"
 ```
 
 ---
@@ -227,11 +227,11 @@ git commit -m "scaffold tkr-agent and tkr-providers crates"
 ## Task 2: Manifest types + parser
 
 **Files:**
-- Modify: `crates/tkr-agent/src/manifest.rs`
+- Modify: `crates/jkr-agent/src/manifest.rs`
 
 - [ ] **Step 2.1: Write the failing test**
 
-Replace `crates/tkr-agent/src/manifest.rs` with:
+Replace `crates/jkr-agent/src/manifest.rs` with:
 
 ```rust
 use serde::Deserialize;
@@ -347,15 +347,15 @@ prefix = "!"
 
 - [ ] **Step 2.2: Run test to verify it fails first, then passes**
 
-Run: `cd /tmp/tkr-work && cargo test -p tkr-agent --lib manifest::`
+Run: `cd /tmp/jkr-work && cargo test -p jkr-agent --lib manifest::`
 Expected: PASS — three tests, three passes. (If you want a true red-green: comment out the `Manifest::parse` body, observe failure, restore.)
 
 - [ ] **Step 2.3: Commit**
 
 ```bash
-cd /tmp/tkr-work
-git add crates/tkr-agent/src/manifest.rs
-git commit -m "tkr-agent: TOML manifest schema and parser"
+cd /tmp/jkr-work
+git add crates/jkr-agent/src/manifest.rs
+git commit -m "jkr-agent: TOML manifest schema and parser"
 ```
 
 ---
@@ -363,11 +363,11 @@ git commit -m "tkr-agent: TOML manifest schema and parser"
 ## Task 3: `Tool` trait + `ToolResult`
 
 **Files:**
-- Modify: `crates/tkr-agent/src/tool.rs`
+- Modify: `crates/jkr-agent/src/tool.rs`
 
 - [ ] **Step 3.1: Define the trait and registry**
 
-Replace `crates/tkr-agent/src/tool.rs`:
+Replace `crates/jkr-agent/src/tool.rs`:
 
 ```rust
 use anyhow::Result;
@@ -469,14 +469,14 @@ mod tests {
 
 - [ ] **Step 3.2: Run tests**
 
-Run: `cd /tmp/tkr-work && cargo test -p tkr-agent --lib tool::`
+Run: `cd /tmp/jkr-work && cargo test -p jkr-agent --lib tool::`
 Expected: PASS — two tests pass.
 
 - [ ] **Step 3.3: Commit**
 
 ```bash
-git add crates/tkr-agent/src/tool.rs
-git commit -m "tkr-agent: Tool trait, ToolResult, ToolRegistry"
+git add crates/jkr-agent/src/tool.rs
+git commit -m "jkr-agent: Tool trait, ToolResult, ToolRegistry"
 ```
 
 ---
@@ -484,11 +484,11 @@ git commit -m "tkr-agent: Tool trait, ToolResult, ToolRegistry"
 ## Task 4: `EchoTool`
 
 **Files:**
-- Modify: `crates/tkr-agent/src/tools/echo.rs`
+- Modify: `crates/jkr-agent/src/tools/echo.rs`
 
 - [ ] **Step 4.1: Write the failing test + impl**
 
-Replace `crates/tkr-agent/src/tools/echo.rs`:
+Replace `crates/jkr-agent/src/tools/echo.rs`:
 
 ```rust
 use crate::tool::{Tool, ToolResult};
@@ -562,14 +562,14 @@ mod tests {
 
 - [ ] **Step 4.2: Run tests**
 
-Run: `cd /tmp/tkr-work && cargo test -p tkr-agent --lib tools::echo`
+Run: `cd /tmp/jkr-work && cargo test -p jkr-agent --lib tools::echo`
 Expected: PASS — three tests pass.
 
 - [ ] **Step 4.3: Commit**
 
 ```bash
-git add crates/tkr-agent/src/tools/echo.rs crates/tkr-agent/src/tools/mod.rs
-git commit -m "tkr-agent: EchoTool stub for testing"
+git add crates/jkr-agent/src/tools/echo.rs crates/jkr-agent/src/tools/mod.rs
+git commit -m "jkr-agent: EchoTool stub for testing"
 ```
 
 ---
@@ -577,11 +577,11 @@ git commit -m "tkr-agent: EchoTool stub for testing"
 ## Task 5: `Provider` trait + message types
 
 **Files:**
-- Modify: `crates/tkr-agent/src/provider.rs`
+- Modify: `crates/jkr-agent/src/provider.rs`
 
 - [ ] **Step 5.1: Define traits and types**
 
-Replace `crates/tkr-agent/src/provider.rs`:
+Replace `crates/jkr-agent/src/provider.rs`:
 
 ```rust
 use anyhow::Result;
@@ -658,14 +658,14 @@ mod tests {
 
 - [ ] **Step 5.2: Run tests**
 
-Run: `cd /tmp/tkr-work && cargo test -p tkr-agent --lib provider::`
+Run: `cd /tmp/jkr-work && cargo test -p jkr-agent --lib provider::`
 Expected: PASS — two tests pass.
 
 - [ ] **Step 5.3: Commit**
 
 ```bash
-git add crates/tkr-agent/src/provider.rs
-git commit -m "tkr-agent: Provider trait and message types"
+git add crates/jkr-agent/src/provider.rs
+git commit -m "jkr-agent: Provider trait and message types"
 ```
 
 ---
@@ -673,17 +673,17 @@ git commit -m "tkr-agent: Provider trait and message types"
 ## Task 6: `AnthropicProvider` request shape (offline test)
 
 **Files:**
-- Modify: `crates/tkr-providers/src/anthropic.rs`
+- Modify: `crates/jkr-providers/src/anthropic.rs`
 
 - [ ] **Step 6.1: Implement request builder + parse, with a test that does NOT hit the network**
 
-Replace `crates/tkr-providers/src/anthropic.rs`:
+Replace `crates/jkr-providers/src/anthropic.rs`:
 
 ```rust
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tkr_agent::provider::{ContentBlock, Message, Provider, ProviderResponse, StopReason};
+use jkr_agent::provider::{ContentBlock, Message, Provider, ProviderResponse, StopReason};
 
 const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
 const API_VERSION: &str = "2023-06-01";
@@ -847,14 +847,14 @@ mod tests {
 
 - [ ] **Step 6.2: Run tests**
 
-Run: `cd /tmp/tkr-work && cargo test -p tkr-providers --lib`
+Run: `cd /tmp/jkr-work && cargo test -p jkr-providers --lib`
 Expected: PASS — four tests pass.
 
 - [ ] **Step 6.3: Commit**
 
 ```bash
-git add crates/tkr-providers/src/anthropic.rs
-git commit -m "tkr-providers: Anthropic request builder and response parser"
+git add crates/jkr-providers/src/anthropic.rs
+git commit -m "jkr-providers: Anthropic request builder and response parser"
 ```
 
 ---
@@ -862,15 +862,15 @@ git commit -m "tkr-providers: Anthropic request builder and response parser"
 ## Task 7: `AnthropicProvider::send` against `mockito`
 
 **Files:**
-- Create: `crates/tkr-providers/tests/anthropic_http.rs`
+- Create: `crates/jkr-providers/tests/anthropic_http.rs`
 
 - [ ] **Step 7.1: Write a failing HTTP test using `mockito`**
 
-Create `crates/tkr-providers/tests/anthropic_http.rs`:
+Create `crates/jkr-providers/tests/anthropic_http.rs`:
 
 ```rust
-use tkr_agent::provider::{ContentBlock, Message, Provider, StopReason};
-use tkr_providers::AnthropicProvider;
+use jkr_agent::provider::{ContentBlock, Message, Provider, StopReason};
+use jkr_providers::AnthropicProvider;
 
 #[test]
 fn send_round_trips_through_mock_server() {
@@ -918,14 +918,14 @@ fn send_surfaces_api_error() {
 
 - [ ] **Step 7.2: Run tests**
 
-Run: `cd /tmp/tkr-work && cargo test -p tkr-providers --test anthropic_http`
+Run: `cd /tmp/jkr-work && cargo test -p jkr-providers --test anthropic_http`
 Expected: PASS — two tests pass.
 
 - [ ] **Step 7.3: Commit**
 
 ```bash
-git add crates/tkr-providers/tests/anthropic_http.rs
-git commit -m "tkr-providers: HTTP integration test with mockito"
+git add crates/jkr-providers/tests/anthropic_http.rs
+git commit -m "jkr-providers: HTTP integration test with mockito"
 ```
 
 ---
@@ -933,11 +933,11 @@ git commit -m "tkr-providers: HTTP integration test with mockito"
 ## Task 8: Agent loop (no filter yet)
 
 **Files:**
-- Modify: `crates/tkr-agent/src/loop_.rs`
+- Modify: `crates/jkr-agent/src/loop_.rs`
 
 - [ ] **Step 8.1: Implement the loop**
 
-Replace `crates/tkr-agent/src/loop_.rs`:
+Replace `crates/jkr-agent/src/loop_.rs`:
 
 ```rust
 use crate::manifest::Manifest;
@@ -1181,28 +1181,28 @@ mod tests {
 
 - [ ] **Step 8.2: Run tests**
 
-Run: `cd /tmp/tkr-work && cargo test -p tkr-agent --lib loop_::`
+Run: `cd /tmp/jkr-work && cargo test -p jkr-agent --lib loop_::`
 Expected: PASS — three tests pass.
 
 - [ ] **Step 8.3: Commit**
 
 ```bash
-git add crates/tkr-agent/src/loop_.rs
-git commit -m "tkr-agent: agent loop with scripted-provider tests"
+git add crates/jkr-agent/src/loop_.rs
+git commit -m "jkr-agent: agent loop with scripted-provider tests"
 ```
 
 ---
 
-## Task 9: Wire `tkr-filter` into tool output + `RunReceipt`
+## Task 9: Wire `jkr-filter` into tool output + `RunReceipt`
 
 **Files:**
-- Modify: `crates/tkr-agent/src/loop_.rs`
-- Modify: `crates/tkr-agent/src/receipt.rs`
-- Modify: `crates/tkr-agent/src/lib.rs`
+- Modify: `crates/jkr-agent/src/loop_.rs`
+- Modify: `crates/jkr-agent/src/receipt.rs`
+- Modify: `crates/jkr-agent/src/lib.rs`
 
 - [ ] **Step 9.1: Implement `RunReceipt` with display test**
 
-Replace `crates/tkr-agent/src/receipt.rs`:
+Replace `crates/jkr-agent/src/receipt.rs`:
 
 ```rust
 use crate::loop_::RunOutcome;
@@ -1239,7 +1239,7 @@ impl RunReceipt {
 
 impl fmt::Display for RunReceipt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "── tkr run receipt ──")?;
+        writeln!(f, "── jkr run receipt ──")?;
         writeln!(f, "  agent:           {}", self.agent)?;
         writeln!(f, "  steps:           {}", self.steps)?;
         writeln!(f, "  tokens (in/out): {} / {}", self.input_tokens, self.output_tokens)?;
@@ -1293,13 +1293,13 @@ mod tests {
 
 - [ ] **Step 9.2: Add filter integration to the loop**
 
-Modify `crates/tkr-agent/src/loop_.rs`. Change the public `run` function signature to accept an optional filter, and pass tool output through it before recording bytes.
+Modify `crates/jkr-agent/src/loop_.rs`. Change the public `run` function signature to accept an optional filter, and pass tool output through it before recording bytes.
 
 Replace the entire `pub fn run(...)` and `run_tool_calls(...)` portion with:
 
 ```rust
-use tkr_filter::FilterPlugin;
-use tkr_api::{FilterResult, Plugin};
+use jkr_filter::FilterPlugin;
+use jkr_api::{FilterResult, Plugin};
 
 pub fn run(
     manifest: &Manifest,
@@ -1409,7 +1409,7 @@ Add to the `tests` module in `loop_.rs`:
 ```rust
 #[test]
 fn filter_compresses_tool_output() {
-    use tkr_filter::FilterPlugin;
+    use jkr_filter::FilterPlugin;
     let filter_toml = r#"
 command = "echo"
 [[rules]]
@@ -1451,11 +1451,11 @@ action = "suppress"
 }
 ```
 
-You will need to confirm the `tkr-filter` rule schema by skimming `crates/tkr-filter/src/rules.rs`. If its `Rule` requires fields that differ from `match`/`action` above, adjust the test's filter TOML accordingly. **Stop and read that file before completing this step** — the schema is the source of truth, and a wrong rule TOML here will fail the test.
+You will need to confirm the `jkr-filter` rule schema by skimming `crates/jkr-filter/src/rules.rs`. If its `Rule` requires fields that differ from `match`/`action` above, adjust the test's filter TOML accordingly. **Stop and read that file before completing this step** — the schema is the source of truth, and a wrong rule TOML here will fail the test.
 
 - [ ] **Step 9.4: Restore `lib.rs` re-exports**
 
-Replace `crates/tkr-agent/src/lib.rs`:
+Replace `crates/jkr-agent/src/lib.rs`:
 
 ```rust
 pub mod manifest;
@@ -1472,39 +1472,39 @@ pub use loop_::{run, RunOutcome};
 pub use receipt::RunReceipt;
 ```
 
-- [ ] **Step 9.5: Run all tkr-agent tests**
+- [ ] **Step 9.5: Run all jkr-agent tests**
 
-Run: `cd /tmp/tkr-work && cargo test -p tkr-agent`
+Run: `cd /tmp/jkr-work && cargo test -p jkr-agent`
 Expected: PASS — all unit tests pass, including the new filter-compression test.
 
 - [ ] **Step 9.6: Commit**
 
 ```bash
-git add crates/tkr-agent/src/loop_.rs crates/tkr-agent/src/receipt.rs crates/tkr-agent/src/lib.rs
-git commit -m "tkr-agent: tkr-filter on tool output + RunReceipt"
+git add crates/jkr-agent/src/loop_.rs crates/jkr-agent/src/receipt.rs crates/jkr-agent/src/lib.rs
+git commit -m "jkr-agent: jkr-filter on tool output + RunReceipt"
 ```
 
 ---
 
-## Task 10: CLI subcommand `tkr agent run`
+## Task 10: CLI subcommand `jkr agent run`
 
 **Files:**
-- Modify: `crates/tkr/Cargo.toml`
-- Modify: `crates/tkr/src/cli.rs`
-- Modify: `crates/tkr/src/main.rs` (or `dispatch.rs` — whichever currently routes `Commands`)
+- Modify: `crates/jkr/Cargo.toml`
+- Modify: `crates/jkr/src/cli.rs`
+- Modify: `crates/jkr/src/main.rs` (or `dispatch.rs` — whichever currently routes `Commands`)
 
-- [ ] **Step 10.1: Add new deps to `tkr` binary crate**
+- [ ] **Step 10.1: Add new deps to `jkr` binary crate**
 
-Edit `crates/tkr/Cargo.toml`. In `[dependencies]`, add:
+Edit `crates/jkr/Cargo.toml`. In `[dependencies]`, add:
 
 ```toml
-tkr-agent = { path = "../tkr-agent" }
-tkr-providers = { path = "../tkr-providers" }
+jkr-agent = { path = "../jkr-agent" }
+jkr-providers = { path = "../jkr-providers" }
 ```
 
 - [ ] **Step 10.2: Add `Agent { Run { manifest } }` subcommand**
 
-Edit `crates/tkr/src/cli.rs`. Replace the `Commands` enum with:
+Edit `crates/jkr/src/cli.rs`. Replace the `Commands` enum with:
 
 ```rust
 #[derive(Subcommand, Debug)]
@@ -1545,15 +1545,15 @@ Commands::Agent { cmd } => match cmd {
 },
 ```
 
-Add a `run_agent` function to the same file (or a new module — the simplest path is a sibling module file `crates/tkr/src/agent_cmd.rs`). Create `crates/tkr/src/agent_cmd.rs`:
+Add a `run_agent` function to the same file (or a new module — the simplest path is a sibling module file `crates/jkr/src/agent_cmd.rs`). Create `crates/jkr/src/agent_cmd.rs`:
 
 ```rust
 use anyhow::{anyhow, Context, Result};
 use std::path::Path;
-use tkr_agent::{
+use jkr_agent::{
     tools::echo::EchoTool, Manifest, RunReceipt, ToolRegistry,
 };
-use tkr_providers::AnthropicProvider;
+use jkr_providers::AnthropicProvider;
 
 pub fn run_agent(manifest_path: &Path) -> Result<()> {
     let manifest = Manifest::load(manifest_path)
@@ -1576,7 +1576,7 @@ pub fn run_agent(manifest_path: &Path) -> Result<()> {
         other => return Err(anyhow!("unknown provider '{}' (v1 only ships 'anthropic')", other)),
     };
 
-    let outcome = tkr_agent::run(&manifest, &provider, &mut tools, None)?;
+    let outcome = jkr_agent::run(&manifest, &provider, &mut tools, None)?;
     println!("{}", outcome.final_text);
     println!();
     println!("{}", RunReceipt::from_outcome(&manifest.name, &outcome));
@@ -1588,14 +1588,14 @@ Add `mod agent_cmd;` and `use cli::AgentCmd;` (and `use agent_cmd::run_agent;`) 
 
 - [ ] **Step 10.4: Build the binary**
 
-Run: `cd /tmp/tkr-work && cargo build -p tkr`
+Run: `cd /tmp/jkr-work && cargo build -p jkr`
 Expected: PASS — binary builds.
 
 - [ ] **Step 10.5: Commit**
 
 ```bash
-git add crates/tkr/Cargo.toml crates/tkr/src/cli.rs crates/tkr/src/main.rs crates/tkr/src/agent_cmd.rs
-git commit -m "tkr CLI: add 'agent run' subcommand"
+git add crates/jkr/Cargo.toml crates/jkr/src/cli.rs crates/jkr/src/main.rs crates/jkr/src/agent_cmd.rs
+git commit -m "jkr CLI: add 'agent run' subcommand"
 ```
 
 ---
@@ -1604,7 +1604,7 @@ git commit -m "tkr CLI: add 'agent run' subcommand"
 
 **Files:**
 - Create: `examples/hello.toml`
-- Create: `crates/tkr-agent/tests/loop_integration.rs`
+- Create: `crates/jkr-agent/tests/loop_integration.rs`
 
 - [ ] **Step 11.1: Add example manifest**
 
@@ -1626,19 +1626,19 @@ name = "echo"
 
 - [ ] **Step 11.2: End-to-end integration test against a mock HTTP server**
 
-Add `mockito` and `tkr-providers` to `crates/tkr-agent/Cargo.toml` `[dev-dependencies]`:
+Add `mockito` and `jkr-providers` to `crates/jkr-agent/Cargo.toml` `[dev-dependencies]`:
 
 ```toml
 [dev-dependencies]
 mockito = { workspace = true }
-tkr-providers = { path = "../tkr-providers" }
+jkr-providers = { path = "../jkr-providers" }
 ```
 
-Create `crates/tkr-agent/tests/loop_integration.rs`:
+Create `crates/jkr-agent/tests/loop_integration.rs`:
 
 ```rust
-use tkr_agent::{tools::echo::EchoTool, Manifest, ToolRegistry};
-use tkr_providers::AnthropicProvider;
+use jkr_agent::{tools::echo::EchoTool, Manifest, ToolRegistry};
+use jkr_providers::AnthropicProvider;
 
 #[test]
 fn end_to_end_echo_run() {
@@ -1688,7 +1688,7 @@ name = "echo"
     let mut tools = ToolRegistry::new();
     tools.register(Box::new(EchoTool));
 
-    let outcome = tkr_agent::run(&manifest, &provider, &mut tools, None).unwrap();
+    let outcome = jkr_agent::run(&manifest, &provider, &mut tools, None).unwrap();
     assert_eq!(outcome.steps, 2);
     assert_eq!(outcome.final_text, "echoed");
     assert!(outcome.raw_bytes_total > 0); // echo produced bytes
@@ -1699,14 +1699,14 @@ name = "echo"
 
 - [ ] **Step 11.3: Run the integration test**
 
-Run: `cd /tmp/tkr-work && cargo test -p tkr-agent --test loop_integration`
+Run: `cd /tmp/jkr-work && cargo test -p jkr-agent --test loop_integration`
 Expected: PASS — single test passes.
 
 - [ ] **Step 11.4: Commit**
 
 ```bash
-git add examples/hello.toml crates/tkr-agent/Cargo.toml crates/tkr-agent/tests/loop_integration.rs
-git commit -m "tkr-agent: end-to-end integration test + hello.toml example"
+git add examples/hello.toml crates/jkr-agent/Cargo.toml crates/jkr-agent/tests/loop_integration.rs
+git commit -m "jkr-agent: end-to-end integration test + hello.toml example"
 ```
 
 ---
@@ -1717,16 +1717,16 @@ git commit -m "tkr-agent: end-to-end integration test + hello.toml example"
 
 - [ ] **Step 12.1: Build release binary**
 
-Run: `cd /tmp/tkr-work && cargo build --release -p tkr`
-Expected: PASS, binary at `target/release/tkr`.
+Run: `cd /tmp/jkr-work && cargo build --release -p jkr`
+Expected: PASS, binary at `target/release/jkr`.
 
 - [ ] **Step 12.2: Set API key and run**
 
 Run:
 ```bash
 export ANTHROPIC_API_KEY=<your real key>
-cd /tmp/tkr-work
-./target/release/tkr agent run examples/hello.toml
+cd /tmp/jkr-work
+./target/release/jkr agent run examples/hello.toml
 ```
 
 Expected output: model emits a tool_use for `echo` with `text: "hello world"`, the echo tool returns it, the model emits final text, and you see something like:
@@ -1734,7 +1734,7 @@ Expected output: model emits a tool_use for `echo` with `text: "hello world"`, t
 ```
 hello world echoed.
 
-── tkr run receipt ──
+── jkr run receipt ──
   agent:           hello
   steps:           2
   tokens (in/out): 12 / 7
@@ -1747,7 +1747,7 @@ hello world echoed.
 
 Run:
 ```bash
-cd /tmp/tkr-work
+cd /tmp/jkr-work
 git push -u origin spec/agents-platform
 ```
 Expected: branch pushed; PR can be opened against `main`.
@@ -1756,15 +1756,15 @@ Expected: branch pushed; PR can be opened against `main`.
 
 ## Self-Review Notes (already applied)
 
-- **Spec coverage:** §7.3 component layout (`tkr-agent`, `tkr-providers` ✓), §7.4 data flow (manifest → loader → loop → tool → filter → tool_result ✓), §8 v1 in-scope items: agent run ✓, Anthropic provider ✓, `tkr-filter` egress ✓, run receipt ✓. Out-of-scope: cron daemon, OpenAI provider, sandbox, vault, signing, tools beyond `echo`, dashboard — all deferred to Plans 2–6.
+- **Spec coverage:** §7.3 component layout (`jkr-agent`, `jkr-providers` ✓), §7.4 data flow (manifest → loader → loop → tool → filter → tool_result ✓), §8 v1 in-scope items: agent run ✓, Anthropic provider ✓, `jkr-filter` egress ✓, run receipt ✓. Out-of-scope: cron daemon, OpenAI provider, sandbox, vault, signing, tools beyond `echo`, dashboard — all deferred to Plans 2–6.
 - **Placeholders:** none. Every step has runnable code.
-- **Type consistency:** `RunOutcome` field names (`raw_bytes_total`, `filtered_bytes_total`) match between Task 8 and Task 9. `Manifest` field names match between Tasks 2 and 10. `AgentMode` not yet enforced at runtime — that's deliberate (sandbox enforcement comes in Plan 2). `ToolResult.exit` consistent across Tasks 3, 4, 8, 9. Filter-rule schema (`match` / `action = "suppress"`) in Task 9.3 is asserted by reading `tkr-filter/src/rules.rs` — explicit instruction in that step.
+- **Type consistency:** `RunOutcome` field names (`raw_bytes_total`, `filtered_bytes_total`) match between Task 8 and Task 9. `Manifest` field names match between Tasks 2 and 10. `AgentMode` not yet enforced at runtime — that's deliberate (sandbox enforcement comes in Plan 2). `ToolResult.exit` consistent across Tasks 3, 4, 8, 9. Filter-rule schema (`match` / `action = "suppress"`) in Task 9.3 is asserted by reading `jkr-filter/src/rules.rs` — explicit instruction in that step.
 
 ---
 
 ## Execution Handoff
 
-Plan complete and saved to `docs/superpowers/plans/2026-04-28-plan-1-tkr-agent-runtime-mvp.md`. Two execution options:
+Plan complete and saved to `docs/superpowers/plans/2026-04-28-plan-1-jkr-agent-runtime-mvp.md`. Two execution options:
 
 1. **Subagent-Driven (recommended)** — fresh subagent per task, review between tasks, fast iteration.
 2. **Inline Execution** — execute tasks in this session with batch checkpoints.

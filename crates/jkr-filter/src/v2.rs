@@ -1,12 +1,12 @@
-use tkr_api::{
+use jkr_api::{
     capability,
     host::Host,
     manifest::Manifest,
     plugin::{CommandCtx, FilterDecision, Plugin},
     FilterResult,
 };
-// ApiResult (tkr_api::Error) — used for Plugin trait method return types.
-use tkr_api::Result as ApiResult;
+// ApiResult (jkr_api::Error) — used for Plugin trait method return types.
+use jkr_api::Result as ApiResult;
 // anyhow::Result — used for constructors that parse TOML.
 use anyhow::Result;
 
@@ -15,7 +15,7 @@ use crate::FilterPlugin;
 /// V2 wrapper around the existing `FilterPlugin` rules engine.
 ///
 /// Holds a `FilterPlugin` (which owns all the compiled `FilterGroup`s) and
-/// implements the new `tkr_api::plugin::Plugin` trait by delegating to it.
+/// implements the new `jkr_api::plugin::Plugin` trait by delegating to it.
 /// The legacy impl on `FilterPlugin` itself is untouched.
 pub struct FilterPluginV2 {
     inner: FilterPlugin,
@@ -41,7 +41,7 @@ impl FilterPluginV2 {
 impl Plugin for FilterPluginV2 {
     fn manifest(&self) -> Manifest {
         Manifest {
-            name: "tkr-filter".into(),
+            name: "jkr-filter".into(),
             version: env!("CARGO_PKG_VERSION").into(),
             capabilities_required: vec![capability::STDOUT_FILTER.into()],
             ..Default::default()
@@ -59,7 +59,7 @@ impl Plugin for FilterPluginV2 {
     }
 
     fn on_line(&mut self, line: &str, ctx: &CommandCtx) -> ApiResult<FilterDecision> {
-        use tkr_api::LegacyPlugin as LegacyPluginTrait;
+        use jkr_api::LegacyPlugin as LegacyPluginTrait;
         let result = self
             .inner
             .filter(line, &ctx.command, &ctx.args, ctx.line_index);
@@ -78,7 +78,7 @@ impl Plugin for FilterPluginV2 {
     }
 
     fn on_command_end(&mut self, _ctx: &CommandCtx) -> ApiResult<String> {
-        use tkr_api::LegacyPlugin as LegacyPluginTrait;
+        use jkr_api::LegacyPlugin as LegacyPluginTrait;
         Ok(self.inner.flush())
     }
 }
@@ -95,7 +95,7 @@ pub fn all_filters_v2() -> Vec<Box<dyn Plugin>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tkr_api::plugin::{CommandCtx, FilterDecision};
+    use jkr_api::plugin::{CommandCtx, FilterDecision};
 
     fn ctx(command: &str, args: &str) -> CommandCtx {
         CommandCtx {
@@ -218,9 +218,9 @@ prefix = "x"
         )
         .unwrap();
         let m = p.manifest();
-        assert_eq!(m.name, "tkr-filter");
+        assert_eq!(m.name, "jkr-filter");
         assert!(m
             .capabilities_required
-            .contains(&tkr_api::capability::STDOUT_FILTER.to_string()));
+            .contains(&jkr_api::capability::STDOUT_FILTER.to_string()));
     }
 }

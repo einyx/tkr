@@ -1,4 +1,4 @@
-/// All errors that can be produced by the tkr plugin contract v2.
+/// All errors that can be produced by the jkr plugin contract v2.
 #[derive(Debug)]
 pub enum Error {
     UnknownMethod(String),

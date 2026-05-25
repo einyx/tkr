@@ -1,11 +1,11 @@
-//! tkr-model — IPFS-backed model distribution + local serving.
+//! jkr-model — IPFS-backed model distribution + local serving.
 //!
 //! Three responsibilities:
 //!
 //! 1. **Manifests** ([`manifest`]) — describe a model as a set of content-addressed
 //!    blobs (CIDs) plus runtime hints. Manifests are themselves content-addressed.
 //! 2. **Registry** ([`registry`]) — maps human names (`"llama-3.1-8b-q4"`) to
-//!    manifest CIDs. Implementation gossips over the existing tkr-mesh transport,
+//!    manifest CIDs. Implementation gossips over the existing jkr-mesh transport,
 //!    so peers learn what other peers have published.
 //! 3. **Pull / Run / Serve** — fetch blobs over iroh, hand them to a bundled
 //!    llama.cpp runner, expose an OpenAI-compatible HTTP surface.

@@ -185,11 +185,11 @@ pub fn enroll(
     let mut request = agent
         .post(&join_url)
         .header("content-type", "application/json");
-    // Brokers that gate /join behind a session cookie (e.g. tkr-server
-    // post-hardening) accept the same TKR_MESH_WS_COOKIE used for the WS
+    // Brokers that gate /join behind a session cookie (e.g. jkr-server
+    // post-hardening) accept the same JKR_MESH_WS_COOKIE used for the WS
     // upgrade. Forward it on enrollment too.
-    if let Ok(cookie) = std::env::var("TKR_MESH_WS_COOKIE") {
-        request = request.header("cookie", &format!("tkr_session={cookie}"));
+    if let Ok(cookie) = std::env::var("JKR_MESH_WS_COOKIE") {
+        request = request.header("cookie", &format!("jkr_session={cookie}"));
     }
     let resp = request
         .send_json(serde_json::to_value(&body).map_err(|e| Error::Encoding(e.to_string()))?)
@@ -308,7 +308,7 @@ mod tests {
 
     #[test]
     fn http_join_url_preserves_path_prefix_when_replacing_ws() {
-        // tkr-server serves at /api/v1/mesh/ws — the join endpoint is at
+        // jkr-server serves at /api/v1/mesh/ws — the join endpoint is at
         // /api/v1/mesh/join (sibling, not at the host root).
         assert_eq!(
             http_join_url("wss://tkr.prysm.sh/api/v1/mesh/ws").unwrap(),

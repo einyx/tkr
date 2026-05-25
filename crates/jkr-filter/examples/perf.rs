@@ -1,14 +1,14 @@
-//! Micro-bench for the hot path in `tkr-filter`.
+//! Micro-bench for the hot path in `jkr-filter`.
 //!
 //! Builds a synthetic 100k-line corpus that exercises the patterns each rule
 //! type was designed for, then times each rule variant in isolation plus a
 //! representative "real" pack (cargo). Prints ns/line so we can compare runs.
 //!
-//! Run with: `cargo run --release -p tkr-filter --example perf`
+//! Run with: `cargo run --release -p jkr-filter --example perf`
 
 use std::time::Instant;
-use tkr_api::{FilterResult, LegacyPlugin as Plugin};
-use tkr_filter::FilterPlugin;
+use jkr_api::{FilterResult, LegacyPlugin as Plugin};
+use jkr_filter::FilterPlugin;
 
 const LINES: usize = 100_000;
 
@@ -18,7 +18,7 @@ fn build_corpus() -> Vec<String> {
     let mut out = Vec::with_capacity(LINES);
     let templates: &[&str] = &[
         "warning: unused variable `x`",
-        "Compiling tkr-filter v0.1.0 (/home/alessio/tkr/crates/tkr-filter)",
+        "Compiling jkr-filter v0.1.0 (/home/alessio/jkr/crates/jkr-filter)",
         "error[E0001]: mismatched types",
         "2026-05-23T14:00:01Z host pod-7c8 ready",
         "    Finished release [optimized] target(s) in 12.34s",

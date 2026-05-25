@@ -1,4 +1,4 @@
-//! Save **unfiltered** merged stdout/stderr transcripts under `~/.tkr/tee/`,
+//! Save **unfiltered** merged stdout/stderr transcripts under `~/.jkr/tee/`,
 //! RTK-style, so agents can open full logs after filtered output without
 //! re-running the command (especially on failures).
 
@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Upper bound on transcript bytes we retain in memory / write (default 8 MiB).
 fn max_bytes() -> usize {
-    std::env::var("TKR_TEE_MAX_BYTES")
+    std::env::var("JKR_TEE_MAX_BYTES")
         .ok()
         .and_then(|s| s.parse().ok())
         .filter(|&n| n > 1024)
@@ -24,7 +24,7 @@ pub enum TeeMode {
 }
 
 pub fn tee_mode() -> TeeMode {
-    match std::env::var("TKR_TEE").ok().as_deref() {
+    match std::env::var("JKR_TEE").ok().as_deref() {
         None | Some("") => TeeMode::Failures,
         Some(s) => {
             let t = s.trim().to_ascii_lowercase();
@@ -53,7 +53,7 @@ fn should_write_disk(mode: TeeMode, exit_code: i32) -> bool {
 
 fn tee_dir() -> Option<PathBuf> {
     let home = dirs::home_dir()?;
-    let dir = home.join(".tkr").join("tee");
+    let dir = home.join(".jkr").join("tee");
     Some(dir)
 }
 
@@ -94,7 +94,7 @@ pub fn append_raw_line(buf: &mut String, line: &str, cap: usize) {
     if buf.len() >= cap {
         return;
     }
-    const MARKER: &str = "[tkr: tee truncated — TKR_TEE_MAX_BYTES]\n";
+    const MARKER: &str = "[jkr: tee truncated — JKR_TEE_MAX_BYTES]\n";
     let need = line.len().saturating_add(1);
     let room = cap.saturating_sub(buf.len());
     if need <= room {
@@ -149,7 +149,7 @@ pub fn maybe_save_transcript(
     let path = dir.join(format!("{}_{}.log", unix_secs(), slug));
 
     let meta = format!(
-        "# tkr tee · exit={exit_code} · cmd={command} {args}\n",
+        "# jkr tee · exit={exit_code} · cmd={command} {args}\n",
         args = args,
         command = command,
         exit_code = exit_code
@@ -157,7 +157,7 @@ pub fn maybe_save_transcript(
     atomic_write(&path, &format!("{meta}{transcript}"))?;
 
     Ok(Some(format!(
-        "[tkr: full output saved to {}]",
+        "[jkr: full output saved to {}]",
         path.display()
     )))
 }

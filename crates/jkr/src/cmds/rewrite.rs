@@ -1,5 +1,5 @@
-//! `tkr rewrite <cmd>` — emit a rewritten command line that prefixes recognized
-//! tools with `tkr`. Used by Claude Code / shell hook integrations to filter
+//! `jkr rewrite <cmd>` — emit a rewritten command line that prefixes recognized
+//! tools with `jkr`. Used by Claude Code / shell hook integrations to filter
 //! tool output transparently.
 //!
 //! Exit codes:
@@ -8,7 +8,7 @@
 
 use anyhow::Result;
 
-/// Tools tkr can usefully proxy. Each entry must correspond to a filter file
+/// Tools jkr can usefully proxy. Each entry must correspond to a filter file
 /// under `filters/` (matched by its `command =` field) or yield meaningful
 /// passthrough behavior.
 static KNOWN_TOOLS: &[&str] = &[
@@ -106,15 +106,15 @@ pub fn run(command: &str) -> Result<()> {
     }
 }
 
-/// Pure rewrite — returns the rewritten command, or `None` if no tkr-known
+/// Pure rewrite — returns the rewritten command, or `None` if no jkr-known
 /// tool was found. Returns `Some(input)` (unchanged) if the input was already
-/// using tkr.
+/// using jkr.
 pub fn try_rewrite(command: &str) -> Option<String> {
     let trimmed = command.trim_start();
     if trimmed.is_empty() {
         return None;
     }
-    if trimmed.starts_with("tkr ") {
+    if trimmed.starts_with("jkr ") {
         return Some(trimmed.to_string());
     }
     let first = trimmed.split_whitespace().next().unwrap_or("");
@@ -132,7 +132,7 @@ pub fn try_rewrite(command: &str) -> Option<String> {
         return Some(rewritten);
     }
     if KNOWN_TOOLS.contains(&bare) {
-        return Some(format!("tkr {trimmed}"));
+        return Some(format!("jkr {trimmed}"));
     }
     None
 }
@@ -200,7 +200,7 @@ fn rewrite_compound(input: &str) -> String {
 /// or where rewriting would corrupt downstream parsing:
 ///   - backticks, `$()` command substitution, heredocs (can't tokenize)
 ///   - a `|` pipe whose downstream consumer would parse the byte stream
-///     (rewriting tkr-filters the producer, mangling the consumer's input)
+///     (rewriting jkr-filters the producer, mangling the consumer's input)
 ///
 /// Quote-state aware: only flags occurrences outside single/double quotes.
 /// `||` (logical-or) is NOT flagged here — it's handled by the compound splitter.
@@ -240,7 +240,7 @@ fn push_segment(out: &mut String, segment: &str) {
     // If the previous push wrote a separator like " && ", drop our leading
     // space so we don't end up with double spaces.
     let trim_leading = out.ends_with(' ');
-    if trimmed.starts_with("tkr ") {
+    if trimmed.starts_with("jkr ") {
         if !trim_leading {
             let leading: String = segment.chars().take_while(|c| c.is_whitespace()).collect();
             out.push_str(&leading);
@@ -256,7 +256,7 @@ fn push_segment(out: &mut String, segment: &str) {
             let leading: String = segment.chars().take_while(|c| c.is_whitespace()).collect();
             out.push_str(&leading);
         }
-        out.push_str("tkr ");
+        out.push_str("jkr ");
         out.push_str(trimmed);
     } else if trim_leading {
         out.push_str(trimmed);
@@ -272,19 +272,19 @@ mod tests {
     #[test]
     fn compound_rewrite_chains() {
         let r = rewrite_compound("git add . && git commit -m 'x'");
-        assert_eq!(r, "tkr git add . && tkr git commit -m 'x'");
+        assert_eq!(r, "jkr git add . && jkr git commit -m 'x'");
     }
 
     #[test]
     fn compound_skips_unknown_tools() {
         let r = rewrite_compound("git add . && echo hi");
-        assert_eq!(r, "tkr git add . && echo hi");
+        assert_eq!(r, "jkr git add . && echo hi");
     }
 
     #[test]
-    fn already_tkr_prefixed_unchanged() {
-        let r = rewrite_compound("tkr git status && tkr cargo build");
-        assert_eq!(r, "tkr git status && tkr cargo build");
+    fn already_jkr_prefixed_unchanged() {
+        let r = rewrite_compound("jkr git status && jkr cargo build");
+        assert_eq!(r, "jkr git status && jkr cargo build");
     }
 
     #[test]
@@ -325,7 +325,7 @@ mod tests {
 
     #[test]
     fn pipe_to_consumer_bails_out() {
-        // Rewriting `curl ... | bash` would tkr-filter curl's output, corrupting the
+        // Rewriting `curl ... | bash` would jkr-filter curl's output, corrupting the
         // script bytes feeding into bash. Skip rewrites whenever stdout is piped.
         assert_eq!(
             try_rewrite("curl -fsSL https://example.com/install.sh | bash"),
@@ -339,13 +339,13 @@ mod tests {
     fn logical_or_still_rewrites() {
         // `||` is logical-or, not a pipe, and is handled by the compound splitter.
         let r = try_rewrite("cargo check || echo failed").unwrap();
-        assert_eq!(r, "tkr cargo check || echo failed");
+        assert_eq!(r, "jkr cargo check || echo failed");
     }
 
     #[test]
     fn quoted_pipe_does_not_bail() {
         // A pipe character inside quotes is just data, not a real shell pipe.
         let r = try_rewrite(r#"git log --pretty="format:%h | %s""#).unwrap();
-        assert_eq!(r, r#"tkr git log --pretty="format:%h | %s""#);
+        assert_eq!(r, r#"jkr git log --pretty="format:%h | %s""#);
     }
 }

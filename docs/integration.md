@@ -1,14 +1,14 @@
-# Pointing your AI tools at tkr
+# Pointing your AI tools at jkr
 
-This is what you do once a tkr instance is running (your own deployment
+This is what you do once a jkr instance is running (your own deployment
 or `tkr.prysm.sh`). Five minutes from "I have the URL" to "my dashboard
 shows traffic."
 
 ---
 
-## What tkr is doing for you
+## What jkr is doing for you
 
-You point your coding agent's base URL at tkr instead of straight at
+You point your coding agent's base URL at jkr instead of straight at
 Anthropic / OpenAI. From there:
 
 - The request body is **scanned for credentials** before it leaves your
@@ -24,12 +24,12 @@ Anthropic / OpenAI. From there:
   status) on a drain queue your relayer can poll.
 - Sign-in is **Logto-backed SSO** — same identity as the rest of the
   Prysm stack. The dashboard is just for operators; client traffic
-  doesn't need a tkr account.
+  doesn't need a jkr account.
 
-What tkr is *not* doing (yet — see [Known gaps](#known-gaps)):
+What jkr is *not* doing (yet — see [Known gaps](#known-gaps)):
 
 - It does not yet scrub **response** bodies. If a model echoes back a
-  secret it was given (e.g. in a system prompt), tkr passes the response
+  secret it was given (e.g. in a system prompt), jkr passes the response
   through verbatim.
 - It does not yet enforce **per-user / per-tenant quotas**. There is a
   global concurrency cap (see below) but no per-key throttling.
@@ -41,7 +41,7 @@ What tkr is *not* doing (yet — see [Known gaps](#known-gaps)):
 ## Point your tool at it
 
 Three flags do all the work: an environment variable on the client
-side, and the credential the client already has for the provider. tkr
+side, and the credential the client already has for the provider. jkr
 never sees, stores, or substitutes your provider keys — the
 `x-api-key` / `Authorization: Bearer` header is relayed verbatim.
 
@@ -85,7 +85,7 @@ to the constructor. Identical to the above.
 
 ### Raw `curl` smoke
 
-The fastest way to confirm tkr is in your path:
+The fastest way to confirm jkr is in your path:
 
 ```bash
 # Anthropic-wire
@@ -157,7 +157,7 @@ is deliberate — false-positives on injection patterns are common, and
 auto-blocking would catch legitimate user phrases.
 
 **Injection (pre-flight, block mode):** opt-in per rule on the server
-side. When a rule with `InjectionAction::Block` matches, tkr returns:
+side. When a rule with `InjectionAction::Block` matches, jkr returns:
 
 ```http
 HTTP/1.1 400 Bad Request
@@ -173,7 +173,7 @@ bumps.
 
 ## Security model in one paragraph
 
-tkr is a man-in-the-middle by design between your agents and the
+jkr is a man-in-the-middle by design between your agents and the
 model providers. It sees every request and response. It does **not**
 see your provider API key — the `x-api-key` / `Authorization: Bearer`
 header you set on the client is relayed to upstream verbatim and not
@@ -187,29 +187,29 @@ the Prysm team, not cryptographically isolated.
 
 ## Concurrency + rate-limit defaults
 
-tkr-server caps **concurrent in-flight upstream calls** to
-`TKR_UPSTREAM_MAX_CONCURRENT` (default 64). Above the cap, requests
+jkr-server caps **concurrent in-flight upstream calls** to
+`JKR_UPSTREAM_MAX_CONCURRENT` (default 64). Above the cap, requests
 return `429 Too Many Requests` with `Retry-After: 1`. This protects the
 blocking-thread pool from a runaway client; it is not a substitute for
 per-tenant rate limiting at your edge.
 
-For real production traffic, fronting tkr with traefik or nginx gets
+For real production traffic, fronting jkr with traefik or nginx gets
 you per-IP + per-key throttling cheaply. A traefik snippet:
 
 ```yaml
 http:
   middlewares:
-    tkr-ratelimit:
+    jkr-ratelimit:
       rateLimit:
         average: 10            # rps per source IP (sustained)
         burst: 30              # short-burst headroom
         sourceCriterion:
           requestHeaderName: Authorization   # rate-limit per API key, not per IP
   routers:
-    tkr:
-      rule: Host(`tkr.example.com`)
-      middlewares: [tkr-ratelimit]
-      service: tkr-server
+    jkr:
+      rule: Host(`jkr.example.com`)
+      middlewares: [jkr-ratelimit]
+      service: jkr-server
 ```
 
 ---
@@ -220,15 +220,15 @@ http:
 |---|---|
 | No response-side scrubbing — model echoes of secrets pass through | Don't put secrets in system prompts. |
 | No server-side signing of receipts | Treat receipts as audit-only, not legally non-repudiable. |
-| No per-tenant filter rule overrides | Run separate tkr instances per trust boundary if your teams need different rulesets. |
+| No per-tenant filter rule overrides | Run separate jkr instances per trust boundary if your teams need different rulesets. |
 | Sandbox metrics not ingested into the dashboard yet | The sandbox is still active agent-side; the dashboard just doesn't surface it. |
-| Async hyper-rustls client not in (uses blocking ureq under spawn_blocking) | Above `TKR_UPSTREAM_MAX_CONCURRENT` you get 429s instead of resource exhaustion — acceptable until streaming concurrency starts mattering. |
+| Async hyper-rustls client not in (uses blocking ureq under spawn_blocking) | Above `JKR_UPSTREAM_MAX_CONCURRENT` you get 429s instead of resource exhaustion — acceptable until streaming concurrency starts mattering. |
 
 ---
 
-## Running tkr yourself
+## Running jkr yourself
 
-If you're operating a tkr instance (rather than just integrating against
+If you're operating a jkr instance (rather than just integrating against
 `tkr.prysm.sh`), [`operations.md`](operations.md) covers env flags, the
 two sandboxes (CLI vs server-side HTTP), receipt-signature verification,
 and the dashboard panel reference.
@@ -237,6 +237,6 @@ and the dashboard panel reference.
 
 ## Where to file things
 
-- Issues / feature requests: https://github.com/einyx/tkr
+- Issues / feature requests: https://github.com/einyx/jkr
 - Hosted instance: `tkr.prysm.sh` — sign in with your Prysm identity
 - The umbrella stack: https://prysm.sh

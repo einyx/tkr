@@ -20,7 +20,7 @@ use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
-const HKDF_INFO: &[u8] = b"tkr-mesh/v1/dm";
+const HKDF_INFO: &[u8] = b"jkr-mesh/v1/dm";
 /// Per-message AES key + 0-nonce: nonce-reuse impossible.
 const ZERO_NONCE: [u8; 12] = [0u8; 12];
 
@@ -102,7 +102,7 @@ fn derive_key(shared_secret: &[u8]) -> Result<[u8; 32]> {
 
 fn recipient_aad(addr: &Address) -> Vec<u8> {
     let mut out = Vec::with_capacity(8 + 20);
-    out.extend_from_slice(b"tkr-mesh");
+    out.extend_from_slice(b"jkr-mesh");
     out.extend_from_slice(addr.as_bytes());
     out
 }

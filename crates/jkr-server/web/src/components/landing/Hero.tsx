@@ -37,7 +37,7 @@ export function Hero(_props: { onSignIn?: () => void }) {
         </a>
         <a
           className="lp-cta lp-cta-secondary"
-          href="https://github.com/einyx/tkr"
+          href="https://github.com/einyx/jkr"
           target="_blank"
           rel="noopener noreferrer"
         >

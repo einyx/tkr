@@ -4,7 +4,7 @@
 //! manifest describing what repo + commit it covers. The manifest itself is
 //! hashed → its CID is what peers gossip.
 //!
-//! On-wire shape mirrors tkr-model::manifest. When tkr-model's iroh fetch
+//! On-wire shape mirrors jkr-model::manifest. When jkr-model's iroh fetch
 //! lands, swap [`BlobStore`] for the iroh-backed impl and announces flow
 //! through the existing mesh registry pattern.
 
@@ -20,7 +20,7 @@ use std::path::Path;
 
 use crate::SCHEMA_VERSION;
 
-/// Hex-encoded SHA-256. Mirrors [`tkr_model::manifest::Cid`]. Treat as opaque.
+/// Hex-encoded SHA-256. Mirrors [`jkr_model::manifest::Cid`]. Treat as opaque.
 pub type Cid = String;
 
 /// Bundle manifest — versioned, content-addressed description of an index.
@@ -36,7 +36,7 @@ pub struct IndexManifest {
     /// Git commit the index was built against. None if not a git repo.
     pub commit: Option<String>,
     /// Schema version of the SQLite DB inside the bundle. Peers refuse
-    /// bundles whose `schema_version != tkr_index::SCHEMA_VERSION`.
+    /// bundles whose `schema_version != jkr_index::SCHEMA_VERSION`.
     pub schema_version: i32,
     /// CID of the gzipped DB blob.
     pub db_cid: Cid,
@@ -101,7 +101,7 @@ impl BlobStore for LocalBlobStore {
     }
 }
 
-/// Bundle the index DB at `<repo_root>/.tkr/index.sqlite` and store it in
+/// Bundle the index DB at `<repo_root>/.jkr/index.sqlite` and store it in
 /// `store`. Returns the manifest CID — what peers gossip.
 pub fn publish(
     repo_root: &Path,
@@ -109,7 +109,7 @@ pub fn publish(
     commit: Option<String>,
     store: &mut dyn BlobStore,
 ) -> Result<Cid> {
-    let db_path = repo_root.join(".tkr").join("index.sqlite");
+    let db_path = repo_root.join(".jkr").join("index.sqlite");
     let db_bytes = std::fs::read(&db_path)
         .with_context(|| format!("read {}", db_path.display()))?;
     let uncompressed_size = db_bytes.len() as u64;
@@ -139,7 +139,7 @@ pub fn publish(
 }
 
 /// Fetch a bundle by manifest CID, decompress, write the DB to
-/// `<dest>/.tkr/index.sqlite`. Returns the manifest for caller inspection.
+/// `<dest>/.jkr/index.sqlite`. Returns the manifest for caller inspection.
 pub fn fetch(
     manifest_cid: &str,
     dest_repo_root: &Path,
@@ -165,7 +165,7 @@ pub fn fetch(
     let mut db_bytes = Vec::with_capacity(manifest.db_size as usize);
     gz.read_to_end(&mut db_bytes)?;
 
-    let dir = dest_repo_root.join(".tkr");
+    let dir = dest_repo_root.join(".jkr");
     std::fs::create_dir_all(&dir)?;
     std::fs::write(dir.join("index.sqlite"), &db_bytes)?;
     Ok(manifest)

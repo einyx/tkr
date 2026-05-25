@@ -34,7 +34,7 @@ impl RunReceipt {
 
 impl fmt::Display for RunReceipt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "── tkr run receipt ──")?;
+        writeln!(f, "── jkr run receipt ──")?;
         writeln!(f, "  agent:           {}", self.agent)?;
         writeln!(f, "  steps:           {}", self.steps)?;
         writeln!(

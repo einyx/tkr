@@ -1,6 +1,6 @@
-//! Master key persistence for the tkr vault.
+//! Master key persistence for the jkr vault.
 //!
-//! As of v0.2.6, the master key lives in ~/.tkr/vault/.<service>.key with
+//! As of v0.2.6, the master key lives in ~/.jkr/vault/.<service>.key with
 //! mode 0600. Previously it was kept in the macOS login keychain via the
 //! `keyring` crate, but the default ACL there scopes access by cdhash, so
 //! every new binary build couldn't decrypt data written by the previous one.
@@ -8,7 +8,7 @@
 //! to the file. The keychain is no longer the source of truth.
 //!
 //! Threat model: someone with read access to your user's $HOME can take the
-//! key. The vault contents (tkr's own analytics noise signatures) are not
+//! key. The vault contents (jkr's own analytics noise signatures) are not
 //! material to most threat models. If you need stronger protection, replace
 //! this module's persistence with a Secure-Enclave-encrypted blob (macOS) or
 //! a TPM-sealed key (Linux); the public API stays the same.
@@ -17,11 +17,11 @@ use anyhow::{Context, Result};
 use std::path::PathBuf;
 
 #[allow(dead_code)]
-pub const SERVICE_DEFAULT: &str = "tkr-vault";
+pub const SERVICE_DEFAULT: &str = "jkr-vault";
 
 fn key_path(service: &str) -> PathBuf {
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-    home.join(".tkr")
+    home.join(".jkr")
         .join("vault")
         .join(format!(".{service}.key"))
 }
@@ -88,7 +88,7 @@ mod tests {
 
     #[test]
     fn file_based_round_trip() {
-        let svc = "tkr-test-file-key";
+        let svc = "jkr-test-file-key";
         let user = "master";
         // Clean up from any previous run.
         let _ = delete_master_key(svc, user);
@@ -102,7 +102,7 @@ mod tests {
     #[test]
     #[ignore]
     fn keychain_round_trip() {
-        let svc = "tkr-test-keychain";
+        let svc = "jkr-test-keychain";
         let user = "master";
         let _ = delete_master_key(svc, user);
         set_master_key(svc, user, b"hello").unwrap();

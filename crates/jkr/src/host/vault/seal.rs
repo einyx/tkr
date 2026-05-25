@@ -1,12 +1,12 @@
 use hkdf::Hkdf;
 use sha2::Sha256;
-use tkr_api::manifest::SensitivityClass;
+use jkr_api::manifest::SensitivityClass;
 
 pub fn derive_subkey(master: &[u8; 32], class: SensitivityClass) -> [u8; 32] {
     let info: &[u8] = match class {
-        SensitivityClass::Public => b"tkr.vault.subkey.public",
-        SensitivityClass::Private => b"tkr.vault.subkey.private",
-        SensitivityClass::Secret => b"tkr.vault.subkey.secret",
+        SensitivityClass::Public => b"jkr.vault.subkey.public",
+        SensitivityClass::Private => b"jkr.vault.subkey.private",
+        SensitivityClass::Secret => b"jkr.vault.subkey.secret",
     };
     let hk = Hkdf::<Sha256>::new(None, master);
     let mut out = [0u8; 32];
@@ -14,7 +14,7 @@ pub fn derive_subkey(master: &[u8; 32], class: SensitivityClass) -> [u8; 32] {
     out
 }
 
-use tkr_api::vault::SealState;
+use jkr_api::vault::SealState;
 use zeroize::Zeroize;
 
 pub struct SealStateMachine {

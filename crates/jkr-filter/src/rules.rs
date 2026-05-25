@@ -2,7 +2,7 @@ use indexmap::IndexMap;
 use regex::{Captures, Regex, RegexBuilder, RegexSet};
 use serde::Deserialize;
 use std::collections::HashMap;
-use tkr_api::FilterResult;
+use jkr_api::FilterResult;
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]

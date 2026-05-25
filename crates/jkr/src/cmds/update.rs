@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 
 const REPO_OWNER: &str = "einyx";
-const REPO_NAME: &str = "tkr";
-const BIN_NAME: &str = "tkr";
+const REPO_NAME: &str = "jkr";
+const BIN_NAME: &str = "jkr";
 
 fn is_brew_managed() -> bool {
     let exe = std::env::current_exe()
@@ -18,7 +18,7 @@ fn is_brew_managed() -> bool {
 pub fn run(check_only: bool, force: bool) -> Result<()> {
     // Allow --check through even on Homebrew installs (it's read-only).
     if !check_only && is_brew_managed() {
-        eprintln!("tkr was installed via Homebrew. Use:\n\n  brew upgrade tkr\n\ninstead of `tkr update` for managed installs.");
+        eprintln!("jkr was installed via Homebrew. Use:\n\n  brew upgrade jkr\n\ninstead of `jkr update` for managed installs.");
         std::process::exit(1);
     }
 

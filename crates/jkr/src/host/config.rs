@@ -4,8 +4,8 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::Path;
-use tkr_api::capability::CapSet;
-use tkr_api::manifest::Manifest;
+use jkr_api::capability::CapSet;
+use jkr_api::manifest::Manifest;
 
 /// Per-plugin section: { grants: [...], config: { ... } }
 #[derive(Debug, Default, Deserialize)]

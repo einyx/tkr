@@ -25,7 +25,7 @@ pub struct WatcherHandle {
     _join: Option<JoinHandle<()>>,
 }
 
-/// Start watching `repo_root` for file changes. The DB at `<root>/.tkr/`
+/// Start watching `repo_root` for file changes. The DB at `<root>/.jkr/`
 /// is re-opened inside the worker thread so the caller doesn't hold a lock.
 ///
 /// Debounced at 500ms — short enough to feel live, long enough to coalesce
@@ -46,7 +46,7 @@ pub fn start(repo_root: impl AsRef<Path>) -> Result<WatcherHandle> {
         let mut db = match IndexDb::open(&worker_root) {
             Ok(d) => d,
             Err(e) => {
-                eprintln!("[tkr-index watch] open db failed: {e}");
+                eprintln!("[jkr-index watch] open db failed: {e}");
                 return;
             }
         };
@@ -54,7 +54,7 @@ pub fn start(repo_root: impl AsRef<Path>) -> Result<WatcherHandle> {
             let events = match events {
                 Ok(e) => e,
                 Err(errs) => {
-                    eprintln!("[tkr-index watch] notify errors: {errs:?}");
+                    eprintln!("[jkr-index watch] notify errors: {errs:?}");
                     continue;
                 }
             };
@@ -75,7 +75,7 @@ pub fn start(repo_root: impl AsRef<Path>) -> Result<WatcherHandle> {
                     continue;
                 }
                 if let Err(e) = db.index_file(&p) {
-                    eprintln!("[tkr-index watch] index {} failed: {e}", p.display());
+                    eprintln!("[jkr-index watch] index {} failed: {e}", p.display());
                 }
             }
         }
@@ -93,7 +93,7 @@ fn should_skip(p: &Path) -> bool {
     p.components().any(|c| {
         matches!(
             c.as_os_str().to_str(),
-            Some(".tkr" | ".git" | "target" | "node_modules" | ".venv")
+            Some(".jkr" | ".git" | "target" | "node_modules" | ".venv")
         )
     })
 }

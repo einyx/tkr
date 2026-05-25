@@ -1,6 +1,6 @@
-//! tkr-index — persistent, content-addressed code index.
+//! jkr-index — persistent, content-addressed code index.
 //!
-//! One SQLite DB per repo, living under `.tkr/index.sqlite`. Indexing is
+//! One SQLite DB per repo, living under `.jkr/index.sqlite`. Indexing is
 //! incremental: a file is re-parsed only when its sha256 changes.
 
 pub mod bundle;
@@ -25,11 +25,11 @@ pub struct IndexDb {
 }
 
 impl IndexDb {
-    /// Open (or create) the index DB under `<repo_root>/.tkr/index.sqlite`.
+    /// Open (or create) the index DB under `<repo_root>/.jkr/index.sqlite`.
     pub fn open(repo_root: impl AsRef<Path>) -> Result<Self> {
         let repo_root = repo_root.as_ref().to_path_buf();
-        let dir = repo_root.join(".tkr");
-        std::fs::create_dir_all(&dir).context("create .tkr/")?;
+        let dir = repo_root.join(".jkr");
+        std::fs::create_dir_all(&dir).context("create .jkr/")?;
         let conn = Connection::open(dir.join("index.sqlite"))?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;

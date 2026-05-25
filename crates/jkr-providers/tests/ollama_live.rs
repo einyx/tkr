@@ -1,15 +1,15 @@
 //! Live smoke tests against a real Ollama daemon.
 //!
 //! Skipped by default. Run with:
-//!   cargo test -p tkr-providers --test ollama_live -- --ignored --nocapture
+//!   cargo test -p jkr-providers --test ollama_live -- --ignored --nocapture
 //!
 //! Requires:
 //!   - Ollama running on http://localhost:11434
 //!   - `ollama pull qwen2.5-coder:7b`
 
 use serde_json::json;
-use tkr_agent::provider::{ContentBlock, Message, Provider, StopReason};
-use tkr_providers::OllamaProvider;
+use jkr_agent::provider::{ContentBlock, Message, Provider, StopReason};
+use jkr_providers::OllamaProvider;
 
 const MODEL: &str = "qwen2.5-coder:7b";
 

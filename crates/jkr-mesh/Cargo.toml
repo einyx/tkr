@@ -1,11 +1,11 @@
 [package]
-name = "tkr-mesh"
+name = "jkr-mesh"
 publish = false
 version = "0.1.0"
 edition = "2021"
 rust-version.workspace = true
 license = "Apache-2.0"
-description = "Peer messaging mesh for tkr agents — secp256k1 identity, EIP-712 invites, payment-native frames"
+description = "Peer messaging mesh for jkr agents — secp256k1 identity, EIP-712 invites, payment-native frames"
 
 [dependencies]
 anyhow = { workspace = true }

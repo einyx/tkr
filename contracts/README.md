@@ -1,6 +1,6 @@
-# tkr-mesh smart contracts
+# jkr-mesh smart contracts
 
-`MeshEscrow.sol` — per-session payment channels for tkr-mesh agents.
+`MeshEscrow.sol` — per-session payment channels for jkr-mesh agents.
 Token-agnostic (`address(0)` = ETH, any ERC-20 otherwise). Designed for
 **Base mainnet**.
 
@@ -39,7 +39,7 @@ make deploy-local
 ```
 
 This uses anvil's first prefunded private key. The deploy command prints
-the `MeshEscrow` address — wire that into the tkr CLI when slice 3.3 lands.
+the `MeshEscrow` address — wire that into the jkr CLI when slice 3.3 lands.
 
 ## Contract layout
 
@@ -56,7 +56,7 @@ Recipients claim funds against EIP-712 typed-data receipts signed by the
 payer:
 
 ```
-domain  = { name: "tkr-mesh", version: "1", chainId, verifyingContract }
+domain  = { name: "jkr-mesh", version: "1", chainId, verifyingContract }
 types   = { Receipt: [ {name:"sessionId", type:"bytes32"},
                        {name:"cumulative", type:"uint256"} ] }
 message = { sessionId, cumulative }

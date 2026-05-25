@@ -1,5 +1,5 @@
 //! Native `ls`: stream output with line/byte caps (RTK-style summary for huge dirs).
-//! Env: `TKR_NATIVE_LS=0` disables.
+//! Env: `JKR_NATIVE_LS=0` disables.
 
 use super::NativeOutcome;
 use crate::stream::PipelineResult;
@@ -10,13 +10,13 @@ use std::process::{Command, Stdio};
 
 pub fn env_disabled() -> bool {
     matches!(
-        std::env::var("TKR_NATIVE_LS").ok().as_deref(),
+        std::env::var("JKR_NATIVE_LS").ok().as_deref(),
         Some("0") | Some("false") | Some("off")
     )
 }
 
 fn max_lines() -> usize {
-    std::env::var("TKR_NATIVE_LS_MAX_LINES")
+    std::env::var("JKR_NATIVE_LS_MAX_LINES")
         .ok()
         .and_then(|s| s.parse().ok())
         .filter(|&n| n > 0)
@@ -24,7 +24,7 @@ fn max_lines() -> usize {
 }
 
 fn max_line_bytes() -> usize {
-    std::env::var("TKR_NATIVE_LS_MAX_LINE")
+    std::env::var("JKR_NATIVE_LS_MAX_LINE")
         .ok()
         .and_then(|s| s.parse().ok())
         .filter(|&n| n > 0)
@@ -83,7 +83,7 @@ pub fn run(cmd: &str, args: &[String]) -> Result<Option<NativeOutcome>> {
 
     if truncated_tail {
         out.push_str(&format!(
-            "… ({} lines max — raise TKR_NATIVE_LS_MAX_LINES)\n",
+            "… ({} lines max — raise JKR_NATIVE_LS_MAX_LINES)\n",
             ml
         ));
     }

@@ -2,7 +2,7 @@
 
 ## Disclosure
 
-If you find a vulnerability in tkr, **please don't open a public issue
+If you find a vulnerability in jkr, **please don't open a public issue
 or PR with the details.** Email `security@prysm.sh` (or, if that
 bounces, open a private GitHub Security Advisory on the repository).
 We aim to acknowledge within 48 hours and ship a fix in the next
@@ -26,32 +26,32 @@ and beer at conferences.
 
 Tkr-server is **a man-in-the-middle by design** between your AI
 agents and the model providers (Anthropic, OpenAI). When you point a
-client at tkr, the following are true:
+client at jkr, the following are true:
 
 - The client's **provider API key** (Anthropic `x-api-key`, OpenAI
   `Authorization: Bearer`) is **relayed to upstream verbatim** and
-  **not logged or stored** by tkr-server.
-- The **prompts themselves** pass through tkr-server in cleartext.
+  **not logged or stored** by jkr-server.
+- The **prompts themselves** pass through jkr-server in cleartext.
   Tkr has to read them to scrub credentials and run injection
   heuristics. For self-hosted deployments this is acceptable
   because the prompts never leave a boundary you control. For the
   hosted instance at `tkr.prysm.sh`, you're trusting the Prysm
   team operationally — there's no cryptographic isolation.
 - **Body capture is off by default**
-  (`TKR_CAPTURE_BODIES=false`). When off, tkr keeps a rolling
+  (`JKR_CAPTURE_BODIES=false`). When off, jkr keeps a rolling
   receipt ring (metadata only: model, tokens, status, latency,
   signature) but does not persist prompt bodies. When operators
   flip capture on, scrubbed bodies are stored in a per-instance
   ring buffer.
 - **Receipts are signed** with secp256k1 ECDSA. The signing key
-  lives on the tkr-server host
-  (`TKR_RECEIPT_SIGNING_KEY_PATH`). Verifying parties only need
+  lives on the jkr-server host
+  (`JKR_RECEIPT_SIGNING_KEY_PATH`). Verifying parties only need
   the receipt's `signer_pubkey` field plus the canonical-message
   format documented in `docs/operations.md`.
 
-### What tkr does NOT defend against
+### What jkr does NOT defend against
 
-- **A malicious tkr-server operator.** If you run tkr yourself,
+- **A malicious jkr-server operator.** If you run jkr yourself,
   you're trusted; if you use the hosted instance, you're trusting
   Prysm operationally.
 - **A compromised model provider** (Anthropic, OpenAI). Tkr can't
@@ -61,7 +61,7 @@ client at tkr, the following are true:
 - **A compromised host kernel / hypervisor.** Same as any
   application.
 
-### What tkr defends against
+### What jkr defends against
 
 - **Operator credentials leaking to providers.** Pre-flight
   redaction (AWS keys, GitHub PATs, OpenAI / Anthropic keys, Slack
@@ -86,11 +86,11 @@ client at tkr, the following are true:
 
 ## In-scope for vulnerability reports
 
-- Anything in `~/tkr/crates/tkr-server/` (the HTTP server +
+- Anything in `~/jkr/crates/jkr-server/` (the HTTP server +
   proxy + filter + signing + sandbox).
-- Anything in `~/tkr/crates/tkr-sandbox/` (the Landlock /
+- Anything in `~/jkr/crates/jkr-sandbox/` (the Landlock /
   sandbox-exec wrapper).
-- Anything in `~/tkr/crates/tkr-mesh/` (mesh + broker + EIP-712
+- Anything in `~/jkr/crates/jkr-mesh/` (mesh + broker + EIP-712
   invite-verification).
 - The deployed instance at `tkr.prysm.sh`.
 
@@ -103,7 +103,7 @@ client at tkr, the following are true:
 - Issues in third-party dependencies that have a published CVE +
   upstream fix — open a regular PR bumping the dep version.
 - Findings in the example / demo wallet code under
-  `crates/tkr-server/web/` that don't affect server behaviour.
+  `crates/jkr-server/web/` that don't affect server behaviour.
 - Social-engineering findings against tkr.prysm.sh (we treat the
   hosted instance like any other SaaS).
 
@@ -116,7 +116,7 @@ client at tkr, the following are true:
 | Receipt signing | secp256k1 ECDSA over SHA-256 (compact 64-byte sigs, 33-byte compressed pubkeys) | [`k256`](https://docs.rs/k256) |
 | Logto OIDC PKCE | S256 (SHA-256 of verifier) | [`sha2`](https://docs.rs/sha2) + [`base64`](https://docs.rs/base64) |
 | Session IDs / PKCE verifier | 32 random bytes via `OsRng` | [`rand`](https://docs.rs/rand) |
-| Mesh invites | EIP-712 signatures, secp256k1 | `tkr-mesh` (see crate docs) |
+| Mesh invites | EIP-712 signatures, secp256k1 | `jkr-mesh` (see crate docs) |
 | TLS to upstream | rustls (via `ureq`'s default features) | [`ureq`](https://docs.rs/ureq) |
 
 If you spot a misuse of any of these (wrong nonce reuse, missing
@@ -130,7 +130,7 @@ These aren't vulnerabilities, but they affect the security posture
 of any deployment:
 
 - **Signing key is ephemeral without a volume mount.** Default
-  `TKR_RECEIPT_SIGNING_KEY_PATH=/var/lib/tkr/receipt-signing-key`
+  `JKR_RECEIPT_SIGNING_KEY_PATH=/var/lib/jkr/receipt-signing-key`
   isn't writable in stock containers — mount a volume there or
   signatures don't survive restarts. Tkr-server logs a loud warning
   at startup if persistence fails.
@@ -143,7 +143,7 @@ of any deployment:
   models emit complete identifier tokens per delta in practice;
   this is a documented residual risk.
 - **The server-side sandbox endpoint is opt-in but expands the
-  attack surface.** Disable (`TKR_SANDBOX_EXEC=false`) unless you
+  attack surface.** Disable (`JKR_SANDBOX_EXEC=false`) unless you
   have a concrete use for it.
 
 ---
@@ -151,6 +151,6 @@ of any deployment:
 ## Contact
 
 - Email: `security@prysm.sh`
-- Repository: <https://github.com/einyx/tkr>
+- Repository: <https://github.com/einyx/jkr>
 - Operational docs: [`docs/operations.md`](docs/operations.md)
 - Integration docs: [`docs/integration.md`](docs/integration.md)

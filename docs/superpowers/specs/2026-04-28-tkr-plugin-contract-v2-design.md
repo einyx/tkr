@@ -1,14 +1,14 @@
-# tkr Plugin Contract v2 — Design
+# jkr Plugin Contract v2 — Design
 
 **Date:** 2026-04-28
 **Status:** Approved (brainstorm); pending implementation plan
-**Scope:** Foundational. Three follow-on capability tracks (`tkr-burn`, `tkr-mesh`, `tkr-recall`) build on this contract and have their own specs.
+**Scope:** Foundational. Three follow-on capability tracks (`jkr-burn`, `jkr-mesh`, `jkr-recall`) build on this contract and have their own specs.
 
 ## Goal
 
-Extend `tkr` from a stdout-filter host into a plugin host that can also carry long-running services, persistent state, and CLI extensions, behind a stable contract that survives a future move to WASM without source changes for plugin authors.
+Extend `jkr` from a stdout-filter host into a plugin host that can also carry long-running services, persistent state, and CLI extensions, behind a stable contract that survives a future move to WASM without source changes for plugin authors.
 
-The `tkr` binary stays single. Capabilities are added by writing plugins, not by forking the binary.
+The `jkr` binary stays single. Capabilities are added by writing plugins, not by forking the binary.
 
 ## Non-goals
 
@@ -21,19 +21,19 @@ The `tkr` binary stays single. Capabilities are added by writing plugins, not by
 
 Three layers:
 
-1. **`tkr` (host).** Process entry. Owns config loader, plugin loader, capability gate, message bus, vault, and CLI dispatcher. The host is the only component that touches the filesystem outside of plugin sandboxes, opens network sockets on its own behalf, or spawns subprocesses on a plugin's behalf.
+1. **`jkr` (host).** Process entry. Owns config loader, plugin loader, capability gate, message bus, vault, and CLI dispatcher. The host is the only component that touches the filesystem outside of plugin sandboxes, opens network sockets on its own behalf, or spawns subprocesses on a plugin's behalf.
 
-2. **`tkr-api` (contract crate).** Defines the `Plugin` trait, lifecycle hooks, the bus message envelope (`Request` / `Reply` / `Event`), host-handle traits (`Host`, `Kv`, `Sqlite`, `Fs`, `Bus`, `Cli`, `Vault`), capability strings, manifest types, and config schema types. Zero host implementation. Only crate plugin authors depend on.
+2. **`jkr-api` (contract crate).** Defines the `Plugin` trait, lifecycle hooks, the bus message envelope (`Request` / `Reply` / `Event`), host-handle traits (`Host`, `Kv`, `Sqlite`, `Fs`, `Bus`, `Cli`, `Vault`), capability strings, manifest types, and config schema types. Zero host implementation. Only crate plugin authors depend on.
 
-3. **Plugins.** Rust crates implementing `Plugin`. Statically linked into `tkr` for v1.
+3. **Plugins.** Rust crates implementing `Plugin`. Statically linked into `jkr` for v1.
 
 ## Plugin loading model
 
-**Static linkage now, WASM later.** Plugins are Rust crates compiled into `tkr`. The trait surface is intentionally WASM-portable:
+**Static linkage now, WASM later.** Plugins are Rust crates compiled into `jkr`. The trait surface is intentionally WASM-portable:
 
 - No `&dyn Trait` or lifetime-bearing references in cross-plugin calls.
 - All inter-plugin payloads are serde-serializable.
-- Host handles are accessed through narrow traits, not raw types (`rusqlite::Connection`, `std::fs::File`, etc. never appear in `tkr-api`).
+- Host handles are accessed through narrow traits, not raw types (`rusqlite::Connection`, `std::fs::File`, etc. never appear in `jkr-api`).
 
 A future spec adds a WASM loader using the same `Plugin` trait without changing plugin source. Pure dynamic-library loading over Rust ABI is rejected: ABI pain without sandboxing benefit.
 
@@ -99,23 +99,23 @@ Plugin data can be sensitive (mesh signing keys, agent memory, session-log deriv
 
 ### Vault basics
 
-- Single store at `~/.tkr/vault/`. All plugin bytes encrypted at rest.
+- Single store at `~/.jkr/vault/`. All plugin bytes encrypted at rest.
 - Per-plugin namespaces; one plugin cannot read another's data without a bus call through the capability gate.
 - Crypto: **age** (X25519 + ChaCha20-Poly1305). Small, modern, audited primitive set; no custom KDF.
-- Master key lives in the **OS keychain** by default (Keychain on macOS, Secret Service on Linux, DPAPI on Windows). `tkr unseal` derives subkeys; `tkr seal` zeroes them from memory.
-- Optional passphrase mode (`tkr vault init --passphrase`); cold start then prompts.
+- Master key lives in the **OS keychain** by default (Keychain on macOS, Secret Service on Linux, DPAPI on Windows). `jkr unseal` derives subkeys; `jkr seal` zeroes them from memory.
+- Optional passphrase mode (`jkr vault init --passphrase`); cold start then prompts.
 
 ### Seal state
 
 The vault has two seal levels:
 
 - **Auto-unseal (default).** On process start, the host fetches the master key from the OS keychain and derives a subkey for `public`-class data only. Filter-only plugins and any `public`-class storage work without user action. `private` and `secret` data remain sealed.
-- **Full unseal.** `tkr unseal` derives the `private` and `secret` subkeys. Required for `private`/`secret` reads and writes. Plugins that requested those classes block in `on_start` until the user runs `tkr unseal` (or until a configured auto-unseal hook fires for trusted environments).
-- **Sealed.** `tkr seal` zeroes the `private`/`secret` subkeys in memory; auto-unseal subkey persists until process exit. On-disk bytes stay encrypted in all states.
+- **Full unseal.** `jkr unseal` derives the `private` and `secret` subkeys. Required for `private`/`secret` reads and writes. Plugins that requested those classes block in `on_start` until the user runs `jkr unseal` (or until a configured auto-unseal hook fires for trusted environments).
+- **Sealed.** `jkr seal` zeroes the `private`/`secret` subkeys in memory; auto-unseal subkey persists until process exit. On-disk bytes stay encrypted in all states.
 
-If the user opted into passphrase mode (`tkr vault init --passphrase`), there is no auto-unseal: even `public` data requires `tkr unseal` after process start.
+If the user opted into passphrase mode (`jkr vault init --passphrase`), there is no auto-unseal: even `public` data requires `jkr unseal` after process start.
 
-`tkr vault status / seal / unseal / rotate` are host-owned subcommands.
+`jkr vault status / seal / unseal / rotate` are host-owned subcommands.
 
 ### Sensitivity classes
 
@@ -151,62 +151,62 @@ A plugin requesting a class above its grants fails to load.
 
 ### Audit log
 
-Every `secret`-class read and write is appended to a tamper-evident log (hash-chained entries) inside the vault. `tkr vault audit` surfaces it. Host-only; plugins can write but not edit or truncate.
+Every `secret`-class read and write is appended to a tamper-evident log (hash-chained entries) inside the vault. `jkr vault audit` surfaces it. Host-only; plugins can write but not edit or truncate.
 
 ### Backup, migration, wipe
 
 Host concerns:
 
-- `tkr vault export` → sealed bundle (still encrypted, restore requires master key).
-- `tkr vault import` → restore from bundle.
-- `tkr vault rotate` → re-encrypts under a new master key without plaintext intermediates.
-- `tkr admin reset --plugin <name>` removes a plugin's namespace inside the vault.
+- `jkr vault export` → sealed bundle (still encrypted, restore requires master key).
+- `jkr vault import` → restore from bundle.
+- `jkr vault rotate` → re-encrypts under a new master key without plaintext intermediates.
+- `jkr admin reset --plugin <name>` removes a plugin's namespace inside the vault.
 
 Plugins do not implement their own backup.
 
 ## Config
 
-Single source of truth: `~/.tkr/config.toml`, with `[plugin.<name>]` sections, validated against each plugin's declared JSON schema at `on_load` and handed back as a typed struct. Validation failures abort startup with the offending plugin and field named.
+Single source of truth: `~/.jkr/config.toml`, with `[plugin.<name>]` sections, validated against each plugin's declared JSON schema at `on_load` and handed back as a typed struct. Validation failures abort startup with the offending plugin and field named.
 
 Existing `filters/*.toml` continue working as a per-plugin overlay (lower priority than `config.toml`) for backwards compatibility.
 
-Sensitive config values (API tokens, etc.) live **in the vault**, not in `config.toml`. Plugins request them via `host.vault().read_secret("plugin/<name>/<key>")` after declaring the appropriate `cap:vault.read.secret` capability. `tkr vault put <plugin>/<key>` is the user-facing way to seed them.
+Sensitive config values (API tokens, etc.) live **in the vault**, not in `config.toml`. Plugins request them via `host.vault().read_secret("plugin/<name>/<key>")` after declaring the appropriate `cap:vault.read.secret` capability. `jkr vault put <plugin>/<key>` is the user-facing way to seed them.
 
 ## Capabilities (full set)
 
 Beyond the vault subset above:
 
 - `cap:stdout.filter` — register filter-shaped hooks
-- `cap:cli.subcommand` — register `tkr <plugin> <subcmd>`
+- `cap:cli.subcommand` — register `jkr <plugin> <subcmd>`
 - `cap:net.outbound` — open outbound sockets via host-issued client handles
 - `cap:subprocess` — spawn subprocesses via the host
 - `cap:bus.call.<method-pattern>` — invoke specific bus methods exposed by other plugins
 
-Manifest declares required; `~/.tkr/config.toml` grants. Enforced at bus calls, vault opens, CLI registration, subprocess spawn, and (future) network. Trivially bypassable under static linkage; load-bearing once the WASM loader ships.
+Manifest declares required; `~/.jkr/config.toml` grants. Enforced at bus calls, vault opens, CLI registration, subprocess spawn, and (future) network. Trivially bypassable under static linkage; load-bearing once the WASM loader ships.
 
 ## CLI extension
 
 Plugins declare clap-shaped subcommand specs in their manifest. Host mounts under a fixed namespace:
 
 ```
-tkr <plugin-name> <subcmd> [args...]
+jkr <plugin-name> <subcmd> [args...]
 ```
 
 Collisions impossible. Host dispatches an invocation by emitting a `cli.invoke` request to the owning plugin; the plugin handles it through `on_request` and returns an exit code + stdout/stderr in the reply.
 
-Existing top-level subcommands (`tkr gain`, `tkr proxy`, `tkr discover`, `tkr vault …`, `tkr seal`, `tkr unseal`) remain host-owned and live outside the plugin namespace.
+Existing top-level subcommands (`jkr gain`, `jkr proxy`, `jkr discover`, `jkr vault …`, `jkr seal`, `jkr unseal`) remain host-owned and live outside the plugin namespace.
 
 ## Migration of existing code
 
-- **`tkr-api`** — extend the `Plugin` trait with new hooks. All new hooks have default impls so existing filter plugins keep compiling unchanged.
-- **`tkr-filter`** — no behavior change. Plugins gain a `cap:stdout.filter` declaration and migrate from `filter()` to `on_line()` (old name kept as deprecated re-export for one release).
-- **`tkr-analytics`** — keep current sqlite, but reach storage through `host.sqlite(class=Public)`. Existing `~/.tkr/analytics.db` is migrated into the vault on first run under the new binary.
-- **New plugin crates** (`tkr-burn`, `tkr-mesh`, `tkr-recall`) land in later specs against this contract.
+- **`jkr-api`** — extend the `Plugin` trait with new hooks. All new hooks have default impls so existing filter plugins keep compiling unchanged.
+- **`jkr-filter`** — no behavior change. Plugins gain a `cap:stdout.filter` declaration and migrate from `filter()` to `on_line()` (old name kept as deprecated re-export for one release).
+- **`jkr-analytics`** — keep current sqlite, but reach storage through `host.sqlite(class=Public)`. Existing `~/.jkr/analytics.db` is migrated into the vault on first run under the new binary.
+- **New plugin crates** (`jkr-burn`, `jkr-mesh`, `jkr-recall`) land in later specs against this contract.
 
 ## Error handling
 
 - **Load-time errors** (manifest invalid, capability ungranted, config schema mismatch, vault sealed for required class): abort startup, name the offending plugin, exit non-zero.
-- **Start-time errors** (`on_start` returns `Err`): plugin marked **degraded**, log, continue. `tkr status` lists degraded plugins.
+- **Start-time errors** (`on_start` returns `Err`): plugin marked **degraded**, log, continue. `jkr status` lists degraded plugins.
 - **Bus errors** (unknown method, capability denied, payload deserialization fails): typed `Error` variants in `Result`. Host does not panic.
 - **Filter-path errors** (`on_line` returns `Err`): line passes through unchanged; plugin marked degraded for the rest of the command run.
 - **Vault errors** (sealed, key denied, audit write fails): typed; reads return `Err(Sealed)` to plugins that requested unsealed-only classes.
@@ -214,9 +214,9 @@ Existing top-level subcommands (`tkr gain`, `tkr proxy`, `tkr discover`, `tkr va
 
 ## Testing
 
-- **`tkr-api` ships `test-host`**: in-memory implementations of `Host`, `Bus`, `Kv`, `Sqlite`, `Fs`, `Vault`. Tempdir-backed; capability gate configurable; vault uses an ephemeral master key. Plugins unit-test against the same contract.
-- **Contract conformance tests** in `tkr-api` exercise every host-facing trait method against `test-host`.
-- **Integration tests** in `tkr` run the real host against fixture plugins covering each lifecycle path (load failure, start failure, bus call, capability denial, CLI dispatch, sealed-vault block, shutdown).
+- **`jkr-api` ships `test-host`**: in-memory implementations of `Host`, `Bus`, `Kv`, `Sqlite`, `Fs`, `Vault`. Tempdir-backed; capability gate configurable; vault uses an ephemeral master key. Plugins unit-test against the same contract.
+- **Contract conformance tests** in `jkr-api` exercise every host-facing trait method against `test-host`.
+- **Integration tests** in `jkr` run the real host against fixture plugins covering each lifecycle path (load failure, start failure, bus call, capability denial, CLI dispatch, sealed-vault block, shutdown).
 - **Vault-specific tests**: seal/unseal cycle, audit log integrity (corruption detected), rotate end-to-end, sandbox escape attempts (must fail).
 
 ## Open questions deferred to the implementation plan
@@ -230,8 +230,8 @@ Existing top-level subcommands (`tkr gain`, `tkr proxy`, `tkr discover`, `tkr va
 
 ## Follow-on specs (not part of this one)
 
-- **`tkr-burn`** — passive disk-side attribution of AI coding token spend by task / tool / model / MCP / project, plugged into `tkr gain`.
-- **`tkr-mesh`** — signed agent-to-agent push channel between sessions, surfaced via MCP. Mesh signing keys live in the vault as `secret`-class.
-- **`tkr-recall`** — durable, branchable, rollback-able memory store for agents with semantic + literal retrieval. Memory bodies live in the vault as `private`-class by default, `secret`-class on opt-in.
+- **`jkr-burn`** — passive disk-side attribution of AI coding token spend by task / tool / model / MCP / project, plugged into `jkr gain`.
+- **`jkr-mesh`** — signed agent-to-agent push channel between sessions, surfaced via MCP. Mesh signing keys live in the vault as `secret`-class.
+- **`jkr-recall`** — durable, branchable, rollback-able memory store for agents with semantic + literal retrieval. Memory bodies live in the vault as `private`-class by default, `secret`-class on opt-in.
 
 Each is independently shippable on top of this contract.

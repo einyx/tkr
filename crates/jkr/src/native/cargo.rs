@@ -1,5 +1,5 @@
 //! Native `cargo test` — collapse passing `test ... ok` spam; sample compile noise.
-//! Env: `TKR_NATIVE_CARGO_TEST=0` disables. `TKR_NATIVE_CARGO_COMPILE_LINES` (default 8).
+//! Env: `JKR_NATIVE_CARGO_TEST=0` disables. `JKR_NATIVE_CARGO_COMPILE_LINES` (default 8).
 
 use super::NativeOutcome;
 use crate::runner::stream_command;
@@ -11,13 +11,13 @@ use std::sync::LazyLock;
 
 pub fn env_disabled() -> bool {
     matches!(
-        std::env::var("TKR_NATIVE_CARGO_TEST").ok().as_deref(),
+        std::env::var("JKR_NATIVE_CARGO_TEST").ok().as_deref(),
         Some("0") | Some("false") | Some("off")
     )
 }
 
 fn max_compile_lines_shown() -> usize {
-    std::env::var("TKR_NATIVE_CARGO_COMPILE_LINES")
+    std::env::var("JKR_NATIVE_CARGO_COMPILE_LINES")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(8)
@@ -59,7 +59,7 @@ pub fn run(cmd: &str, args: &[String]) -> Result<Option<NativeOutcome>> {
         let raw = match stream.next() {
             None => break,
             Some(Err(e)) => {
-                eprintln!("tkr: native cargo test: {e}");
+                eprintln!("jkr: native cargo test: {e}");
                 continue;
             }
             Some(Ok(l)) => l,
@@ -72,7 +72,7 @@ pub fn run(cmd: &str, args: &[String]) -> Result<Option<NativeOutcome>> {
         }
         if ok_elided > 0 {
             let msg = format!(
-                "… ({} passing test lines elided — set `TKR_NATIVE_CARGO_TEST=0` for full log)\n",
+                "… ({} passing test lines elided — set `JKR_NATIVE_CARGO_TEST=0` for full log)\n",
                 ok_elided
             );
             bytes_out += msg.len() as u64;

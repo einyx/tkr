@@ -58,9 +58,9 @@ fn first_positional(args: &[String]) -> &str {
 pub fn run(cfg: Config, args: &[String]) -> Result<()> {
     let safe_prefix = sanitize_prefix(&cfg.core.output_prefix);
     if !safe_prefix.is_empty() {
-        std::env::set_var("TKR_OUTPUT_PREFIX", safe_prefix);
+        std::env::set_var("JKR_OUTPUT_PREFIX", safe_prefix);
     } else {
-        std::env::remove_var("TKR_OUTPUT_PREFIX");
+        std::env::remove_var("JKR_OUTPUT_PREFIX");
     }
 
     let (cmd, cmd_args) = args.split_first().expect("at least one arg");
@@ -79,7 +79,7 @@ pub fn run(cfg: Config, args: &[String]) -> Result<()> {
     let host = crate::host::boot::ensure()?;
 
     // RTK-style native handlers: full output capture + structured compression
-    // for grep/rg (see `native::try_run`). Disable with `TKR_NATIVE_GREP=0`.
+    // for grep/rg (see `native::try_run`). Disable with `JKR_NATIVE_GREP=0`.
     if let Some(native) = crate::native::try_run(cmd, cmd_args)? {
         let subcmd = first_positional(cmd_args);
         let key = format!("{cmd_name} {subcmd}").trim().to_string();
@@ -103,7 +103,7 @@ pub fn run(cfg: Config, args: &[String]) -> Result<()> {
         &cmd_args_str,
         capture.then_some(&mut raw_transcript),
     )
-    .context("tkr proxy: filtering subprocess output")?;
+    .context("jkr proxy: filtering subprocess output")?;
 
     let subcmd = first_positional(cmd_args);
     let key = format!("{cmd_name} {subcmd}").trim().to_string();
@@ -115,7 +115,7 @@ pub fn run(cfg: Config, args: &[String]) -> Result<()> {
     match crate::tee::maybe_save_transcript(cmd, &cmd_args_str, code, &raw_transcript) {
         Ok(Some(note)) => println!("{note}"),
         Ok(None) => {}
-        Err(e) => eprintln!("tkr: warning: tee save failed: {e}"),
+        Err(e) => eprintln!("jkr: warning: tee save failed: {e}"),
     }
 
     std::process::exit(code);
@@ -139,26 +139,26 @@ fn record_pipeline_stats(
     let chars_saved = result.chars_suppressed;
     let handle = std::thread::spawn(move || {
         let vault = crate::host::boot::vault();
-        let analytics_host = crate::host::RealHost::new("tkr-analytics", vault, bus);
-        if let Err(e) = tkr_analytics::record_command_stat_via_host(
+        let analytics_host = crate::host::RealHost::new("jkr-analytics", vault, bus);
+        if let Err(e) = jkr_analytics::record_command_stat_via_host(
             &analytics_host,
             &key_owned,
             chars_in as u64,
             chars_saved as u64,
         ) {
-            eprintln!("tkr: warning: could not save analytics for `{key_owned}`: {e}");
+            eprintln!("jkr: warning: could not save analytics for `{key_owned}`: {e}");
         }
     });
     if let Err(e) = handle.join() {
-        eprintln!("tkr: warning: analytics writer thread panicked: {e:?}");
+        eprintln!("jkr: warning: analytics writer thread panicked: {e:?}");
     }
 }
 
 fn sanitize_prefix(raw: &str) -> String {
-    // `output_prefix = "tkr"` was an old default that makes `tkr ls` render
-    // as `tkr <line>`, which is noisy for normal shell use. Treat that legacy
+    // `output_prefix = "jkr"` was an old default that makes `jkr ls` render
+    // as `jkr <line>`, which is noisy for normal shell use. Treat that legacy
     // value as disabled so existing configs stop prefixing output lines.
-    if raw.trim() == "tkr" {
+    if raw.trim() == "jkr" {
         return String::new();
     }
 
@@ -208,9 +208,9 @@ mod tests {
     }
 
     #[test]
-    fn legacy_tkr_prefix_is_disabled() {
-        assert_eq!(sanitize_prefix("tkr"), "");
-        assert_eq!(sanitize_prefix(" tkr "), "");
+    fn legacy_jkr_prefix_is_disabled() {
+        assert_eq!(sanitize_prefix("jkr"), "");
+        assert_eq!(sanitize_prefix(" jkr "), "");
     }
 
     #[test]

@@ -22,7 +22,7 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sha3::Keccak256;
-use tkr_mesh::{Address, Identity};
+use jkr_mesh::{Address, Identity};
 
 /// Content identifier — for v0 we use hex-encoded SHA-256. When we wire iroh,
 /// switch this to a `iroh::Hash` newtype and update the `Display` impl.
@@ -107,7 +107,7 @@ pub struct Manifest {
     /// re-seeders can decide whether they're allowed to redistribute.
     pub license: String,
     /// Where the upstream weights came from (HF repo URL, original release
-    /// page). Provenance for the human reading `tkr model show`.
+    /// page). Provenance for the human reading `jkr model show`.
     pub source_url: String,
     /// secp256k1 address that signed this manifest. Re-uses mesh identity.
     pub publisher: Address,
@@ -158,7 +158,7 @@ impl Manifest {
     pub fn verify(&self) -> Result<Cid, ManifestError> {
         let sig = parse_eth_signature(&self.signature)?;
         let digest = self.signing_digest();
-        let recovered = tkr_mesh::identity::recover_address(&digest, &sig)
+        let recovered = jkr_mesh::identity::recover_address(&digest, &sig)
             .map_err(|e| ManifestError::Crypto(e.to_string()))?;
         if recovered != self.publisher {
             return Err(ManifestError::SignatureMismatch);

@@ -1,15 +1,15 @@
 [package]
-name = "tkr-api"
+name = "jkr-api"
 publish = false
 version = "0.1.0"
 edition = "2021"
 rust-version.workspace = true
-description = "Plugin API types for the tkr token-optimized CLI proxy"
-repository = "https://github.com/einyx/tkr"
+description = "Plugin API types for the jkr token-optimized CLI proxy"
+repository = "https://github.com/einyx/jkr"
 license = "Apache-2.0"
 
 [lib]
-name = "tkr_api"
+name = "jkr_api"
 crate-type = ["rlib"]
 
 [features]

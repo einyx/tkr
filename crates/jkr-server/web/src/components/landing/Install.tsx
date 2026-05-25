@@ -1,14 +1,14 @@
 // Three-step install: get the CLI (brew or curl), point your agent
-// at the gateway, optionally run shell commands under tkr's sandbox.
+// at the gateway, optionally run shell commands under jkr's sandbox.
 // The sandbox step is opt-in by phrasing ("Optional") so users who
 // just want the proxy don't feel pushed into more setup.
 
 import { useState } from "react";
 import { CopyCmd } from "../CopyCmd";
 
-const BREW_CMD = "brew install tkr";
+const BREW_CMD = "brew install jkr";
 const CURL_CMD =
-  "curl -fsSL https://github.com/einyx/tkr/releases/latest/download/install.sh | bash";
+  "curl -fsSL https://github.com/einyx/jkr/releases/latest/download/install.sh | bash";
 
 type InstallTab = "brew" | "curl";
 
@@ -16,8 +16,8 @@ export function Install() {
   const host = location.host;
   const anthropic = `export ANTHROPIC_BASE_URL=https://${host}`;
   const openai = `export OPENAI_BASE_URL=https://${host}/v1`;
-  const sandboxRun = "tkr sandbox run -- cargo test";
-  const sandboxLogin = `tkr login --url https://${host}`;
+  const sandboxRun = "jkr sandbox run -- cargo test";
+  const sandboxLogin = `jkr login --url https://${host}`;
 
   const [tab, setTab] = useState<InstallTab>("brew");
 
@@ -79,7 +79,7 @@ export function Install() {
               <span className="lp-install-step-opt">optional</span>
             </p>
             <p className="lp-install-step-hint">
-              Wrap any command in <code>tkr sandbox run --</code> to execute it
+              Wrap any command in <code>jkr sandbox run --</code> to execute it
               under Landlock (Linux) or sandbox-exec (macOS). Sign in once to
               stream runs into your dashboard.
             </p>

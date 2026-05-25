@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# End-to-end demo of the tkr-mesh payment flow.
+# End-to-end demo of the jkr-mesh payment flow.
 #
 # Boots an anvil fork of Base mainnet, deploys MeshEscrow, opens a
-# payment channel, issues a receipt with `tkr pay receipt-issue`, claims
-# it with `tkr pay claim`, prints the recipient's balance delta — all in
+# payment channel, issues a receipt with `jkr pay receipt-issue`, claims
+# it with `jkr pay claim`, prints the recipient's balance delta — all in
 # under 30 seconds, no real money involved.
 #
-# Requires: foundry (`anvil`, `forge`, `cast`), `tkr` built at target/release.
+# Requires: foundry (`anvil`, `forge`, `cast`), `jkr` built at target/release.
 
 set -euo pipefail
 
@@ -16,7 +16,7 @@ cd "$(dirname "$0")/.."
 FORGE=${FORGE:-$(command -v forge || echo $HOME/.foundry/bin/forge)}
 ANVIL=${ANVIL:-$(command -v anvil || echo $HOME/.foundry/bin/anvil)}
 CAST=${CAST:-$(command -v cast || echo $HOME/.foundry/bin/cast)}
-TKR=${TKR:-./target/release/tkr}
+JKR=${JKR:-./target/release/jkr}
 
 for bin in "$FORGE" "$ANVIL" "$CAST"; do
   if [ ! -x "$bin" ]; then
@@ -26,8 +26,8 @@ for bin in "$FORGE" "$ANVIL" "$CAST"; do
   fi
 done
 
-if [ ! -x "$TKR" ]; then
-  echo "error: $TKR not found — run: cargo build --release -p tkr" >&2
+if [ ! -x "$JKR" ]; then
+  echo "error: $JKR not found — run: cargo build --release -p jkr" >&2
   exit 1
 fi
 
@@ -51,7 +51,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-echo "▲ tkr mesh+payment demo"
+echo "▲ jkr mesh+payment demo"
 echo "  starts anvil on :8545, deploys MeshEscrow, runs open→claim→verify"
 echo
 
@@ -109,13 +109,13 @@ STATUS=$(echo "$OPEN_OUT" | grep -oP 'status\s+\K\S+' | head -1)
 [ "$STATUS" = "1" ] || [ "$STATUS" = "(success)" ] || true
 echo "   channel opened (status=$STATUS)"
 
-echo "4) tkr pay receipt-issue (cumulative 0.4 ETH)..."
+echo "4) jkr pay receipt-issue (cumulative 0.4 ETH)..."
 PKF=$(mktemp)
 RKF=$(mktemp)
 RFILE=$(mktemp)
-echo "TKR_PAYMENT_KEY=$PAYER_PRIV" > "$PKF"; chmod 0600 "$PKF"
-echo "TKR_PAYMENT_KEY=$RECIP_PRIV" > "$RKF"; chmod 0600 "$RKF"
-"$TKR" pay receipt-issue \
+echo "JKR_PAYMENT_KEY=$PAYER_PRIV" > "$PKF"; chmod 0600 "$PKF"
+echo "JKR_PAYMENT_KEY=$RECIP_PRIV" > "$RKF"; chmod 0600 "$RKF"
+"$JKR" pay receipt-issue \
   --session-id "$SID" \
   --cumulative 400000000000000000 \
   --chain-id 31337 \
@@ -123,9 +123,9 @@ echo "TKR_PAYMENT_KEY=$RECIP_PRIV" > "$RKF"; chmod 0600 "$RKF"
   --key-file "$PKF" > "$RFILE" 2>/dev/null
 echo "   receipt issued ($(wc -c < "$RFILE") bytes JSON)"
 
-echo "5) tkr pay claim (recipient submits to chain)..."
+echo "5) jkr pay claim (recipient submits to chain)..."
 BAL_BEFORE=$("$CAST" balance "$RECIP_ADDR" --rpc-url http://127.0.0.1:8545)
-"$TKR" pay claim \
+"$JKR" pay claim \
   --receipt "$RFILE" \
   --rpc-url http://127.0.0.1:8545 \
   --key-file "$RKF" 2>&1 | sed 's/^/   /'

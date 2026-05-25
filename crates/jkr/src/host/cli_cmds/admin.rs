@@ -1,6 +1,6 @@
 use crate::host::vault::HostVault;
 use anyhow::Result;
-use tkr_api::manifest::SensitivityClass;
+use jkr_api::manifest::SensitivityClass;
 
 pub fn reset(vault: &HostVault, plugin: &str) -> Result<i32> {
     vault.unseal_full();

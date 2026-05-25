@@ -9,7 +9,7 @@
 // into (k256, OpenSSL with appropriate config, etc.).
 //
 // Format is locked by `signer_canonical_message_is_stable` in
-// crates/tkr-server/src/main.rs. If that test changes, this code
+// crates/jkr-server/src/main.rs. If that test changes, this code
 // must too — and so must docs/operations.md.
 
 import { useState } from "react";
@@ -83,7 +83,7 @@ export function ReceiptVerifyPanel() {
           <code>signature</code> and <code>signer_pubkey</code> into any
           secp256k1 ECDSA verify and you&apos;re done. The format is{" "}
           <code>v1</code>; see <a
-            href="https://github.com/einyx/tkr/blob/main/docs/operations.md#receipt-signature-protocol"
+            href="https://github.com/einyx/jkr/blob/main/docs/operations.md#receipt-signature-protocol"
             target="_blank"
             rel="noopener noreferrer"
           >ops docs</a>.

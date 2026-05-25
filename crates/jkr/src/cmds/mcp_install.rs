@@ -1,8 +1,8 @@
-//! `tkr mcp install` — wire up the tkr MCP server in Claude Code's config.
+//! `jkr mcp install` — wire up the jkr MCP server in Claude Code's config.
 //!
 //! Project scope writes `./.mcp.json` (per-repo, lives in source control).
-//! User scope updates `~/.claude.json` so tkr is available in every project.
-//! Idempotent: re-running updates the `tkr` entry in place without touching
+//! User scope updates `~/.claude.json` so jkr is available in every project.
+//! Idempotent: re-running updates the `jkr` entry in place without touching
 //! other MCP servers in the same file.
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -12,11 +12,11 @@ use std::path::PathBuf;
 
 use crate::cli::McpScope;
 
-/// The canonical `tkr` server entry. Kept here so the format is one place
+/// The canonical `jkr` server entry. Kept here so the format is one place
 /// to update if the args ever change.
-fn tkr_server_entry() -> Value {
+fn jkr_server_entry() -> Value {
     json!({
-        "command": "tkr",
+        "command": "jkr",
         "args": ["mcp"],
     })
 }
@@ -32,9 +32,9 @@ fn user_config_path() -> Result<PathBuf> {
 }
 
 pub fn run(scope: McpScope, print: bool, force: bool) -> Result<()> {
-    let entry = tkr_server_entry();
+    let entry = jkr_server_entry();
     let entry_str = serde_json::to_string_pretty(&json!({
-        "mcpServers": { "tkr": entry.clone() }
+        "mcpServers": { "jkr": entry.clone() }
     }))?;
 
     if print {
@@ -49,7 +49,7 @@ pub fn run(scope: McpScope, print: bool, force: bool) -> Result<()> {
 }
 
 /// Write `./.mcp.json`. If the file doesn't exist, create it with just the
-/// tkr server. If it exists, merge the tkr entry in (and preserve any other
+/// jkr server. If it exists, merge the jkr entry in (and preserve any other
 /// servers already there).
 fn install_project(entry: Value, force: bool) -> Result<()> {
     let path = project_config_path()?;
@@ -67,19 +67,19 @@ fn install_project(entry: Value, force: bool) -> Result<()> {
         .and_then(|v| v.as_object_mut())
         .ok_or_else(|| anyhow!("{}: `mcpServers` must be an object", path.display()))?;
 
-    if servers.contains_key("tkr") && !force {
+    if servers.contains_key("jkr") && !force {
         println!(
-            "tkr mcp install: `tkr` already configured at {} (pass --force to overwrite)",
+            "jkr mcp install: `jkr` already configured at {} (pass --force to overwrite)",
             path.display()
         );
         return Ok(());
     }
-    servers.insert("tkr".into(), entry);
+    servers.insert("jkr".into(), entry);
 
     let serialized = serde_json::to_string_pretty(&doc)? + "\n";
     fs::write(&path, serialized).with_context(|| format!("write {}", path.display()))?;
     println!(
-        "tkr mcp install: wrote `tkr` server entry to {}",
+        "jkr mcp install: wrote `jkr` server entry to {}",
         path.display()
     );
     println!("  Restart Claude Code in this repo to pick it up.");
@@ -116,19 +116,19 @@ fn install_user(entry: Value, force: bool) -> Result<()> {
         .as_object_mut()
         .ok_or_else(|| anyhow!("{}: `mcpServers` must be an object", path.display()))?;
 
-    if servers.contains_key("tkr") && !force {
+    if servers.contains_key("jkr") && !force {
         println!(
-            "tkr mcp install: `tkr` already configured at {} (pass --force to overwrite)",
+            "jkr mcp install: `jkr` already configured at {} (pass --force to overwrite)",
             path.display()
         );
         return Ok(());
     }
-    servers.insert("tkr".into(), entry);
+    servers.insert("jkr".into(), entry);
 
     let serialized = serde_json::to_string_pretty(&doc)? + "\n";
     fs::write(&path, serialized).with_context(|| format!("write {}", path.display()))?;
     println!(
-        "tkr mcp install: wrote `tkr` server entry to {}",
+        "jkr mcp install: wrote `jkr` server entry to {}",
         path.display()
     );
     println!("  Restart Claude Code to pick it up. Now active in every project.");
@@ -141,22 +141,22 @@ mod tests {
     use tempfile::tempdir;
 
     /// Snapshot-style test: create a project-scope install in a temp dir and
-    /// verify the resulting file parses + contains the tkr entry.
+    /// verify the resulting file parses + contains the jkr entry.
     #[test]
     fn project_install_writes_mcp_json() {
         let dir = tempdir().unwrap();
         let prev = std::env::current_dir().unwrap();
         std::env::set_current_dir(dir.path()).unwrap();
-        let r = install_project(tkr_server_entry(), false);
+        let r = install_project(jkr_server_entry(), false);
         std::env::set_current_dir(prev).unwrap();
         r.unwrap();
         let raw = fs::read_to_string(dir.path().join(".mcp.json")).unwrap();
         let doc: Value = serde_json::from_str(&raw).unwrap();
-        assert_eq!(doc["mcpServers"]["tkr"]["command"], "tkr");
-        assert_eq!(doc["mcpServers"]["tkr"]["args"][0], "mcp");
+        assert_eq!(doc["mcpServers"]["jkr"]["command"], "jkr");
+        assert_eq!(doc["mcpServers"]["jkr"]["args"][0], "mcp");
     }
 
-    /// Re-running on a config that already has `tkr` should no-op unless
+    /// Re-running on a config that already has `jkr` should no-op unless
     /// --force. Other servers must be preserved.
     #[test]
     fn project_install_preserves_existing_servers_and_noops_without_force() {
@@ -165,32 +165,32 @@ mod tests {
         let initial = json!({
             "mcpServers": {
                 "other": { "command": "other", "args": [] },
-                "tkr": { "command": "tkr-old", "args": ["mcp", "--legacy"] }
+                "jkr": { "command": "jkr-old", "args": ["mcp", "--legacy"] }
             }
         });
         fs::write(&mcp_path, serde_json::to_string_pretty(&initial).unwrap()).unwrap();
 
         let prev = std::env::current_dir().unwrap();
         std::env::set_current_dir(dir.path()).unwrap();
-        install_project(tkr_server_entry(), false).unwrap();
+        install_project(jkr_server_entry(), false).unwrap();
         std::env::set_current_dir(prev).unwrap();
 
         let doc: Value =
             serde_json::from_str(&fs::read_to_string(&mcp_path).unwrap()).unwrap();
         // Existing `other` server preserved.
         assert_eq!(doc["mcpServers"]["other"]["command"], "other");
-        // `tkr` entry NOT overwritten without --force.
-        assert_eq!(doc["mcpServers"]["tkr"]["command"], "tkr-old");
+        // `jkr` entry NOT overwritten without --force.
+        assert_eq!(doc["mcpServers"]["jkr"]["command"], "jkr-old");
     }
 
     #[test]
-    fn project_install_overwrites_tkr_with_force() {
+    fn project_install_overwrites_jkr_with_force() {
         let dir = tempdir().unwrap();
         let mcp_path = dir.path().join(".mcp.json");
         fs::write(
             &mcp_path,
             serde_json::to_string_pretty(&json!({
-                "mcpServers": { "tkr": { "command": "tkr-old", "args": [] } }
+                "mcpServers": { "jkr": { "command": "jkr-old", "args": [] } }
             }))
             .unwrap(),
         )
@@ -198,12 +198,12 @@ mod tests {
 
         let prev = std::env::current_dir().unwrap();
         std::env::set_current_dir(dir.path()).unwrap();
-        install_project(tkr_server_entry(), true).unwrap();
+        install_project(jkr_server_entry(), true).unwrap();
         std::env::set_current_dir(prev).unwrap();
 
         let doc: Value =
             serde_json::from_str(&fs::read_to_string(&mcp_path).unwrap()).unwrap();
-        assert_eq!(doc["mcpServers"]["tkr"]["command"], "tkr");
-        assert_eq!(doc["mcpServers"]["tkr"]["args"][0], "mcp");
+        assert_eq!(doc["mcpServers"]["jkr"]["command"], "jkr");
+        assert_eq!(doc["mcpServers"]["jkr"]["args"][0], "mcp");
     }
 }

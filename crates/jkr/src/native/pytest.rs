@@ -1,5 +1,5 @@
 //! Native **pytest** — elide verbose per-test `PASSED` lines and long dot-progress rows.
-//! Env: `TKR_NATIVE_PYTEST=0` disables.
+//! Env: `JKR_NATIVE_PYTEST=0` disables.
 //!
 //! Matches `pytest` / `py.test`, `python … -m pytest`, `uv run pytest`, and
 //! `poetry` / `pipenv` / `pdm run pytest`.
@@ -14,7 +14,7 @@ use std::sync::LazyLock;
 
 pub fn env_disabled() -> bool {
     matches!(
-        std::env::var("TKR_NATIVE_PYTEST").ok().as_deref(),
+        std::env::var("JKR_NATIVE_PYTEST").ok().as_deref(),
         Some("0") | Some("false") | Some("off")
     )
 }
@@ -131,7 +131,7 @@ pub fn run(cmd: &str, args: &[String]) -> Result<Option<NativeOutcome>> {
         let raw = match stream.next() {
             None => break,
             Some(Err(e)) => {
-                eprintln!("tkr: native pytest: {e}");
+                eprintln!("jkr: native pytest: {e}");
                 continue;
             }
             Some(Ok(line)) => line,
@@ -145,7 +145,7 @@ pub fn run(cmd: &str, args: &[String]) -> Result<Option<NativeOutcome>> {
 
         if pass_elided > 0 {
             let msg = format!(
-                "… ({} pytest pass-style lines elided — set `TKR_NATIVE_PYTEST=0` for full log)\n",
+                "… ({} pytest pass-style lines elided — set `JKR_NATIVE_PYTEST=0` for full log)\n",
                 pass_elided
             );
             bytes_out += msg.len() as u64;

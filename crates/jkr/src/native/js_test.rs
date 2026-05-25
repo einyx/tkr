@@ -2,7 +2,7 @@
 //! plus **`deno test`** / **`deno task …`** and **`bun test`** / **`bun run …`**,
 //! or **standalone** **`jest`**, **`vitest`**, **`mocha`**, **`playwright test`**, **`cypress run`**:
 //! elide noisy passing lines (vitest ✓, jest PASS, **`deno` `… ok`**, **`bun` `(pass)`**).
-//! Env: `TKR_NATIVE_JS_TEST=0` disables.
+//! Env: `JKR_NATIVE_JS_TEST=0` disables.
 
 use super::NativeOutcome;
 use crate::runner::stream_command;
@@ -14,7 +14,7 @@ use std::sync::LazyLock;
 
 pub fn env_disabled() -> bool {
     matches!(
-        std::env::var("TKR_NATIVE_JS_TEST").ok().as_deref(),
+        std::env::var("JKR_NATIVE_JS_TEST").ok().as_deref(),
         Some("0") | Some("false") | Some("off")
     )
 }
@@ -128,7 +128,7 @@ fn npx_looks_like_test_runner(args: &[String]) -> bool {
         || b.starts_with("playwright")
 }
 
-/// True for globally installed runner binaries (`tkr jest`, `tkr vitest`, …).
+/// True for globally installed runner binaries (`jkr jest`, `jkr vitest`, …).
 fn standalone_test_runner(tool: &str, args: &[String]) -> Option<bool> {
     match tool {
         "jest" | "vitest" | "mocha" => {
@@ -221,7 +221,7 @@ pub fn run(cmd: &str, args: &[String]) -> Result<Option<NativeOutcome>> {
         let raw = match stream.next() {
             None => break,
             Some(Err(e)) => {
-                eprintln!("tkr: native js test: {e}");
+                eprintln!("jkr: native js test: {e}");
                 continue;
             }
             Some(Ok(line)) => line,
@@ -235,7 +235,7 @@ pub fn run(cmd: &str, args: &[String]) -> Result<Option<NativeOutcome>> {
 
         if pass_elided > 0 {
             let msg = format!(
-                "… ({} passing-style lines elided — set `TKR_NATIVE_JS_TEST=0` for full log)\n",
+                "… ({} passing-style lines elided — set `JKR_NATIVE_JS_TEST=0` for full log)\n",
                 pass_elided
             );
             bytes_out += msg.len() as u64;

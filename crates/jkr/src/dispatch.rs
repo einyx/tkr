@@ -5,8 +5,8 @@
 
 use crate::config::Config;
 use anyhow::Result;
-use tkr_api::LegacyPlugin as Plugin;
-use tkr_filter::FilterPlugin;
+use jkr_api::LegacyPlugin as Plugin;
+use jkr_filter::FilterPlugin;
 
 #[allow(dead_code)]
 pub fn build_chain(cfg: &Config, _command: &str) -> Result<Vec<Box<dyn Plugin>>> {
@@ -14,7 +14,7 @@ pub fn build_chain(cfg: &Config, _command: &str) -> Result<Vec<Box<dyn Plugin>>>
 
     for plugin_name in &cfg.plugins.chain {
         match plugin_name.as_str() {
-            "tkr-filter" => {
+            "jkr-filter" => {
                 let mut plugin = FilterPlugin::from_toml("").unwrap();
                 if let Some(bundled) = crate::config::bundled_filters_dir() {
                     let _ = plugin.load_dir(&bundled);
@@ -23,16 +23,16 @@ pub fn build_chain(cfg: &Config, _command: &str) -> Result<Vec<Box<dyn Plugin>>>
                 let _ = plugin.load_dir(user_dir);
                 chain.push(Box::new(plugin));
             }
-            "tkr-semantic" => {
-                // tkr-semantic removed — skip silently to avoid breaking old configs.
+            "jkr-semantic" => {
+                // jkr-semantic removed — skip silently to avoid breaking old configs.
             }
-            "tkr-analytics" => {
+            "jkr-analytics" => {
                 // AnalyticsPlugin (legacy) removed — analytics now handled by
                 // AnalyticsPluginV2 in the v2 PluginRegistry (host::boot).
                 // This arm is a no-op to avoid panicking if config still lists it.
             }
             other => {
-                eprintln!("tkr: unknown built-in plugin '{other}', skipping");
+                eprintln!("jkr: unknown built-in plugin '{other}', skipping");
             }
         }
     }

@@ -2,13 +2,13 @@
 //!
 //! Peers announce models they're seeding via signed [`ModelAnnounce`] messages.
 //! Other peers cache `(publisher, name) → (version, manifest_cid, …)` tuples
-//! and use them to resolve `tkr model pull <name>`.
+//! and use them to resolve `jkr model pull <name>`.
 //!
 //! ## Design
 //!
 //! - **Self-contained payload.** `ModelAnnounce` carries its own signature so
 //!   it doesn't depend on a particular mesh frame type. When the gossip frame
-//!   lands in `tkr-mesh`, an announce becomes the `payload` field; until then,
+//!   lands in `jkr-mesh`, an announce becomes the `payload` field; until then,
 //!   announces can be exchanged out-of-band (CLI, file drop, test fixtures).
 //!
 //! - **Resolution is ambiguous by design.** `resolve(name)` returns *every*
@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tkr_mesh::{Address, Identity};
+use jkr_mesh::{Address, Identity};
 
 /// Signed gossip message: "publisher P is seeding model `name@version`,
 /// manifest CID is `manifest_cid`."
@@ -80,7 +80,7 @@ impl ModelAnnounce {
             &self.publisher,
             self.timestamp_ms,
         );
-        let recovered = tkr_mesh::identity::recover_address(&digest, &sig)
+        let recovered = jkr_mesh::identity::recover_address(&digest, &sig)
             .map_err(|e| AnnounceError::Crypto(e.to_string()))?;
         if recovered != self.publisher {
             return Err(AnnounceError::SignatureMismatch);

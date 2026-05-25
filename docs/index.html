@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>tkr — token-optimized CLI proxy</title>
+<title>jkr — token-optimized CLI proxy</title>
 <meta name="description" content="Token-optimized CLI proxy for LLM development workflows. Plugin architecture, semantic deduplication, live dashboard.">
 <style>
   :root { color-scheme: light dark; }
@@ -31,33 +31,33 @@
 </style>
 </head>
 <body>
-<h1>tkr</h1>
+<h1>jkr</h1>
 <p class="tag">Token-optimized CLI proxy for LLM development workflows.</p>
 
-<p>tkr filters and compresses command output before it reaches an LLM context window. It cuts <strong>60–90%</strong> of tokens off common dev operations so your AI assistant spends its context on signal, not noise.</p>
+<p>jkr filters and compresses command output before it reaches an LLM context window. It cuts <strong>60–90%</strong> of tokens off common dev operations so your AI assistant spends its context on signal, not noise.</p>
 
 <h2>What's different</h2>
 <div class="feature"><strong>Plugin architecture.</strong> Core is thin; filters, semantic dedup, and analytics are independent plugins.</div>
 <div class="feature"><strong>Semantic deduplication.</strong> Collapses near-duplicate output lines using local embeddings (Ollama or exact-match fallback).</div>
 <div class="feature"><strong>Relevance scoring.</strong> Drops low-signal lines unrelated to the command intent.</div>
-<div class="feature"><strong>Live dashboard.</strong> <code>tkr watch</code> opens a TUI with real-time token savings.</div>
+<div class="feature"><strong>Live dashboard.</strong> <code>jkr watch</code> opens a TUI with real-time token savings.</div>
 <div class="feature"><strong>Apache-2.0.</strong> No telemetry, no upstream.</div>
 
 <h2>Install</h2>
-<pre><code>curl -fsSL https://raw.githubusercontent.com/einyx/tkr/main/install.sh | bash</code></pre>
+<pre><code>curl -fsSL https://raw.githubusercontent.com/einyx/jkr/main/install.sh | bash</code></pre>
 
 <h2>Use</h2>
-<pre><code>tkr git status
-tkr cargo test
-tkr watch
-tkr gain --breakdown</code></pre>
+<pre><code>jkr git status
+jkr cargo test
+jkr watch
+jkr gain --breakdown</code></pre>
 
 <h2>Real measurements</h2>
 <p>Per-command savings on real output:</p>
 <pre><code>cargo test --workspace   97.7%
 cargo check (cold)       86.3%
 cargo build (cold)       86.3%
-cargo tree -p tkr        85.0%
+cargo tree -p jkr        85.0%
 git log --pretty=fuller  20.0%
 git diff HEAD~2          13.3%
 ls -laR                  13.3%
@@ -75,8 +75,8 @@ git status               10.0%</code></pre>
 <p>Git:&nbsp; <code>git status / log / diff / show / commit</code> with author-collapse</p>
 
 <h2>Source</h2>
-<p><a href="https://github.com/einyx/tkr">github.com/einyx/tkr</a></p>
+<p><a href="https://github.com/einyx/jkr">github.com/einyx/jkr</a></p>
 
-<footer>Apache-2.0 © 2026 tkr contributors</footer>
+<footer>Apache-2.0 © 2026 jkr contributors</footer>
 </body>
 </html>

@@ -42,15 +42,15 @@ impl Client {
     /// Open a WebSocket to the broker, complete the Hello/Ack handshake,
     /// and spawn read/write tasks. Times out after 5s waiting for ack.
     ///
-    /// If `TKR_MESH_WS_COOKIE` is set in the environment, its value is sent
-    /// as a `Cookie: tkr_session=<value>` header on the upgrade request.
+    /// If `JKR_MESH_WS_COOKIE` is set in the environment, its value is sent
+    /// as a `Cookie: jkr_session=<value>` header on the upgrade request.
     /// This is required when connecting to brokers that gate the mesh WS
-    /// upgrade behind an authenticated session (e.g. tkr-server).
+    /// upgrade behind an authenticated session (e.g. jkr-server).
     pub async fn connect(joined: &JoinedMesh, identity: Identity) -> Result<Self> {
         use tokio_tungstenite::tungstenite::handshake::client::generate_key;
         use tokio_tungstenite::tungstenite::http::Uri;
 
-        let ws_stream = if let Ok(cookie) = std::env::var("TKR_MESH_WS_COOKIE") {
+        let ws_stream = if let Ok(cookie) = std::env::var("JKR_MESH_WS_COOKIE") {
             let uri: Uri = joined
                 .broker_url
                 .parse()
@@ -67,7 +67,7 @@ impl Client {
                 .header("Upgrade", "websocket")
                 .header("Sec-WebSocket-Version", "13")
                 .header("Sec-WebSocket-Key", generate_key())
-                .header("Cookie", format!("tkr_session={cookie}"))
+                .header("Cookie", format!("jkr_session={cookie}"))
                 .body(())
                 .map_err(|e| Error::Encoding(format!("build ws request: {e}")))?;
             let (s, _resp) = tokio_tungstenite::connect_async(req)

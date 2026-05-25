@@ -3,15 +3,15 @@
 //! `cargo test` stays Docker-free by default; opt in with:
 //!
 //! ```bash
-//! TKR_TEST_DATABASE_URL=postgres://tkr:tkr@127.0.0.1:5432/tkr_test \
-//! TKR_TEST_REDIS_URL=redis://127.0.0.1:6379/1 \
-//!   cargo test -p tkr-server --test persistence -- --ignored --test-threads=1
+//! JKR_TEST_DATABASE_URL=postgres://jkr:jkr@127.0.0.1:5432/jkr_test \
+//! JKR_TEST_REDIS_URL=redis://127.0.0.1:6379/1 \
+//!   cargo test -p jkr-server --test persistence -- --ignored --test-threads=1
 //! ```
 //!
 //! Tests TRUNCATE shared tables and FLUSHDB the Redis db at start, so
 //! they MUST run serially (`--test-threads=1`). The easiest way to
 //! satisfy that locally is to point at the compose stack with a
-//! dedicated DB / Redis db number (e.g. `tkr_test` / db 1) so the
+//! dedicated DB / Redis db number (e.g. `jkr_test` / db 1) so the
 //! production schema stays untouched.
 //!
 //! Coverage:
@@ -24,7 +24,7 @@
 //!   * `receipts_queue_persists_across_restart` — LLM-proxy receipts
 //!     written before a restart are still drainable after.
 //!
-//! These tests boot the real `tkr-server` binary so they exercise the
+//! These tests boot the real `jkr-server` binary so they exercise the
 //! exact code path production runs, not a re-implementation.
 
 use std::process::{Child, Command, Stdio};
@@ -56,7 +56,7 @@ fn pick_port() -> u16 {
 
 async fn start_server(extra_env: &[(&str, String)]) -> ServerGuard {
     let port = pick_port();
-    let bin = env!("CARGO_BIN_EXE_tkr-server");
+    let bin = env!("CARGO_BIN_EXE_jkr-server");
     let mut cmd = Command::new(bin);
     cmd.env("HOST", "127.0.0.1")
         .env("PORT", port.to_string())
@@ -67,7 +67,7 @@ async fn start_server(extra_env: &[(&str, String)]) -> ServerGuard {
     for (k, v) in extra_env {
         cmd.env(*k, v);
     }
-    let child = cmd.spawn().expect("spawn tkr-server");
+    let child = cmd.spawn().expect("spawn jkr-server");
     for _ in 0..80 {
         let agent: ureq::Agent = ureq::Agent::config_builder()
             .http_status_as_error(false)
@@ -84,15 +84,15 @@ async fn start_server(extra_env: &[(&str, String)]) -> ServerGuard {
         }
         tokio::time::sleep(Duration::from_millis(150)).await;
     }
-    panic!("tkr-server failed to start on port {port}");
+    panic!("jkr-server failed to start on port {port}");
 }
 
 /// Pull the test DB + Redis URLs from env. Returns None when either
 /// is unset; the caller skips with a printed note rather than
 /// failing, so `--ignored` runs are explicit but graceful.
 fn test_urls() -> Option<(String, String)> {
-    let db = std::env::var("TKR_TEST_DATABASE_URL").ok()?;
-    let redis_url = std::env::var("TKR_TEST_REDIS_URL").ok()?;
+    let db = std::env::var("JKR_TEST_DATABASE_URL").ok()?;
+    let redis_url = std::env::var("JKR_TEST_REDIS_URL").ok()?;
     Some((db, redis_url))
 }
 
@@ -144,7 +144,7 @@ fn server_env(database_url: &str, redis_url: &str) -> Vec<(&'static str, String)
     vec![
         ("DATABASE_URL", database_url.to_string()),
         ("REDIS_URL", redis_url.to_string()),
-        ("TKR_ADMIN_PASSWORD", "correctbattery".to_string()),
+        ("JKR_ADMIN_PASSWORD", "correctbattery".to_string()),
     ]
 }
 
@@ -159,7 +159,7 @@ async fn session_survives_server_restart() {
     let (database_url, redis_url) = match test_urls() {
         Some(v) => v,
         None => {
-            eprintln!("skipping: TKR_TEST_DATABASE_URL / TKR_TEST_REDIS_URL unset");
+            eprintln!("skipping: JKR_TEST_DATABASE_URL / JKR_TEST_REDIS_URL unset");
             return;
         }
     };
@@ -177,7 +177,7 @@ async fn session_survives_server_restart() {
         resp.headers()
             .get("set-cookie")
             .and_then(|v| v.to_str().ok())
-            .expect("login should set tkr_session cookie")
+            .expect("login should set jkr_session cookie")
             .split(';')
             .next()
             .unwrap()
@@ -185,7 +185,7 @@ async fn session_survives_server_restart() {
         // ServerGuard's Drop kills the process here — same as a real
         // restart. The in-memory HashMap dies with it.
     };
-    assert!(cookie.starts_with("tkr_session="), "{cookie}");
+    assert!(cookie.starts_with("jkr_session="), "{cookie}");
 
     // Phase B — restart, re-use the cookie against /api/auth/me.
     let guard = start_server(&env).await;
@@ -211,7 +211,7 @@ async fn oauth_state_survives_server_restart() {
     let (database_url, redis_url) = match test_urls() {
         Some(v) => v,
         None => {
-            eprintln!("skipping: TKR_TEST_DATABASE_URL / TKR_TEST_REDIS_URL unset");
+            eprintln!("skipping: JKR_TEST_DATABASE_URL / JKR_TEST_REDIS_URL unset");
             return;
         }
     };
@@ -220,10 +220,10 @@ async fn oauth_state_survives_server_restart() {
     // Need a Logto config so /auth/logto/start actually mints state
     // (otherwise it returns 503 logto_unconfigured).
     env.extend([
-        ("TKR_LOGTO_ENDPOINT", "https://logto.invalid".into()),
-        ("TKR_LOGTO_APP_ID", "id".into()),
-        ("TKR_LOGTO_APP_SECRET", "secret".into()),
-        ("TKR_LOGTO_REDIRECT_URI", "https://tkr.invalid/auth/logto/callback".into()),
+        ("JKR_LOGTO_ENDPOINT", "https://logto.invalid".into()),
+        ("JKR_LOGTO_APP_ID", "id".into()),
+        ("JKR_LOGTO_APP_SECRET", "secret".into()),
+        ("JKR_LOGTO_REDIRECT_URI", "https://jkr.invalid/auth/logto/callback".into()),
     ]
     .iter()
     .map(|(k, v): &(&'static str, String)| (*k, v.clone())));
@@ -286,7 +286,7 @@ async fn receipts_queue_persists_across_restart() {
     let (database_url, redis_url) = match test_urls() {
         Some(v) => v,
         None => {
-            eprintln!("skipping: TKR_TEST_DATABASE_URL / TKR_TEST_REDIS_URL unset");
+            eprintln!("skipping: JKR_TEST_DATABASE_URL / JKR_TEST_REDIS_URL unset");
             return;
         }
     };

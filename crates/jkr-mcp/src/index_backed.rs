@@ -1,4 +1,4 @@
-//! Index-backed tool implementations. When `<repo>/.tkr/index.sqlite` exists,
+//! Index-backed tool implementations. When `<repo>/.jkr/index.sqlite` exists,
 //! these return Some(rendered) and the server uses them; otherwise None and
 //! the server falls back to the stateless scanners in `search.rs` / `outline.rs`.
 
@@ -8,8 +8,8 @@ use rusqlite::params;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
-use tkr_index::watch::{self, WatcherHandle};
-use tkr_index::IndexDb;
+use jkr_index::watch::{self, WatcherHandle};
+use jkr_index::IndexDb;
 
 use crate::toon;
 
@@ -44,7 +44,7 @@ fn maybe_path_table<'a>(
 }
 
 fn index_path(root: &Path) -> PathBuf {
-    root.join(".tkr").join("index.sqlite")
+    root.join(".jkr").join("index.sqlite")
 }
 
 /// One watcher per repo root, held alive for the lifetime of the MCP server.
@@ -60,12 +60,12 @@ pub fn watch_start(root: &Path) -> Result<String> {
         .with_context(|| format!("canonicalize {}", root.display()))?;
     let mut map = watchers().lock().expect("watchers mutex");
     if map.contains_key(&root) {
-        return Ok(format!("tkr_index_watch: already running for {}\n", root.display()));
+        return Ok(format!("jkr_index_watch: already running for {}\n", root.display()));
     }
     let handle = watch::start(&root)?;
     map.insert(root.clone(), handle);
     Ok(format!(
-        "tkr_index_watch: started for {} -- file edits now auto-reindex (debounced 500ms)\n",
+        "jkr_index_watch: started for {} -- file edits now auto-reindex (debounced 500ms)\n",
         root.display()
     ))
 }
@@ -89,7 +89,7 @@ pub fn build(root: &Path) -> Result<String> {
         if !path.is_file() {
             continue;
         }
-        if tkr_index_lang_supported(path) {
+        if jkr_index_lang_supported(path) {
             total += 1;
             let stats = db.index_file(path)?;
             if !stats.skipped_unchanged {
@@ -99,7 +99,7 @@ pub fn build(root: &Path) -> Result<String> {
         }
     }
     Ok(format!(
-        "tkr_index_build {} -- {} indexable files, {} re-indexed, {} new symbols\n",
+        "jkr_index_build {} -- {} indexable files, {} re-indexed, {} new symbols\n",
         root.display(),
         total,
         reindexed,
@@ -107,7 +107,7 @@ pub fn build(root: &Path) -> Result<String> {
     ))
 }
 
-fn tkr_index_lang_supported(p: &Path) -> bool {
+fn jkr_index_lang_supported(p: &Path) -> bool {
     matches!(
         p.extension().and_then(|s| s.to_str()),
         Some(
@@ -277,7 +277,7 @@ pub fn try_callers_of(name: &str, root: &Path) -> Result<Option<String>> {
     // Per-caller dedup: a single caller (`bar`) hitting `foo` at multiple
     // lines used to emit one row per call site. Now we collapse to one row
     // per (kind, caller-name, path) with a comma-separated line list — same
-    // pattern as tkr_callees_of (#20). Insertion order preserved so the
+    // pattern as jkr_callees_of (#20). Insertion order preserved so the
     // output tracks the original ORDER BY f.path, r.line.
     type CallerKey = (String, String, String); // (kind, sname, path)
     let mut order: Vec<CallerKey> = Vec::new();
@@ -523,7 +523,7 @@ pub fn try_call_path(
 
     Ok(Some(format!(
         "call_path {from:?} -> {to:?}: no path within depth {max_depth}\n\
-         hint: increase depth, or check `tkr_callees_of {from:?}` to see what {from} actually reaches\n"
+         hint: increase depth, or check `jkr_callees_of {from:?}` to see what {from} actually reaches\n"
     )))
 }
 
@@ -684,12 +684,12 @@ pub fn try_read_smart(
     //
     // Signatures are opt-in (`verbose=true`). Default-off because in a real
     // agent flow read_smart is the "find candidate locations" tool — bodies
-    // come from a follow-up `tkr_signature` or `Read`. Including signatures
+    // come from a follow-up `jkr_signature` or `Read`. Including signatures
     // on every read_smart turn was the dominant per-call cost in the bench
     // (974 B/call). Dropping them by default cuts that ~40-50% on real repos.
     //
     // The didactic "use native Read with offset/limit" hint was dropped: an
-    // agent already on a `tkr_read_smart` tool call knows how to read a file
+    // agent already on a `jkr_read_smart` tool call knows how to read a file
     // by line range.
     let paths: Vec<&str> = rows.iter().map(|r| r.3.as_str()).collect();
     if let Some((table, ids)) = maybe_path_table(&paths) {

@@ -55,7 +55,7 @@ export function StatusBanner({ captured, sandbox, receipts }: Props) {
       <span className="status-banner-spacer" />
       <a
         className="status-banner-docs"
-        href="https://github.com/einyx/tkr/blob/main/docs/operations.md"
+        href="https://github.com/einyx/jkr/blob/main/docs/operations.md"
         target="_blank"
         rel="noopener noreferrer"
       >
@@ -73,14 +73,14 @@ function chipForCapture(c?: CapturedShape): Chip {
         value: "on",
         tone: "on",
         title:
-          "body capture is on (TKR_CAPTURE_BODIES=true) — scrubbed request + response bodies are stashed in the captured ring",
+          "body capture is on (JKR_CAPTURE_BODIES=true) — scrubbed request + response bodies are stashed in the captured ring",
       }
     : {
         label: "capture",
         value: "off",
         tone: "off",
         title:
-          "body capture is off — set TKR_CAPTURE_BODIES=true to start stashing scrubbed bodies",
+          "body capture is off — set JKR_CAPTURE_BODIES=true to start stashing scrubbed bodies",
       };
 }
 
@@ -92,14 +92,14 @@ function chipForSandbox(s?: SandboxShape): Chip {
         value: "on",
         tone: "on",
         title:
-          "server-side sandbox endpoint is enabled (TKR_SANDBOX_EXEC=true). CLI agent activity isn't ingested here; see ops docs",
+          "server-side sandbox endpoint is enabled (JKR_SANDBOX_EXEC=true). CLI agent activity isn't ingested here; see ops docs",
       }
     : {
         label: "sandbox",
         value: "off",
         tone: "off",
         title:
-          "server-side sandbox endpoint disabled. CLI agent-side sandbox still runs locally; flip TKR_SANDBOX_EXEC=true for the HTTP endpoint",
+          "server-side sandbox endpoint disabled. CLI agent-side sandbox still runs locally; flip JKR_SANDBOX_EXEC=true for the HTTP endpoint",
       };
 }
 

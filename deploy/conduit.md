@@ -1,7 +1,7 @@
 # Deploy MeshEscrow to a Conduit rollup
 
 Conduit (https://conduit.xyz) hosts OP Stack rollups as a service. The
-free tier is enough to spin up a testnet for tkr.
+free tier is enough to spin up a testnet for jkr.
 
 This walkthrough deploys `MeshEscrow.sol` to your own rollup so the
 mesh + payment flow has a permanent contract address that's not Base.
@@ -11,13 +11,13 @@ mesh + payment flow has a permanent contract address that's not Base.
 1. Sign in at https://conduit.xyz (GitHub OAuth).
 2. **Create New Rollup** → pick **OP Stack** → choose **Testnet** (free
    tier; settles to Sepolia).
-3. Give it a name (e.g. `tkr-mesh-testnet`). Set:
+3. Give it a name (e.g. `jkr-mesh-testnet`). Set:
    - **Settlement layer**: Sepolia
    - **DA layer**: Ethereum calldata (cheapest)
    - **Native gas token**: ETH
 4. Wait ~5 minutes for the chain to come up. You'll get:
    - **Chain ID** (e.g. `11155420`-style number — Conduit assigns one)
-   - **RPC URL** (e.g. `https://rpc-tkr-mesh-testnet.t.conduit.xyz`)
+   - **RPC URL** (e.g. `https://rpc-jkr-mesh-testnet.t.conduit.xyz`)
    - **Block explorer URL**
    - **Faucet URL** (testnet ETH, free, tied to your Conduit account)
 
@@ -32,7 +32,7 @@ chmod 0600 deploy/keys/conduit-deployer.env
 Edit `deploy/keys/conduit-deployer.env` so it contains a single line:
 
 ```
-TKR_PAYMENT_KEY=0x<the private_key from cast wallet new>
+JKR_PAYMENT_KEY=0x<the private_key from cast wallet new>
 ```
 
 Copy the **address** from the same `cast wallet new` output and request
@@ -56,7 +56,7 @@ Output ends with:
 ```
 
 Save that contract address — you'll pass it as `--contract` to
-`tkr pay receipt-issue`.
+`jkr pay receipt-issue`.
 
 ## 4. Open a channel + claim a receipt
 
@@ -82,7 +82,7 @@ SID=0xaa00000000000000000000000000000000000000000000000000000000000001
   --rpc-url $RPC --private-key $PAYER_KEY
 
 # Issue a receipt for 0.005 ETH cumulative
-target/release/tkr pay receipt-issue \
+target/release/jkr pay receipt-issue \
   --session-id $SID \
   --cumulative 5000000000000000 \
   --chain-id <CHAIN_ID> \
@@ -90,9 +90,9 @@ target/release/tkr pay receipt-issue \
   --key-file deploy/keys/conduit-deployer.env > /tmp/receipt.json
 
 # Claim
-echo "TKR_PAYMENT_KEY=$RECIP_KEY" > /tmp/recipkey.env
+echo "JKR_PAYMENT_KEY=$RECIP_KEY" > /tmp/recipkey.env
 chmod 0600 /tmp/recipkey.env
-target/release/tkr pay claim \
+target/release/jkr pay claim \
   --receipt /tmp/receipt.json \
   --rpc-url $RPC \
   --key-file /tmp/recipkey.env

@@ -1,6 +1,6 @@
 -- Phase-5 follow-up: persist captured request/response bodies so the
 -- dashboard's "captured calls" panel survives restart when
--- TKR_CAPTURE_BODIES=true.
+-- JKR_CAPTURE_BODIES=true.
 --
 -- Kept in its own table (not the `extra JSONB` on llm_recent) for two
 -- reasons:

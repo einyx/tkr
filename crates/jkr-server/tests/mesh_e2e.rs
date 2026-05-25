@@ -1,13 +1,13 @@
-//! End-to-end mesh test: boot a real tkr-server in this process, have
-//! two tkr-mesh Clients enroll over HTTP /api/v1/mesh/join, connect WSS,
+//! End-to-end mesh test: boot a real jkr-server in this process, have
+//! two jkr-mesh Clients enroll over HTTP /api/v1/mesh/join, connect WSS,
 //! and exchange an encrypted DM through the broker.
 
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
 use k256::{PublicKey, SecretKey};
-use tkr_mesh::frames::Frame;
-use tkr_mesh::{enroll, Client, Identity, Invite, JoinedMesh, Role};
+use jkr_mesh::frames::Frame;
+use jkr_mesh::{enroll, Client, Identity, Invite, JoinedMesh, Role};
 use tokio::time::timeout;
 
 fn pubkey_of(id: &Identity) -> PublicKey {
@@ -38,15 +38,15 @@ fn pick_port() -> u16 {
 
 async fn start_server() -> ServerGuard {
     let port = pick_port();
-    let bin = env!("CARGO_BIN_EXE_tkr-server");
+    let bin = env!("CARGO_BIN_EXE_jkr-server");
     let child = Command::new(bin)
         .env("HOST", "127.0.0.1")
         .env("PORT", port.to_string())
-        // No TKR_ADMIN_PASSWORD → loopback fallback ("correct"). Fine for tests.
+        // No JKR_ADMIN_PASSWORD → loopback fallback ("correct"). Fine for tests.
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .expect("spawn tkr-server");
+        .expect("spawn jkr-server");
 
     // Poll /health until ready.
     for _ in 0..50 {
@@ -65,10 +65,10 @@ async fn start_server() -> ServerGuard {
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    panic!("tkr-server failed to start on port {port}");
+    panic!("jkr-server failed to start on port {port}");
 }
 
-/// Log in to the loopback dev server and return the `tkr_session` cookie
+/// Log in to the loopback dev server and return the `jkr_session` cookie
 /// value. The broker now requires an authenticated session for both
 /// `/api/v1/mesh/join` and the WS upgrade.
 fn login_and_get_cookie(port: u16) -> String {
@@ -84,9 +84,9 @@ fn login_and_get_cookie(port: u16) -> String {
         .split(';')
         .find_map(|p| {
             let t = p.trim();
-            t.strip_prefix("tkr_session=").map(|v| v.to_string())
+            t.strip_prefix("jkr_session=").map(|v| v.to_string())
         })
-        .expect("tkr_session cookie")
+        .expect("jkr_session cookie")
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -95,7 +95,7 @@ async fn two_clients_exchange_dm_through_real_broker() {
     let cookie = login_and_get_cookie(server.port);
     // Plumb the cookie into the mesh WS handshake via env so Client::connect
     // (and the broker upgrade gate) accept the connection.
-    std::env::set_var("TKR_MESH_WS_COOKIE", &cookie);
+    std::env::set_var("JKR_MESH_WS_COOKIE", &cookie);
 
     // Owner mints an invite.
     let owner = Identity::generate();
@@ -208,7 +208,7 @@ async fn enroll_with_override(
     // Build the joiner attestation the broker now requires.
     let now_ms = now_secs().saturating_mul(1000);
     let attestation =
-        tkr_mesh::JoinAttestation::issue(identity, &invite.mesh_id, token, now_ms);
+        jkr_mesh::JoinAttestation::issue(identity, &invite.mesh_id, token, now_ms);
 
     let body = serde_json::json!({
         "invite_token": token,
@@ -219,7 +219,7 @@ async fn enroll_with_override(
     });
 
     let resp = ureq::post(&format!("http://127.0.0.1:{port}/api/v1/mesh/join"))
-        .header("cookie", &format!("tkr_session={cookie}"))
+        .header("cookie", &format!("jkr_session={cookie}"))
         .send_json(body)
         .expect("join http");
     let body: serde_json::Value = resp.into_body().read_json().expect("join json");
@@ -245,5 +245,5 @@ fn now_secs() -> u64 {
 
 // Silence unused-import warnings since `enroll` is exercised indirectly.
 #[allow(dead_code)]
-fn _hold(_e: fn(&Invite, &str, &Identity, Option<&str>, u64) -> tkr_mesh::Result<JoinedMesh>) {}
-const _: fn(&Invite, &str, &Identity, Option<&str>, u64) -> tkr_mesh::Result<JoinedMesh> = enroll;
+fn _hold(_e: fn(&Invite, &str, &Identity, Option<&str>, u64) -> jkr_mesh::Result<JoinedMesh>) {}
+const _: fn(&Invite, &str, &Identity, Option<&str>, u64) -> jkr_mesh::Result<JoinedMesh> = enroll;

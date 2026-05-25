@@ -1,9 +1,9 @@
 //! Native `git` optimizations: `status -> -sb`, `diff` unified-diff condense,
 //! and RTK-style one-line success summaries for `add` / `commit` / `push` / `pull`.
 //!
-//! Env: `TKR_NATIVE_GIT=0` disables all native git paths.
-//! `TKR_NATIVE_GIT_DIFF=0` skips diff condense only.
-//! `TKR_NATIVE_GIT_COMPACT=0` keeps **`add` / `commit` / `push` / `pull`** on the
+//! Env: `JKR_NATIVE_GIT=0` disables all native git paths.
+//! `JKR_NATIVE_GIT_DIFF=0` skips diff condense only.
+//! `JKR_NATIVE_GIT_COMPACT=0` keeps **`add` / `commit` / `push` / `pull`** on the
 //! streaming + `filters/git.toml` pipeline (full porcelain).
 
 use super::NativeOutcome;
@@ -38,21 +38,21 @@ static PULL_FILES_RE: LazyLock<Regex> = LazyLock::new(|| {
 
 pub fn env_disabled() -> bool {
     matches!(
-        std::env::var("TKR_NATIVE_GIT").ok().as_deref(),
+        std::env::var("JKR_NATIVE_GIT").ok().as_deref(),
         Some("0") | Some("false") | Some("off")
     )
 }
 
 fn diff_native_disabled() -> bool {
     matches!(
-        std::env::var("TKR_NATIVE_GIT_DIFF").ok().as_deref(),
+        std::env::var("JKR_NATIVE_GIT_DIFF").ok().as_deref(),
         Some("0") | Some("false") | Some("off") | Some("passthrough")
     )
 }
 
 fn compact_disabled() -> bool {
     matches!(
-        std::env::var("TKR_NATIVE_GIT_COMPACT").ok().as_deref(),
+        std::env::var("JKR_NATIVE_GIT_COMPACT").ok().as_deref(),
         Some("0") | Some("false") | Some("off")
     )
 }

@@ -3,7 +3,7 @@
 //! The old format used `age` with `Encryptor::with_user_passphrase`, which
 //! routes through scrypt with a "1 second target work factor". That made every
 //! single vault read/write run scrypt — and since the analytics path calls
-//! `HostVault::read` per signature recorded, hot commands like `tkr ls`
+//! `HostVault::read` per signature recorded, hot commands like `jkr ls`
 //! spent 10+ seconds doing scrypt KDFs and appeared to hang.
 //!
 //! The subkey passed in here is already a high-entropy 32-byte key derived
@@ -21,7 +21,7 @@ use rand::RngCore;
 use std::io::Read;
 use zeroize::Zeroizing;
 
-const MAGIC: &[u8; 4] = b"TKR1";
+const MAGIC: &[u8; 4] = b"JKR1";
 const NONCE_LEN: usize = 24;
 
 pub fn encrypt(key: &[u8; 32], plaintext: &[u8]) -> Result<Vec<u8>> {

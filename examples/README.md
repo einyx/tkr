@@ -2,8 +2,8 @@
 
 ## Plugin manifest (`manifest.sample.json`)
 
-Rough JSON shape matching [`Manifest`](../crates/tkr-api/src/manifest.rs) (built-in plugins use the same types in Rust).
+Rough JSON shape matching [`Manifest`](../crates/jkr-api/src/manifest.rs) (built-in plugins use the same types in Rust).
 
-Implement [`Plugin`](../crates/tkr-api/src/plugin.rs) in a crate linked into `tkr`, or ship a dynamic plugin following the repo’s plugin contract specs under `docs/superpowers/specs/` when those are checked in.
+Implement [`Plugin`](../crates/jkr-api/src/plugin.rs) in a crate linked into `jkr`, or ship a dynamic plugin following the repo’s plugin contract specs under `docs/superpowers/specs/` when those are checked in.
 
-In-tree references: [`tkr-filter`](../crates/tkr-filter/), [`tkr-analytics`](../crates/tkr-analytics/).
+In-tree references: [`jkr-filter`](../crates/jkr-filter/), [`jkr-analytics`](../crates/jkr-analytics/).

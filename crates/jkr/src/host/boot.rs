@@ -17,7 +17,7 @@ pub fn get_host() -> &'static HostHandle {
 /// Fast boot: register only the filter plugin. No keychain access, no vault,
 /// no analytics. Sets HOST on first call and returns a reference.
 ///
-/// The proxy hot path calls this so `tkr <cmd>` never touches the OS keychain.
+/// The proxy hot path calls this so `jkr <cmd>` never touches the OS keychain.
 pub fn ensure() -> Result<&'static HostHandle> {
     if HOST.get().is_none() {
         let h = boot_filter_only()?;
@@ -30,7 +30,7 @@ pub fn ensure() -> Result<&'static HostHandle> {
 /// if `ensure()` was called first, supplements the existing handle without
 /// rebuilding the filter registry.
 ///
-/// Callers: `tkr gain`, `tkr suggest`, `tkr watch`, `tkr vault`, `tkr admin`.
+/// Callers: `jkr gain`, `jkr suggest`, `jkr watch`, `jkr vault`, `jkr admin`.
 pub fn ensure_full() -> Result<&'static HostHandle> {
     // Fast path: full boot already done.
     if FULL_BOOT_DONE.get().is_some() {
@@ -76,7 +76,7 @@ use crate::host::{
         HostVault,
     },
 };
-use tkr_api::capability::{
+use jkr_api::capability::{
     CapSet, STDOUT_FILTER, VAULT_READ_PUBLIC, VAULT_READ_SECRET, VAULT_WRITE_PUBLIC,
     VAULT_WRITE_SECRET,
 };
@@ -105,20 +105,20 @@ fn boot_filter_only() -> Result<HostHandle> {
     // Grant filter capability.
     let mut filter_caps = CapSet::new();
     filter_caps.grant(STDOUT_FILTER);
-    registry.grant("tkr-filter", filter_caps);
+    registry.grant("jkr-filter", filter_caps);
 
     // Register the filter plugin with an empty set of rules.
     // Rules are loaded lazily per command via `filter_for_command()`.
     {
-        use tkr_filter::v2::FilterPluginV2;
-        use tkr_filter::FilterPlugin;
+        use jkr_filter::v2::FilterPluginV2;
+        use jkr_filter::FilterPlugin;
         let inner = FilterPlugin::new(); // empty — lazy loading fills it in
         registry.register(Box::new(FilterPluginV2::new(inner)))?;
     }
 
     // Run on_load + on_start for the filter plugin (both are no-ops).
     if let Err(e) = registry.load_all() {
-        eprintln!("tkr: filter plugin load warning: {e}");
+        eprintln!("jkr: filter plugin load warning: {e}");
     }
     registry.start_all();
 
@@ -133,13 +133,13 @@ fn boot_filter_only() -> Result<HostHandle> {
 /// Called once, under `FULL_BOOT_MUTEX`.
 fn upgrade_to_full(host: &HostHandle) -> Result<()> {
     let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-    let vault_root = home.join(".tkr").join("vault");
+    let vault_root = home.join(".jkr").join("vault");
     std::fs::create_dir_all(&vault_root)?;
 
     let vault_root_str = vault_root.to_string_lossy().into_owned();
 
     let (store, master): (Arc<dyn Store>, [u8; 32]) =
-        match crate::host::vault::keychain::init_master_key_if_missing("tkr-vault", &vault_root_str)
+        match crate::host::vault::keychain::init_master_key_if_missing("jkr-vault", &vault_root_str)
         {
             Ok(key_bytes) => {
                 let mut master = [0u8; 32];
@@ -153,7 +153,7 @@ fn upgrade_to_full(host: &HostHandle) -> Result<()> {
             }
             Err(e) => {
                 eprintln!(
-                    "tkr: could not initialize master key ({e}); using in-memory vault (no persistence)"
+                    "jkr: could not initialize master key ({e}); using in-memory vault (no persistence)"
                 );
                 let store: Arc<dyn Store> = Arc::new(MemStore::default());
                 (store, [0u8; 32])
@@ -171,18 +171,18 @@ fn upgrade_to_full(host: &HostHandle) -> Result<()> {
     // Use a separate PluginRegistry for the analytics plugin; the analytics
     // thread uses `vault()` directly via `record_noise_signature_via_host`.
     {
-        use tkr_analytics::AnalyticsPluginV2;
+        use jkr_analytics::AnalyticsPluginV2;
         let mut analytics_registry = PluginRegistry::new(full_vault.clone(), host.bus.clone());
 
         let mut analytics_caps = CapSet::new();
         analytics_caps.grant(STDOUT_FILTER);
         analytics_caps.grant(VAULT_READ_PUBLIC);
         analytics_caps.grant(VAULT_WRITE_PUBLIC);
-        analytics_registry.grant("tkr-analytics", analytics_caps);
+        analytics_registry.grant("jkr-analytics", analytics_caps);
 
         analytics_registry.register(Box::new(AnalyticsPluginV2::new()))?;
         if let Err(e) = analytics_registry.load_all() {
-            eprintln!("tkr: analytics plugin load warning: {e}");
+            eprintln!("jkr: analytics plugin load warning: {e}");
         }
         analytics_registry.start_all();
         // analytics_registry is dropped here — the plugin itself is ephemeral
@@ -191,18 +191,18 @@ fn upgrade_to_full(host: &HostHandle) -> Result<()> {
 
     // Register session-recorder plugin (v2 — vault-backed FS).
     {
-        use tkr_session_recorder::SessionRecorderPluginV2;
+        use jkr_session_recorder::SessionRecorderPluginV2;
         let mut recorder_registry = PluginRegistry::new(full_vault.clone(), host.bus.clone());
 
         let mut recorder_caps = CapSet::new();
         recorder_caps.grant(STDOUT_FILTER);
         recorder_caps.grant(VAULT_READ_SECRET);
         recorder_caps.grant(VAULT_WRITE_SECRET);
-        recorder_registry.grant("tkr-session-recorder", recorder_caps);
+        recorder_registry.grant("jkr-session-recorder", recorder_caps);
 
         recorder_registry.register(Box::new(SessionRecorderPluginV2::new()))?;
         if let Err(e) = recorder_registry.load_all() {
-            eprintln!("tkr: session-recorder plugin load warning: {e}");
+            eprintln!("jkr: session-recorder plugin load warning: {e}");
         }
         recorder_registry.start_all();
     }
@@ -213,7 +213,7 @@ fn upgrade_to_full(host: &HostHandle) -> Result<()> {
 // ── Per-command lazy filter cache ────────────────────────────────────────────
 
 use std::collections::HashMap;
-use tkr_filter::FilterPlugin;
+use jkr_filter::FilterPlugin;
 
 /// Cache of per-command `FilterPlugin` instances, wrapped in `Mutex` to allow
 /// `&mut self` access during `filter()` calls (rules like CollapseRepeats track
@@ -226,7 +226,7 @@ fn filter_cache() -> &'static Mutex<HashMap<String, Arc<Mutex<FilterPlugin>>>> {
 
 /// Return (or build and cache) a `FilterPlugin` loaded with only the rules
 /// for `cmd_name`. Loads `<cmd_name>.toml` from the bundled filters dir and
-/// `~/.tkr/filters/<cmd_name>.toml` from the user dir.
+/// `~/.jkr/filters/<cmd_name>.toml` from the user dir.
 ///
 /// Falls back to an empty `FilterPlugin` if no matching TOML is found.
 /// The returned `Arc<Mutex<FilterPlugin>>` can be locked for mutable access
@@ -276,7 +276,7 @@ pub fn filter_for_command(cmd_name: &str) -> Arc<Mutex<FilterPlugin>> {
     }
 
     let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-    let user_dir = home.join(".tkr").join("filters");
+    let user_dir = home.join(".jkr").join("filters");
     if user_dir.exists() {
         load_for(&mut inner, &user_dir);
     }
@@ -297,14 +297,14 @@ pub fn filter_for_command(cmd_name: &str) -> Arc<Mutex<FilterPlugin>> {
 /// Kept for backwards compatibility with tests/benchmarks that call `boot()` directly.
 pub fn boot() -> Result<HostHandle> {
     let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-    let vault_root = home.join(".tkr").join("vault");
+    let vault_root = home.join(".jkr").join("vault");
     std::fs::create_dir_all(&vault_root)?;
 
     let vault_root_str = vault_root.to_string_lossy().into_owned();
 
-    // Try to create or load the master key (file under ~/.tkr/vault/, with legacy keychain migration).
+    // Try to create or load the master key (file under ~/.jkr/vault/, with legacy keychain migration).
     let (store, master): (Arc<dyn Store>, [u8; 32]) =
-        match crate::host::vault::keychain::init_master_key_if_missing("tkr-vault", &vault_root_str)
+        match crate::host::vault::keychain::init_master_key_if_missing("jkr-vault", &vault_root_str)
         {
             Ok(key_bytes) => {
                 let mut master = [0u8; 32];
@@ -318,7 +318,7 @@ pub fn boot() -> Result<HostHandle> {
             }
             Err(e) => {
                 eprintln!(
-                    "tkr: could not initialize master key ({e}); using in-memory vault (no persistence)"
+                    "jkr: could not initialize master key ({e}); using in-memory vault (no persistence)"
                 );
                 let store: Arc<dyn Store> = Arc::new(MemStore::default());
                 (store, [0u8; 32])
@@ -333,31 +333,31 @@ pub fn boot() -> Result<HostHandle> {
     // Grant capabilities to built-in plugins.
     let mut filter_caps = CapSet::new();
     filter_caps.grant(STDOUT_FILTER);
-    registry.grant("tkr-filter", filter_caps);
+    registry.grant("jkr-filter", filter_caps);
 
     let mut analytics_caps = CapSet::new();
     analytics_caps.grant(STDOUT_FILTER);
     analytics_caps.grant(VAULT_READ_PUBLIC);
     analytics_caps.grant(VAULT_WRITE_PUBLIC);
-    registry.grant("tkr-analytics", analytics_caps);
+    registry.grant("jkr-analytics", analytics_caps);
 
     let mut recorder_caps = CapSet::new();
     recorder_caps.grant(STDOUT_FILTER);
     recorder_caps.grant(VAULT_READ_SECRET);
     recorder_caps.grant(VAULT_WRITE_SECRET);
-    registry.grant("tkr-session-recorder", recorder_caps);
+    registry.grant("jkr-session-recorder", recorder_caps);
 
     // Register built-in filter plugin — loads bundled TOML rules first, then
-    // user overrides from ~/.tkr/filters/.
+    // user overrides from ~/.jkr/filters/.
     {
-        use tkr_filter::v2::FilterPluginV2;
-        use tkr_filter::FilterPlugin;
+        use jkr_filter::v2::FilterPluginV2;
+        use jkr_filter::FilterPlugin;
 
         let mut inner = FilterPlugin::new();
         if let Some(bundled) = crate::config::bundled_filters_dir() {
             let _ = inner.load_dir(&bundled);
         }
-        let user_dir = home.join(".tkr").join("filters");
+        let user_dir = home.join(".jkr").join("filters");
         if user_dir.exists() {
             let _ = inner.load_dir(&user_dir);
         }
@@ -366,19 +366,19 @@ pub fn boot() -> Result<HostHandle> {
 
     // Register analytics plugin (v2 — vault-backed sqlite).
     {
-        use tkr_analytics::AnalyticsPluginV2;
+        use jkr_analytics::AnalyticsPluginV2;
         registry.register(Box::new(AnalyticsPluginV2::new()))?;
     }
 
     // Register session-recorder plugin (v2 — vault-backed FS).
     {
-        use tkr_session_recorder::SessionRecorderPluginV2;
+        use jkr_session_recorder::SessionRecorderPluginV2;
         registry.register(Box::new(SessionRecorderPluginV2::new()))?;
     }
 
     // on_load: initialize schemas and run migrations.
     if let Err(e) = registry.load_all() {
-        eprintln!("tkr: plugin load warning: {e}");
+        eprintln!("jkr: plugin load warning: {e}");
     }
 
     // on_start: plugins can begin background work.

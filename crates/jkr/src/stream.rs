@@ -1,11 +1,11 @@
 use anyhow::Result;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use tkr_api::{FilterResult, LegacyPlugin as Plugin};
+use jkr_api::{FilterResult, LegacyPlugin as Plugin};
 
 use crate::host::loader::PluginRegistry;
 use crate::signature::signature_of;
-use tkr_filter::FilterPlugin;
+use jkr_filter::FilterPlugin;
 
 /// Cap on unique (command, signature) pairs held per process. Past this we stop
 /// inserting new signatures (sample-and-drop) but keep updating existing ones,
@@ -207,7 +207,7 @@ where
     let mut chars_suppressed: u64 = 0;
     let mut blank_run: u32 = 0;
     // --max-tokens budget. None = unlimited. Read once at start.
-    let max_tokens = std::env::var("TKR_MAX_TOKENS")
+    let max_tokens = std::env::var("JKR_MAX_TOKENS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok());
     let mut emitted_chars: u64 = 0;
@@ -218,7 +218,7 @@ where
         let raw = match line_result {
             Ok(l) => l,
             Err(e) => {
-                eprintln!("tkr: read error: {e}");
+                eprintln!("jkr: read error: {e}");
                 continue;
             }
         };
@@ -300,7 +300,7 @@ where
 
     if budget_exceeded {
         let msg = format!(
-            "(... {} more lines elided — TKR_MAX_TOKENS={} reached)",
+            "(... {} more lines elided — JKR_MAX_TOKENS={} reached)",
             elided_lines,
             max_tokens.unwrap_or(0)
         );
@@ -340,13 +340,13 @@ pub fn run_pipeline_v2<I>(
 where
     I: Iterator<Item = Result<String>>,
 {
-    use tkr_api::plugin::CommandCtx;
+    use jkr_api::plugin::CommandCtx;
 
     let mut emitted = Vec::new();
     let mut chars_in: u64 = 0;
     let mut chars_suppressed: u64 = 0;
     let mut blank_run: u32 = 0;
-    let max_tokens = std::env::var("TKR_MAX_TOKENS")
+    let max_tokens = std::env::var("JKR_MAX_TOKENS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok());
     let mut emitted_chars: u64 = 0;
@@ -354,14 +354,14 @@ where
     let mut elided_lines: u64 = 0;
     // Buffered mode: defer all stdout writes until end-of-pipeline so we can
     // try to compact the whole output as JSON. Triggered by --compact-json
-    // (wired via TKR_COMPACT_JSON env from main.rs).
-    let buffered = std::env::var_os("TKR_COMPACT_JSON").is_some();
+    // (wired via JKR_COMPACT_JSON env from main.rs).
+    let buffered = std::env::var_os("JKR_COMPACT_JSON").is_some();
 
     for (index, line_result) in lines.enumerate() {
         let raw = match line_result {
             Ok(l) => l,
             Err(e) => {
-                eprintln!("tkr: read error: {e}");
+                eprintln!("jkr: read error: {e}");
                 continue;
             }
         };
@@ -428,7 +428,7 @@ where
 
     if budget_exceeded {
         let msg = format!(
-            "(... {} more lines elided — TKR_MAX_TOKENS={} reached)",
+            "(... {} more lines elided — JKR_MAX_TOKENS={} reached)",
             elided_lines,
             max_tokens.unwrap_or(0)
         );
@@ -485,7 +485,7 @@ fn compact_json_if_possible(body: &str) -> Option<String> {
 /// Fast pipeline for the proxy hot path.
 ///
 /// Uses a single `FilterPlugin` (pre-loaded for the current command) directly,
-/// avoiding the registry overhead. This is the path taken by `tkr <cmd>`.
+/// avoiding the registry overhead. This is the path taken by `jkr <cmd>`.
 ///
 /// `raw_transcript` receives **pre-filter** lines (merged stdout/stderr, one line
 /// per read) when tee capture is enabled — see [`crate::tee`].
@@ -505,18 +505,18 @@ pub fn run_pipeline_direct(
     let mut chars_in: u64 = 0;
     let mut chars_suppressed: u64 = 0;
     let mut blank_run: u32 = 0;
-    let max_tokens = std::env::var("TKR_MAX_TOKENS")
+    let max_tokens = std::env::var("JKR_MAX_TOKENS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok());
     let mut emitted_chars: u64 = 0;
     let mut budget_exceeded = false;
     let mut elided_lines: u64 = 0;
-    let buffered = std::env::var_os("TKR_COMPACT_JSON").is_some();
+    let buffered = std::env::var_os("JKR_COMPACT_JSON").is_some();
     // Keep machine-readable output stable in compact-json mode.
     let prefix = if buffered {
         String::new()
     } else {
-        std::env::var("TKR_OUTPUT_PREFIX").ok().unwrap_or_default()
+        std::env::var("JKR_OUTPUT_PREFIX").ok().unwrap_or_default()
     };
 
     let mut index: u64 = 0;
@@ -524,7 +524,7 @@ pub fn run_pipeline_direct(
         let raw = match stream.next() {
             None => break,
             Some(Err(e)) => {
-                eprintln!("tkr: read error: {e}");
+                eprintln!("jkr: read error: {e}");
                 continue;
             }
             Some(Ok(l)) => l,
@@ -555,7 +555,7 @@ pub fn run_pipeline_direct(
             blank_run = 0;
         }
 
-        use tkr_api::LegacyPlugin as LegacyTrait;
+        use jkr_api::LegacyPlugin as LegacyTrait;
         let result = LegacyTrait::filter(filter, &line, command, args, line_idx);
         let (suppressed, current) = match result {
             FilterResult::Suppress | FilterResult::SuppressWithNote(_) => (true, line.clone()),
@@ -602,7 +602,7 @@ pub fn run_pipeline_direct(
 
     if budget_exceeded {
         let msg = format!(
-            "(... {} more lines elided — TKR_MAX_TOKENS={} reached)",
+            "(... {} more lines elided — JKR_MAX_TOKENS={} reached)",
             elided_lines,
             max_tokens.unwrap_or(0)
         );

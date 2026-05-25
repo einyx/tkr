@@ -1,7 +1,7 @@
 //! Read-only mesh-status MCP tool. Wraps the broker's
 //! `/api/v1/mesh/status` endpoint by shelling out to curl — same pattern
-//! as `jobs.rs` shells out to the tkr binary. Avoids pulling reqwest +
-//! TLS into tkr-mcp for one HTTP GET.
+//! as `jobs.rs` shells out to the jkr binary. Avoids pulling reqwest +
+//! TLS into jkr-mcp for one HTTP GET.
 
 use anyhow::{anyhow, Context, Result};
 use std::process::Command;

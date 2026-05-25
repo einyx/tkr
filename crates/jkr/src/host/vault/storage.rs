@@ -5,8 +5,8 @@ use std::sync::{
 
 use rusqlite::{params_from_iter, types::Value as SqlValue, Connection};
 use serde_json::Value;
-use tkr_api::manifest::SensitivityClass;
-use tkr_api::{Error, Result};
+use jkr_api::manifest::SensitivityClass;
+use jkr_api::{Error, Result};
 
 use crate::host::vault::HostVault;
 
@@ -67,7 +67,7 @@ impl KvImpl {
     }
 }
 
-impl tkr_api::handles::Kv for KvImpl {
+impl jkr_api::handles::Kv for KvImpl {
     fn get(&self, key: &str) -> Result<Option<Value>> {
         match self
             .vault
@@ -117,8 +117,8 @@ mod tests_kv {
     use super::*;
     use crate::host::vault::store::{MemStore, Store};
     use std::sync::Arc;
-    use tkr_api::handles::Kv;
-    use tkr_api::manifest::SensitivityClass;
+    use jkr_api::handles::Kv;
+    use jkr_api::manifest::SensitivityClass;
 
     fn vault() -> Arc<HostVault> {
         let store: Arc<dyn Store> = Arc::new(MemStore::default());
@@ -202,7 +202,7 @@ impl SqliteImpl {
             Ok(None) => {}
             Err(e) => {
                 eprintln!(
-                    "tkr: warning: vault blob for {plugin}/{key} unreadable ({e}); starting fresh"
+                    "jkr: warning: vault blob for {plugin}/{key} unreadable ({e}); starting fresh"
                 );
             }
         }
@@ -272,7 +272,7 @@ fn sql_ref_to_json(v: &rusqlite::types::ValueRef) -> Value {
     }
 }
 
-impl tkr_api::handles::Sqlite for SqliteImpl {
+impl jkr_api::handles::Sqlite for SqliteImpl {
     fn execute(&self, sql: &str, params: &[Value]) -> Result<u64> {
         let conn = self.conn.lock().unwrap();
         let p: Vec<SqlValue> = params.iter().map(json_to_sql).collect();
@@ -316,7 +316,7 @@ mod tests_sqlite {
     use crate::host::vault::store::{FsStore, Store};
     use std::sync::Arc;
     use tempfile::tempdir;
-    use tkr_api::handles::Sqlite as SqliteTrait;
+    use jkr_api::handles::Sqlite as SqliteTrait;
 
     #[test]
     fn sqlite_persists_across_handle_drops() {
@@ -373,7 +373,7 @@ impl FsImpl {
     }
 }
 
-impl tkr_api::handles::Fs for FsImpl {
+impl jkr_api::handles::Fs for FsImpl {
     fn read(&self, path: &str) -> Result<Vec<u8>> {
         let z = self
             .vault
@@ -410,7 +410,7 @@ mod tests_fs {
     use super::*;
     use crate::host::vault::store::{MemStore, Store};
     use std::sync::Arc;
-    use tkr_api::handles::Fs;
+    use jkr_api::handles::Fs;
 
     fn vault() -> Arc<HostVault> {
         let store: Arc<dyn Store> = Arc::new(MemStore::default());

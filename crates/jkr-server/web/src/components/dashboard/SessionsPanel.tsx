@@ -1,4 +1,4 @@
-// Ingested CLI/agent session vaults — the original tkr-session
+// Ingested CLI/agent session vaults — the original jkr-session
 // content. Kept as a secondary panel for operators who already ship
 // vaults to /api/v1/ingest; the row click opens SessionDetail.
 
@@ -31,7 +31,7 @@ export function SessionsPanel({ sessions, error, onSelect }: Props) {
               <th>id</th>
               <th>agent</th>
               <th>started</th>
-              <th>tkr</th>
+              <th>jkr</th>
             </tr>
           </thead>
           <tbody>
@@ -44,7 +44,7 @@ export function SessionsPanel({ sessions, error, onSelect }: Props) {
                 <td>{s.session_id}</td>
                 <td className="muted">{s.agent}</td>
                 <td className="muted">{s.started_at}</td>
-                <td className="muted">{s.tkr_version}</td>
+                <td className="muted">{s.jkr_version}</td>
               </tr>
             ))}
           </tbody>

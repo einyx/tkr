@@ -1,6 +1,6 @@
 //! Native grep/rg: stream stdout (bounded memory), optional small-output passthrough.
 //! Aligns compressed output defaults with `filters/grep.toml`.
-//! Env: `TKR_NATIVE_GREP`, `TKR_GREP_NATIVE_*`, `TKR_GREP_NATIVE_RAW_MAX`.
+//! Env: `JKR_NATIVE_GREP`, `JKR_GREP_NATIVE_*`, `JKR_GREP_NATIVE_RAW_MAX`.
 //! For **`rg --json`** / **`--json-lines`**, parses the JSON match stream into the same grouped summary as text mode.
 
 use super::NativeOutcome;
@@ -14,10 +14,10 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::LazyLock;
 
-/// `TKR_NATIVE_GREP=0` → fall back to TOML line filters only.
+/// `JKR_NATIVE_GREP=0` → fall back to TOML line filters only.
 pub fn env_disabled() -> bool {
     matches!(
-        std::env::var("TKR_NATIVE_GREP").ok().as_deref(),
+        std::env::var("JKR_NATIVE_GREP").ok().as_deref(),
         Some("0") | Some("false") | Some("off")
     )
 }
@@ -31,9 +31,9 @@ struct Limits {
 impl Limits {
     fn from_env() -> Self {
         Self {
-            max_results: parse_usize_env("TKR_GREP_NATIVE_MAX_RESULTS", 50),
-            max_per_file: parse_usize_env("TKR_GREP_NATIVE_PER_FILE", 2),
-            max_line_len: parse_usize_env("TKR_GREP_NATIVE_MAX_LINE", 200),
+            max_results: parse_usize_env("JKR_GREP_NATIVE_MAX_RESULTS", 50),
+            max_per_file: parse_usize_env("JKR_GREP_NATIVE_PER_FILE", 2),
+            max_line_len: parse_usize_env("JKR_GREP_NATIVE_MAX_LINE", 200),
         }
     }
 }
@@ -46,10 +46,10 @@ fn parse_usize_env(key: &str, default: usize) -> usize {
         .unwrap_or(default)
 }
 
-/// `TKR_GREP_NATIVE_RAW_MAX` — if total stdout stays under this many bytes, print
+/// `JKR_GREP_NATIVE_RAW_MAX` — if total stdout stays under this many bytes, print
 /// raw grep output (no grouping). `0` = always run structured compression.
 fn parse_raw_max() -> usize {
-    std::env::var("TKR_GREP_NATIVE_RAW_MAX")
+    std::env::var("JKR_GREP_NATIVE_RAW_MAX")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(8192)
@@ -470,7 +470,7 @@ src/b.rs:10:fn b()
 
     #[test]
     fn parses_windows_drive_path() {
-        let line = r"C:\proj\crates\tkr\src\lib.rs:42:pub fn x()";
+        let line = r"C:\proj\crates\jkr\src\lib.rs:42:pub fn x()";
         let t = parse_grep_hit(line).expect("parse");
         assert!(t.0.starts_with("C:"));
         assert_eq!(t.1, 42);
@@ -479,7 +479,7 @@ src/b.rs:10:fn b()
 
     #[test]
     fn parses_unix_with_column() {
-        let line = "crates/tkr/src/lib.rs:10:3:pub struct";
+        let line = "crates/jkr/src/lib.rs:10:3:pub struct";
         let t = parse_grep_hit(line).expect("parse");
         assert_eq!(t.1, 10);
         assert_eq!(t.2, "pub struct");

@@ -1,8 +1,8 @@
 command = "grep"
 
-# For `tkr grep` / `tkr rg`, the proxy may use the native RTK-style handler
-# (capture + group-by-file caps) when `TKR_NATIVE_GREP` is unset; set
-# `TKR_NATIVE_GREP=0` to force this TOML pipeline only.
+# For `jkr grep` / `jkr rg`, the proxy may use the native RTK-style handler
+# (capture + group-by-file caps) when `JKR_NATIVE_GREP` is unset; set
+# `JKR_NATIVE_GREP=0` to force this TOML pipeline only.
 
 # Drop matches whose path is inside a noisy directory. `grep -r` is a
 # common LLM tool call; without this filter, results are dominated by

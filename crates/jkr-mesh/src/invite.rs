@@ -118,7 +118,7 @@ impl Invite {
     /// Parse an invite from any of the accepted URL shapes:
     /// - `https://<host>/join/<token>`
     /// - `https://<host>/<locale>/join/<token>` (two-letter locale prefix)
-    /// - `tkrmesh://join/<token>`
+    /// - `jkrmesh://join/<token>`
     /// - bare base64url token (≥ 20 chars, alphabet `[A-Za-z0-9_-]`)
     ///
     /// This *parses* the structure but does **not** verify the signature
@@ -182,7 +182,7 @@ fn domain_separator() -> [u8; 32] {
     );
     let mut buf = Vec::with_capacity(5 * 32);
     buf.extend_from_slice(&type_hash);
-    buf.extend_from_slice(&Keccak256::digest(b"tkr-mesh"));
+    buf.extend_from_slice(&Keccak256::digest(b"jkr-mesh"));
     buf.extend_from_slice(&Keccak256::digest(b"1"));
     // chainId = 0 (off-chain)
     buf.extend_from_slice(&[0u8; 32]);
@@ -206,8 +206,8 @@ fn address_padded(addr: &Address) -> [u8; 32] {
 }
 
 fn extract_token(s: &str) -> Result<String> {
-    // tkrmesh://join/<token>
-    if let Some(rest) = s.strip_prefix("tkrmesh://join/") {
+    // jkrmesh://join/<token>
+    if let Some(rest) = s.strip_prefix("jkrmesh://join/") {
         return validate_bare_token(rest);
     }
 
@@ -369,7 +369,7 @@ mod tests {
     fn url_round_trip_custom_scheme() {
         let invite = sample_invite();
         let token = invite.to_token().unwrap();
-        let url = format!("tkrmesh://join/{token}");
+        let url = format!("jkrmesh://join/{token}");
         let back = Invite::parse_url(&url).unwrap();
         assert_eq!(back.signature, invite.signature);
     }

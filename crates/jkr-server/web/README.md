@@ -1,23 +1,23 @@
-# tkr-server web dashboard
+# jkr-server web dashboard
 
 React + TypeScript + Vite. Builds to a **single inlined HTML file** at
-`crates/tkr-server/static/index.html` so the existing
+`crates/jkr-server/static/index.html` so the existing
 `include_str!("../static/index.html")` in `main.rs` continues to work
 unchanged.
 
 ## Local dev
 
 ```sh
-cd crates/tkr-server/web
+cd crates/jkr-server/web
 npm install   # one-time
 npm run dev   # vite dev server on http://localhost:5173
-              # /api/* is proxied to localhost:4000 (run tkr-server separately)
+              # /api/* is proxied to localhost:4000 (run jkr-server separately)
 ```
 
 Run the backend in another terminal:
 
 ```sh
-HOST=127.0.0.1 PORT=4000 cargo run -p tkr-server
+HOST=127.0.0.1 PORT=4000 cargo run -p jkr-server
 ```
 
 Open `http://localhost:5173`.
@@ -25,15 +25,15 @@ Open `http://localhost:5173`.
 ## Production build
 
 ```sh
-cd crates/tkr-server/web
+cd crates/jkr-server/web
 npm run build
 ```
 
-Outputs `crates/tkr-server/static/index.html` (single file, all JS + CSS
+Outputs `crates/jkr-server/static/index.html` (single file, all JS + CSS
 inlined via `vite-plugin-singlefile`). Then a normal Rust release build:
 
 ```sh
-cargo build --release -p tkr-server
+cargo build --release -p jkr-server
 ```
 
 The Dockerfile does both stages automatically: `docker compose up --build`.
@@ -60,7 +60,7 @@ web/
 
 ## Why single-file output
 
-`tkr-server` is a single Rust binary. Embedding the dashboard via
+`jkr-server` is a single Rust binary. Embedding the dashboard via
 `include_str!` keeps that property — no static-asset coordination, no
 runtime file lookup, the dashboard travels with the binary.
 

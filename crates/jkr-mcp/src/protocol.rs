@@ -75,7 +75,7 @@ pub fn initialize_result() -> Value {
         "protocolVersion": "2024-11-05",
         "capabilities": { "tools": {} },
         "serverInfo": {
-            "name": "tkr-mcp",
+            "name": "jkr-mcp",
             "version": env!("CARGO_PKG_VERSION"),
         }
     })
@@ -87,8 +87,8 @@ pub fn tools_catalog() -> Value {
     serde_json::json!({
         "tools": [
             {
-                "name": "tkr_outline_file",
-                "description": "USE BEFORE `Read` on any source file >200 lines. Returns symbol kind + name + line range (no bodies) — typically 5-15% the byte cost of reading the file. Workflow: outline first to find the right line range, THEN native Read with offset/limit for the body. Supports rust/python/go/ts/js/java/c/c++/ruby. Errors helpfully if you pass a directory (use tkr_grep_summary or tkr_find_symbol instead).",
+                "name": "jkr_outline_file",
+                "description": "USE BEFORE `Read` on any source file >200 lines. Returns symbol kind + name + line range (no bodies) — typically 5-15% the byte cost of reading the file. Workflow: outline first to find the right line range, THEN native Read with offset/limit for the body. Supports rust/python/go/ts/js/java/c/c++/ruby. Errors helpfully if you pass a directory (use jkr_grep_summary or jkr_find_symbol instead).",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -101,7 +101,7 @@ pub fn tools_catalog() -> Value {
                 }
             },
             {
-                "name": "tkr_find_symbol",
+                "name": "jkr_find_symbol",
                 "description": "USE INSTEAD OF `Grep` when you know the exact symbol name (function/struct/type/method). One indexed lookup returns every definition site in the repo at <100B per response. Native Grep on the same name typically returns 50-500× more bytes because it matches every call site, comment, and string literal too. Falls back to a stateless scan if no index exists, so it works on any repo without setup.",
                 "inputSchema": {
                     "type": "object",
@@ -119,8 +119,8 @@ pub fn tools_catalog() -> Value {
                 }
             },
             {
-                "name": "tkr_grep_summary",
-                "description": "USE INSTEAD OF `Grep` for any pattern likely to hit >10 files. Returns matches grouped by file with per-file caps (default 3 matches/file, 30 files total) — bounded output even when the pattern matches thousands of lines. Native Grep dumps everything; this gives you a navigable digest. For exact symbol-name lookups prefer tkr_find_symbol (even cheaper).",
+                "name": "jkr_grep_summary",
+                "description": "USE INSTEAD OF `Grep` for any pattern likely to hit >10 files. Returns matches grouped by file with per-file caps (default 3 matches/file, 30 files total) — bounded output even when the pattern matches thousands of lines. Native Grep dumps everything; this gives you a navigable digest. For exact symbol-name lookups prefer jkr_find_symbol (even cheaper).",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -149,8 +149,8 @@ pub fn tools_catalog() -> Value {
                 }
             },
             {
-                "name": "tkr_jobs_list",
-                "description": "List jobs on the tkr JobBoard contract: id, status (Open/Taken/Completed/Accepted/Cancelled/TimedOut), reward in wei, deadline, and a short preview of the spec. Read-only — no key required, no on-chain writes. Targets the tkr devnet board by default; operators can override via the TKR_JOB_BOARD / TKR_JOB_RPC_URL env vars on the MCP server.",
+                "name": "jkr_jobs_list",
+                "description": "List jobs on the jkr JobBoard contract: id, status (Open/Taken/Completed/Accepted/Cancelled/TimedOut), reward in wei, deadline, and a short preview of the spec. Read-only — no key required, no on-chain writes. Targets the jkr devnet board by default; operators can override via the JKR_JOB_BOARD / JKR_JOB_RPC_URL env vars on the MCP server.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -164,7 +164,7 @@ pub fn tools_catalog() -> Value {
                 }
             },
             {
-                "name": "tkr_callers_of",
+                "name": "jkr_callers_of",
                 "description": "USE INSTEAD OF `Grep \"\\bfoo\\(\"` when answering 'where is X called?'. Returns every call site of a symbol by name from the indexed refs table, grouped per caller with line lists. Name resolution is unqualified (matches any `foo()` regardless of module/receiver). First call auto-builds the index (~1-5s on a normal repo); subsequent calls are instant.",
                 "inputSchema": {
                     "type": "object",
@@ -176,7 +176,7 @@ pub fn tools_catalog() -> Value {
                 }
             },
             {
-                "name": "tkr_callees_of",
+                "name": "jkr_callees_of",
                 "description": "USE INSTEAD OF reading a function's body to figure out 'what does X actually do?'. Returns the list of unresolved callees referenced inside the symbol, deduped with call-site line lists. Reading the body costs N×line-bytes; this is ~50B regardless of body size. First call auto-builds the index (~1-5s on a normal repo); subsequent calls are instant.",
                 "inputSchema": {
                     "type": "object",
@@ -188,7 +188,7 @@ pub fn tools_catalog() -> Value {
                 }
             },
             {
-                "name": "tkr_call_path",
+                "name": "jkr_call_path",
                 "description": "USE INSTEAD OF walking callees by hand for 'does X eventually reach Y?' questions. Shortest call-path between two symbols via BFS, bounded depth, cycle-safe. One call replaces ~depth × callees_of invocations. Returns the chain `from -> A -> B -> to` with per-hop lines, or 'no path'. First call auto-builds the index (~1-5s on a normal repo); subsequent calls are instant.",
                 "inputSchema": {
                     "type": "object",
@@ -207,8 +207,8 @@ pub fn tools_catalog() -> Value {
                 }
             },
             {
-                "name": "tkr_signature",
-                "description": "USE INSTEAD OF `Read` on a file just to see a function's signature. Returns kind + name + the one-line declaration + file:line. ~50B vs reading 500-5000B of file just to find the signature. Pairs with tkr_read_smart (which gives location, then this gives shape). First call auto-builds the index (~1-5s on a normal repo); subsequent calls are instant.",
+                "name": "jkr_signature",
+                "description": "USE INSTEAD OF `Read` on a file just to see a function's signature. Returns kind + name + the one-line declaration + file:line. ~50B vs reading 500-5000B of file just to find the signature. Pairs with jkr_read_smart (which gives location, then this gives shape). First call auto-builds the index (~1-5s on a normal repo); subsequent calls are instant.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -219,8 +219,8 @@ pub fn tools_catalog() -> Value {
                 }
             },
             {
-                "name": "tkr_read_smart",
-                "description": "USE FIRST for 'where is X done in this codebase?' questions instead of guessing files. FTS-ranked symbol search via natural-language query. Returns the top-K best-matched symbols with kind/name/location — no bodies, no signatures by default. Then drill in: tkr_signature for shape, native Read with the line range for body. Pass verbose=true to inline signatures when you specifically need them. First call auto-builds the index (~1-5s on a normal repo); subsequent calls are instant.",
+                "name": "jkr_read_smart",
+                "description": "USE FIRST for 'where is X done in this codebase?' questions instead of guessing files. FTS-ranked symbol search via natural-language query. Returns the top-K best-matched symbols with kind/name/location — no bodies, no signatures by default. Then drill in: jkr_signature for shape, native Read with the line range for body. Pass verbose=true to inline signatures when you specifically need them. First call auto-builds the index (~1-5s on a normal repo); subsequent calls are instant.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -233,8 +233,8 @@ pub fn tools_catalog() -> Value {
                 }
             },
             {
-                "name": "tkr_index_watch",
-                "description": "Start a background file watcher for a repo. After this, file edits trigger automatic incremental re-indexing (debounced 500ms) — no need to call tkr_index_build again. Idempotent; safe to call multiple times for the same root. The watcher persists for the lifetime of the MCP server process.",
+                "name": "jkr_index_watch",
+                "description": "Start a background file watcher for a repo. After this, file edits trigger automatic incremental re-indexing (debounced 500ms) — no need to call jkr_index_build again. Idempotent; safe to call multiple times for the same root. The watcher persists for the lifetime of the MCP server process.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -243,8 +243,8 @@ pub fn tools_catalog() -> Value {
                 }
             },
             {
-                "name": "tkr_index_build",
-                "description": "Build or refresh the persistent code index for a repo. Walks gitignore-aware and re-parses only files whose content changed. Once built, tkr_find_symbol queries the index (millisecond lookups) instead of scanning the tree. Safe to call repeatedly.",
+                "name": "jkr_index_build",
+                "description": "Build or refresh the persistent code index for a repo. Walks gitignore-aware and re-parses only files whose content changed. Once built, jkr_find_symbol queries the index (millisecond lookups) instead of scanning the tree. Safe to call repeatedly.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -256,8 +256,8 @@ pub fn tools_catalog() -> Value {
                 }
             },
             {
-                "name": "tkr_mesh_status",
-                "description": "Show live mesh broker status — how many peers are connected to each mesh on the tkr broker. Read-only HTTP GET against /api/v1/mesh/status. Targets the public broker at https://tkr.prysm.sh by default; operators can override via the TKR_MESH_HOST env var on the MCP server.",
+                "name": "jkr_mesh_status",
+                "description": "Show live mesh broker status — how many peers are connected to each mesh on the jkr broker. Read-only HTTP GET against /api/v1/mesh/status. Targets the public broker at https://tkr.prysm.sh by default; operators can override via the JKR_MESH_HOST env var on the MCP server.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {}

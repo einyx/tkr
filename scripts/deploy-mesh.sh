@@ -5,7 +5,7 @@
 #
 # Required env:
 #   RPC_URL         JSON-RPC endpoint (e.g. https://your-chain.conduit.xyz)
-#   PRIVATE_KEY_FILE  Path to a 0600 file with `TKR_PAYMENT_KEY=0x...`
+#   PRIVATE_KEY_FILE  Path to a 0600 file with `JKR_PAYMENT_KEY=0x...`
 #                     OR a single bare hex line (with/without 0x prefix)
 # Optional:
 #   CHAIN_ID        Numeric chain id (--chain-id flag, recommended)
@@ -36,7 +36,7 @@ if [ ! -f "$PRIVATE_KEY_FILE" ]; then
 fi
 
 # Pull the private key out of the file. Accepts either:
-#   TKR_PAYMENT_KEY=0xabcd…
+#   JKR_PAYMENT_KEY=0xabcd…
 #   0xabcd…
 #   abcd…
 PRIVATE_KEY=$(grep -m1 -oE '0x[0-9a-fA-F]{64}|[0-9a-fA-F]{64}' "$PRIVATE_KEY_FILE" | head -1 || true)
@@ -98,6 +98,6 @@ echo "  address:  $ESCROW"
 echo "  chain:    ${CHAIN_ID:-?}"
 echo "  rpc:      $RPC_URL"
 echo
-echo "Use this address with tkr pay:"
-echo "  tkr pay receipt-issue --contract $ESCROW --chain-id ${CHAIN_ID:-CHAIN_ID} ..."
-echo "  tkr pay claim         --rpc-url $RPC_URL --receipt R.json --key-file $PRIVATE_KEY_FILE"
+echo "Use this address with jkr pay:"
+echo "  jkr pay receipt-issue --contract $ESCROW --chain-id ${CHAIN_ID:-CHAIN_ID} ..."
+echo "  jkr pay claim         --rpc-url $RPC_URL --receipt R.json --key-file $PRIVATE_KEY_FILE"

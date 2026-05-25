@@ -1,16 +1,16 @@
-//! tkr-session-recorder — captures AI agent tool-call events into the vault.
+//! jkr-session-recorder — captures AI agent tool-call events into the vault.
 //!
 //! Two write paths share the same on-disk schema:
 //!
 //! 1. The in-process [`SessionRecorderPluginV2`] subscribes to `on_command_*`
-//!    lifecycle hooks and records Bash commands run through the tkr proxy.
-//! 2. The out-of-process `tkr hook claude` / `tkr hook universal` commands call
+//!    lifecycle hooks and records Bash commands run through the jkr proxy.
+//! 2. The out-of-process `jkr hook claude` / `jkr hook universal` commands call
 //!    [`storage::append_event`] directly to record non-Bash tool calls
 //!    (Read, Edit, WebFetch, etc.).
 //!
 //! Storage layout:
 //! ```text
-//! ~/.tkr/vault/<encrypted>/sessions/<session_id>/
+//! ~/.jkr/vault/<encrypted>/sessions/<session_id>/
 //!   meta.json       — SessionMeta
 //!   events.jsonl    — append-only Event stream
 //! ```
@@ -25,7 +25,7 @@ pub use storage::{
 
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use tkr_api::{
+use jkr_api::{
     capability,
     host::Host,
     manifest::{Manifest, SensitivityClass, StorageKind, StorageRequest},
@@ -37,11 +37,11 @@ use tkr_api::{
 /// command when running under Claude Code (which propagates `session_id` in
 /// its hook input). When unset, the plugin generates a per-process ID on first
 /// command and reuses it for the lifetime of the process.
-pub const SESSION_ID_ENV: &str = "TKR_SESSION_ID";
+pub const SESSION_ID_ENV: &str = "JKR_SESSION_ID";
 
 /// Environment variable for the agent label (e.g. `claude-code`, `cursor`,
 /// `manual`). Defaults to `manual` when unset.
-pub const AGENT_ENV: &str = "TKR_AGENT";
+pub const AGENT_ENV: &str = "JKR_AGENT";
 
 pub struct SessionRecorderPluginV2 {
     host: Mutex<Option<Arc<dyn Host>>>,
@@ -78,7 +78,7 @@ impl SessionRecorderPluginV2 {
 
     /// Resolve the active session ID — env var first, then a freshly-generated
     /// one cached for the rest of the process. On first resolution this also
-    /// writes `meta.json` so the session is discoverable by `tkr replay`.
+    /// writes `meta.json` so the session is discoverable by `jkr replay`.
     fn resolve_session(&self, host: &dyn Host) -> String {
         let mut guard = self.session_id.lock().unwrap();
         if let Some(id) = guard.as_ref() {
@@ -87,7 +87,7 @@ impl SessionRecorderPluginV2 {
         let id = std::env::var(SESSION_ID_ENV).unwrap_or_else(|_| storage::new_session_id());
 
         // Best-effort meta write. If the meta already exists (e.g. another
-        // tkr invocation in the same session set it), don't overwrite the
+        // jkr invocation in the same session set it), don't overwrite the
         // started_at — preserve the original.
         let existing = storage::read_meta(host, &id).ok().flatten();
         let meta = SessionMeta {
@@ -101,7 +101,7 @@ impl SessionRecorderPluginV2 {
             project_root: std::env::current_dir()
                 .ok()
                 .map(|p| p.to_string_lossy().into_owned()),
-            tkr_version: env!("CARGO_PKG_VERSION").into(),
+            jkr_version: env!("CARGO_PKG_VERSION").into(),
         };
         let _ = storage::write_meta(host, &meta);
 
@@ -126,7 +126,7 @@ impl Default for SessionRecorderPluginV2 {
 impl Plugin for SessionRecorderPluginV2 {
     fn manifest(&self) -> Manifest {
         Manifest {
-            name: "tkr-session-recorder".into(),
+            name: "jkr-session-recorder".into(),
             version: env!("CARGO_PKG_VERSION").into(),
             capabilities_required: vec![
                 capability::VAULT_READ_SECRET.into(),
@@ -233,7 +233,7 @@ impl Plugin for SessionRecorderPluginV2 {
 #[cfg(feature = "test-host")]
 mod tests {
     use super::*;
-    use tkr_api::test_host::TestHost;
+    use jkr_api::test_host::TestHost;
 
     fn ctx(command: &str, args: &str) -> CommandCtx {
         CommandCtx {
@@ -249,7 +249,7 @@ mod tests {
         std::env::set_var(SESSION_ID_ENV, "test-session-001");
         std::env::set_var(AGENT_ENV, "test");
 
-        let host: Arc<dyn Host + 'static> = Arc::new(TestHost::new("tkr-session-recorder"));
+        let host: Arc<dyn Host + 'static> = Arc::new(TestHost::new("jkr-session-recorder"));
         let mut p = SessionRecorderPluginV2::new();
         p.on_load(host.clone()).unwrap();
 
@@ -275,7 +275,7 @@ mod tests {
     #[test]
     fn assigns_monotonic_seq() {
         std::env::set_var(SESSION_ID_ENV, "test-session-002");
-        let host: Arc<dyn Host + 'static> = Arc::new(TestHost::new("tkr-session-recorder"));
+        let host: Arc<dyn Host + 'static> = Arc::new(TestHost::new("jkr-session-recorder"));
         let mut p = SessionRecorderPluginV2::new();
         p.on_load(host.clone()).unwrap();
 
@@ -299,7 +299,7 @@ mod tests {
         std::env::set_var(SESSION_ID_ENV, "test-session-003");
         std::env::set_var(AGENT_ENV, "claude-code");
 
-        let host: Arc<dyn Host + 'static> = Arc::new(TestHost::new("tkr-session-recorder"));
+        let host: Arc<dyn Host + 'static> = Arc::new(TestHost::new("jkr-session-recorder"));
         let mut p = SessionRecorderPluginV2::new();
         p.on_load(host.clone()).unwrap();
 

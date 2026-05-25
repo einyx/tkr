@@ -1,4 +1,4 @@
-//! tkr-mesh broker. Owned by tkr-server. Two surfaces:
+//! jkr-mesh broker. Owned by jkr-server. Two surfaces:
 //!
 //! 1. `POST /api/v1/mesh/join` — HTTP enrollment. Caller posts
 //!    `{ invite_token, invite_payload, address, display_name? }`. Broker
@@ -17,8 +17,8 @@ use std::sync::{Arc, Mutex};
 
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use tkr_mesh::frames::{AckFields, ErrorFields, Frame, PushFields, HELLO_MAX_SKEW_MS};
-use tkr_mesh::{Address, Invite, JoinAttestation, JOIN_ATTESTATION_MAX_SKEW_MS};
+use jkr_mesh::frames::{AckFields, ErrorFields, Frame, PushFields, HELLO_MAX_SKEW_MS};
+use jkr_mesh::{Address, Invite, JoinAttestation, JOIN_ATTESTATION_MAX_SKEW_MS};
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_tungstenite::WebSocketStream;
@@ -292,8 +292,8 @@ where
     // verify_with_now(). A captured Hello older than HELLO_MAX_SKEW_MS
     // (or with a future-dated timestamp out of window) is rejected — this
     // makes captured frames non-replayable by a network adversary.
-    let hello_check = tkr_mesh::frames::Hello {
-        kind: tkr_mesh::frames::HelloTag::Hello,
+    let hello_check = jkr_mesh::frames::Hello {
+        kind: jkr_mesh::frames::HelloTag::Hello,
         mesh_id: hello.mesh_id.clone(),
         address: hello.address,
         session_id: hello.session_id.clone(),
@@ -306,7 +306,7 @@ where
         .unwrap_or(0);
     if let Err(e) = hello_check.verify_with_now(now_ms, HELLO_MAX_SKEW_MS) {
         let code = match e {
-            tkr_mesh::Error::BadSignature => "bad_signature",
+            jkr_mesh::Error::BadSignature => "bad_signature",
             _ => "stale_hello",
         };
         let _ = send_error(&mut sink, code, "hello rejected", Some(hello.session_id.clone())).await;
@@ -430,7 +430,7 @@ fn new_member_id() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tkr_mesh::{Identity, Role};
+    use jkr_mesh::{Identity, Role};
 
     #[test]
     fn enroll_idempotent() {

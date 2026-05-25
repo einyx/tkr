@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Update einyx/homebrew-tap Formula/tkr.rb with a new version + SHAs."""
+"""Update einyx/homebrew-tap Formula/jkr.rb with a new version + SHAs."""
 import re, sys
 
 path, ver, sha_arm_mac, sha_x86_mac, sha_arm_lnx, sha_x86_lnx = sys.argv[1:]

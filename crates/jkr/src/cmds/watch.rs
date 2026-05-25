@@ -53,7 +53,7 @@ impl Default for SessionState {
 
 pub fn run() -> Result<()> {
     #[cfg(not(unix))]
-    anyhow::bail!("tkr watch requires Unix domain sockets (not available on Windows)");
+    anyhow::bail!("jkr watch requires Unix domain sockets (not available on Windows)");
 
     #[cfg(unix)]
     run_unix()
@@ -62,7 +62,7 @@ pub fn run() -> Result<()> {
 #[cfg(unix)]
 fn run_unix() -> Result<()> {
     let home = dirs::home_dir().unwrap_or_default();
-    let sock_path = home.join(".tkr/session.sock");
+    let sock_path = home.join(".jkr/session.sock");
 
     let state = Arc::new(Mutex::new(SessionState::default()));
 
@@ -123,7 +123,7 @@ fn run_unix() -> Result<()> {
                 0.0
             };
             let header_text = format!(
-                " tkr watch  ·  cmds: {}  ·  saved: {} / {} tokens  ·  reduction: {:.0}%",
+                " jkr watch  ·  cmds: {}  ·  saved: {} / {} tokens  ·  reduction: {:.0}%",
                 s.command_count, s.total_saved, s.total_in, ratio_pct
             );
             let header = Paragraph::new(header_text)

@@ -1,4 +1,4 @@
--- Initial schema for tkr-server persistence. Tables here back state
+-- Initial schema for jkr-server persistence. Tables here back state
 -- that previously lived in `Mutex<HashMap>` / `Mutex<VecDeque>` inside
 -- AppState. Designed so each table is independently truncatable for
 -- maintenance without breaking other features.

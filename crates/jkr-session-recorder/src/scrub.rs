@@ -1,6 +1,6 @@
 //! Best-effort secret scrubber for the recorded `output_preview`. The vault
 //! is encrypted at rest, but anyone with vault-read access (or possession of
-//! `~/.tkr/vault/.tkr-vault.key`) sees the cleartext — so commands that
+//! `~/.jkr/vault/.jkr-vault.key`) sees the cleartext — so commands that
 //! routinely emit credentials must never be previewed verbatim.
 //!
 //! Two layers:

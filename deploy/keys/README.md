@@ -1,6 +1,6 @@
 # Deploy keys
 
-Throwaway deploy keys for tkr-mesh smart-contract releases.
+Throwaway deploy keys for jkr-mesh smart-contract releases.
 
 **This whole directory (except this README) is gitignored.** Anything
 sensitive that lands here stays local.
@@ -14,12 +14,12 @@ deploy/keys/
 └── mainnet-deployer.env              (gitignored — Base mainnet, when minted)
 ```
 
-Each `*.env` file holds one `TKR_PAYMENT_KEY=0x...` line in the format
-that `tkr pay`'s `--key-file` accepts. `forge create` and `cast send`
+Each `*.env` file holds one `JKR_PAYMENT_KEY=0x...` line in the format
+that `jkr pay`'s `--key-file` accepts. `forge create` and `cast send`
 both accept `--private-key` from these files via:
 
 ```sh
-PRIV=$(grep '^TKR_PAYMENT_KEY=' deploy/keys/sepolia-deployer.env | cut -d= -f2)
+PRIV=$(grep '^JKR_PAYMENT_KEY=' deploy/keys/sepolia-deployer.env | cut -d= -f2)
 ~/.foundry/bin/forge create --root contracts contracts/src/MeshEscrow.sol:MeshEscrow \
   --rpc-url https://sepolia.base.org \
   --private-key $PRIV \

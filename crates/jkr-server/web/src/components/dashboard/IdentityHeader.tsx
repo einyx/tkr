@@ -16,7 +16,7 @@ export function IdentityHeader({ me, onSignOut }: Props) {
     me.user.email && me.user.email !== me.user.displayName;
   return (
     <header>
-      <div className="brand">tkr</div>
+      <div className="brand">jkr</div>
       <div className="who">
         {me.user.displayName || me.user.email || "anon"}
         {showEmailSuffix ? <span className="muted"> · {me.user.email}</span> : null}

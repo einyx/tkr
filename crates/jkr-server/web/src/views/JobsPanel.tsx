@@ -2,10 +2,10 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWallet, pad32 } from "../wallet";
 
-// Hardcoded for the live tkr devnet. If you redeploy to a different chain,
-// override via window.__TKR_JOB_BOARD or change this constant.
+// Hardcoded for the live jkr devnet. If you redeploy to a different chain,
+// override via window.__JKR_JOB_BOARD or change this constant.
 const JOB_BOARD =
-  (typeof window !== "undefined" && (window as { __TKR_JOB_BOARD?: string }).__TKR_JOB_BOARD) ||
+  (typeof window !== "undefined" && (window as { __JKR_JOB_BOARD?: string }).__JKR_JOB_BOARD) ||
   "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
 
 // Function selectors (4-byte keccak prefixes), precomputed via `cast sig`:
@@ -477,7 +477,7 @@ function WalletBadge({ wallet }: { wallet: ReturnType<typeof useWallet> }) {
     <span className="lp-wallet">
       <code>{fmtAddr(wallet.account)}</code>
       {wallet.onTkrDevnet ? (
-        <span className="lp-wallet-net lp-wallet-ok">tkr devnet</span>
+        <span className="lp-wallet-net lp-wallet-ok">jkr devnet</span>
       ) : (
         <button className="lp-job-btn lp-job-btn-warn" onClick={() => wallet.switchToTkr()}>
           switch network

@@ -2,8 +2,8 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::path::PathBuf;
-use tkr_agent::manifest::Manifest;
-use tkr_agent::{ContentBlock, Message, RunOutcome};
+use jkr_agent::manifest::Manifest;
+use jkr_agent::{ContentBlock, Message, RunOutcome};
 
 // ─── price table ────────────────────────────────────────────────────────────
 
@@ -213,7 +213,7 @@ pub fn record_from_run(
 
 pub fn persist(record: &RunRecord) -> Result<PathBuf> {
     let home = dirs::home_dir().context("cannot determine home directory")?;
-    let runs_dir = home.join(".tkr").join("runs");
+    let runs_dir = home.join(".jkr").join("runs");
     std::fs::create_dir_all(&runs_dir)
         .with_context(|| format!("creating {}", runs_dir.display()))?;
 

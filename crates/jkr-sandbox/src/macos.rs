@@ -75,7 +75,7 @@ pub(crate) fn build_profile(policy: &SandboxPolicy) -> String {
     // mmap PROT_EXEC of a readable file — dyld loads dylibs this way.
     s.push_str("(allow file-map-executable)\n");
     // ioctls on inherited tty/pty fds. Pipe stdio doesn't touch this, but
-    // `tkr sandbox claude` is interactive and will inherit tty fds.
+    // `jkr sandbox claude` is interactive and will inherit tty fds.
     s.push_str("(allow file-ioctl)\n");
 
     // /dev nodes every binary touches at startup.

@@ -1,8 +1,8 @@
 ---
-description: Show a structural outline (symbols + line ranges) of a file using tkr_outline_file instead of dumping its contents.
+description: Show a structural outline (symbols + line ranges) of a file using jkr_outline_file instead of dumping its contents.
 ---
 
-Call the `tkr_outline_file` MCP tool with `path = $ARGUMENTS`.
+Call the `jkr_outline_file` MCP tool with `path = $ARGUMENTS`.
 
 If `$ARGUMENTS` is empty, ask the user for an absolute path and stop —
 don't guess.

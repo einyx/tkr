@@ -112,7 +112,7 @@ fn attestation_digest(mesh_id: &str, addr: &Address, token_hash_hex: &str, ts_ms
     // Domain-tagged keccak so an attestation signature can never be
     // confused with a Hello, an EIP-712 invite, or a payment receipt.
     let mut h = Keccak256::new();
-    h.update(b"tkr-mesh/v1/join-attestation\n");
+    h.update(b"jkr-mesh/v1/join-attestation\n");
     h.update(mesh_id.as_bytes());
     h.update(b"\n");
     h.update(addr.as_bytes());

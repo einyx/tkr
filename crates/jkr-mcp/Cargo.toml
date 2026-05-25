@@ -1,11 +1,11 @@
 [package]
-name = "tkr-mcp"
+name = "jkr-mcp"
 publish = false
 version = "0.1.0"
 edition = "2021"
 rust-version.workspace = true
 license = "Apache-2.0"
-description = "tkr's MCP (Model Context Protocol) server. Exposes structured code-intelligence tools over stdio so AI agents read summaries instead of raw file contents."
+description = "jkr's MCP (Model Context Protocol) server. Exposes structured code-intelligence tools over stdio so AI agents read summaries instead of raw file contents."
 
 [lib]
 
@@ -28,7 +28,7 @@ tree-sitter-javascript = "0.23"
 walkdir = "2"
 ignore = "0.4"
 regex = { workspace = true }
-tkr-index = { path = "../tkr-index" }
+jkr-index = { path = "../jkr-index" }
 rusqlite = { workspace = true }
 
 [dev-dependencies]

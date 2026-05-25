@@ -95,7 +95,7 @@ impl AuditLog {
     }
 
     pub fn open_temp() -> Self {
-        let p = std::env::temp_dir().join(format!("tkr-audit-{}.log", std::process::id()));
+        let p = std::env::temp_dir().join(format!("jkr-audit-{}.log", std::process::id()));
         let _ = std::fs::remove_file(&p);
         let _ = std::fs::remove_file(tip_path(&p));
         Self::open(&p).unwrap()

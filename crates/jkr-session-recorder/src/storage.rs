@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tkr_api::{host::Host, manifest::SensitivityClass, Result as ApiResult};
+use jkr_api::{host::Host, manifest::SensitivityClass, Result as ApiResult};
 
 /// One captured tool-call event. Schema matches the design spec §5.2.
 ///
@@ -36,7 +36,7 @@ pub struct SessionMeta {
     pub agent: String,
     #[serde(default)]
     pub project_root: Option<String>,
-    pub tkr_version: String,
+    pub jkr_version: String,
 }
 
 /// Append an event to `sessions/<session_id>/events.jsonl` in the vault FS.
@@ -54,7 +54,7 @@ pub fn append_event(host: &dyn Host, event: &Event) -> ApiResult<()> {
     };
 
     let line = serde_json::to_string(event)
-        .map_err(|e| tkr_api::Error::Plugin(format!("event serialise: {e}")))?;
+        .map_err(|e| jkr_api::Error::Plugin(format!("event serialise: {e}")))?;
     if !buf.is_empty() && !buf.ends_with(b"\n") {
         buf.push(b'\n');
     }
@@ -70,7 +70,7 @@ pub fn write_meta(host: &dyn Host, meta: &SessionMeta) -> ApiResult<()> {
     let fs = host.fs(SensitivityClass::Secret)?;
     let path = meta_path(&meta.session_id);
     let bytes = serde_json::to_vec_pretty(meta)
-        .map_err(|e| tkr_api::Error::Plugin(format!("meta serialise: {e}")))?;
+        .map_err(|e| jkr_api::Error::Plugin(format!("meta serialise: {e}")))?;
     fs.write(&path, &bytes)
 }
 
@@ -81,7 +81,7 @@ pub fn read_meta(host: &dyn Host, session_id: &str) -> ApiResult<Option<SessionM
     match fs.read(&path) {
         Ok(b) => serde_json::from_slice(&b)
             .map(Some)
-            .map_err(|e| tkr_api::Error::Plugin(format!("meta parse: {e}"))),
+            .map_err(|e| jkr_api::Error::Plugin(format!("meta parse: {e}"))),
         Err(_) => Ok(None),
     }
 }
@@ -114,7 +114,7 @@ pub fn read_events(host: &dyn Host, session_id: &str) -> ApiResult<Vec<Event>> {
         Err(_) => return Ok(Vec::new()),
     };
     let text = std::str::from_utf8(&buf)
-        .map_err(|e| tkr_api::Error::Plugin(format!("events utf8: {e}")))?;
+        .map_err(|e| jkr_api::Error::Plugin(format!("events utf8: {e}")))?;
     let mut out = Vec::new();
     for line in text.lines() {
         if line.trim().is_empty() {

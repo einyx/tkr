@@ -1,6 +1,6 @@
 //! Native `cat` for simple positional file arguments (no flags). stdin (`cat`
-//! alone) uses the normal TOML pipeline. Env: `TKR_NATIVE_READ`,
-//! `TKR_NATIVE_READ_MAX_LINES`, `TKR_NATIVE_READ_MAX_LINE`.
+//! alone) uses the normal TOML pipeline. Env: `JKR_NATIVE_READ`,
+//! `JKR_NATIVE_READ_MAX_LINES`, `JKR_NATIVE_READ_MAX_LINE`.
 
 use super::NativeOutcome;
 use crate::stream::PipelineResult;
@@ -9,13 +9,13 @@ use std::path::{Path, PathBuf};
 
 pub fn env_disabled() -> bool {
     matches!(
-        std::env::var("TKR_NATIVE_READ").ok().as_deref(),
+        std::env::var("JKR_NATIVE_READ").ok().as_deref(),
         Some("0") | Some("false") | Some("off")
     )
 }
 
 fn max_lines() -> usize {
-    std::env::var("TKR_NATIVE_READ_MAX_LINES")
+    std::env::var("JKR_NATIVE_READ_MAX_LINES")
         .ok()
         .and_then(|s| s.parse().ok())
         .filter(|&n| n > 0)
@@ -23,7 +23,7 @@ fn max_lines() -> usize {
 }
 
 fn max_line_bytes() -> usize {
-    std::env::var("TKR_NATIVE_READ_MAX_LINE")
+    std::env::var("JKR_NATIVE_READ_MAX_LINE")
         .ok()
         .and_then(|s| s.parse().ok())
         .filter(|&n| n > 0)
@@ -98,7 +98,7 @@ fn shrink_file(raw: &str, max_lines: usize, max_line_bytes: usize) -> String {
     }
     if truncated_file {
         out.push_str(&format!(
-            "... ({max_lines} lines max — raise TKR_NATIVE_READ_MAX_LINES)\n"
+            "... ({max_lines} lines max — raise JKR_NATIVE_READ_MAX_LINES)\n"
         ));
     }
     out

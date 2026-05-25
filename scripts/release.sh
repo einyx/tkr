@@ -2,7 +2,7 @@
 # Build release tarballs and publish to GitHub + Homebrew tap.
 # Run on macOS (Apple Silicon): native macOS builds + Docker for Linux.
 #
-#   jarvis tkr publish
+#   jarvis jkr publish
 #   make publish
 #
 set -euo pipefail

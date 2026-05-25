@@ -1,5 +1,5 @@
 [package]
-name = "tkr-session-recorder"
+name = "jkr-session-recorder"
 publish = false
 version = "0.1.0"
 edition = "2021"
@@ -7,11 +7,11 @@ rust-version.workspace = true
 license = "Apache-2.0"
 
 [lib]
-name = "tkr_session_recorder"
+name = "jkr_session_recorder"
 crate-type = ["rlib"]
 
 [dependencies]
-tkr-api = { path = "../tkr-api" }
+jkr-api = { path = "../jkr-api" }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -19,4 +19,4 @@ chrono = { workspace = true }
 rand = { workspace = true }
 
 [features]
-test-host = ["tkr-api/test-host"]
+test-host = ["jkr-api/test-host"]

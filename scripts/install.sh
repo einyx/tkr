@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Install tkr from the latest GitHub release.
-# Usage: curl -fsSL https://raw.githubusercontent.com/einyx/tkr/main/scripts/install.sh | sh
+# Install jkr from the latest GitHub release.
+# Usage: curl -fsSL https://raw.githubusercontent.com/einyx/jkr/main/scripts/install.sh | sh
 set -euo pipefail
 
-REPO="einyx/tkr"
-BIN="tkr"
-INSTALL_DIR="${TKR_INSTALL_DIR:-/usr/local/bin}"
+REPO="einyx/jkr"
+BIN="jkr"
+INSTALL_DIR="${JKR_INSTALL_DIR:-/usr/local/bin}"
 
 # Detect OS and architecture
 OS="$(uname -s)"
@@ -40,7 +40,7 @@ fi
 
 URL="https://github.com/${REPO}/releases/download/${LATEST}/${BIN}-${TARGET}.tar.gz"
 
-echo "Installing tkr ${LATEST} (${TARGET}) → ${INSTALL_DIR}/${BIN}"
+echo "Installing jkr ${LATEST} (${TARGET}) → ${INSTALL_DIR}/${BIN}"
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
@@ -53,4 +53,4 @@ else
   sudo mv "$TMP/$BIN" "$INSTALL_DIR/$BIN"
 fi
 
-echo "Done. Run: tkr --version"
+echo "Done. Run: jkr --version"

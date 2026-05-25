@@ -18,9 +18,9 @@ use crate::protocol::{
 use crate::search;
 
 /// Configured project root. Tools refuse paths that don't resolve under
-/// this prefix. Defaults to the process CWD; override with TKR_MCP_ROOT.
+/// this prefix. Defaults to the process CWD; override with JKR_MCP_ROOT.
 fn project_root() -> PathBuf {
-    if let Ok(v) = std::env::var("TKR_MCP_ROOT") {
+    if let Ok(v) = std::env::var("JKR_MCP_ROOT") {
         let p = PathBuf::from(v);
         if let Ok(c) = p.canonicalize() {
             return c;
@@ -138,18 +138,18 @@ fn handle_tools_call(id: Value, params: &Value) -> Response {
     let args = params.get("arguments").cloned().unwrap_or(Value::Null);
 
     let result = match name {
-        "tkr_outline_file" => call_outline(&args),
-        "tkr_find_symbol" => call_find_symbol(&args),
-        "tkr_grep_summary" => call_grep_summary(&args),
-        "tkr_index_build" => call_index_build(&args),
-        "tkr_index_watch" => call_index_watch(&args),
-        "tkr_signature" => call_signature(&args),
-        "tkr_read_smart" => call_read_smart(&args),
-        "tkr_callers_of" => call_callers_of(&args),
-        "tkr_callees_of" => call_callees_of(&args),
-        "tkr_call_path" => call_call_path(&args),
-        "tkr_jobs_list" => call_jobs_list(&args),
-        "tkr_mesh_status" => call_mesh_status(&args),
+        "jkr_outline_file" => call_outline(&args),
+        "jkr_find_symbol" => call_find_symbol(&args),
+        "jkr_grep_summary" => call_grep_summary(&args),
+        "jkr_index_build" => call_index_build(&args),
+        "jkr_index_watch" => call_index_watch(&args),
+        "jkr_signature" => call_signature(&args),
+        "jkr_read_smart" => call_read_smart(&args),
+        "jkr_callers_of" => call_callers_of(&args),
+        "jkr_callees_of" => call_callees_of(&args),
+        "jkr_call_path" => call_call_path(&args),
+        "jkr_jobs_list" => call_jobs_list(&args),
+        "jkr_mesh_status" => call_mesh_status(&args),
         _ => return Response::err(id, METHOD_NOT_FOUND, format!("unknown tool: {name}")),
     };
     match result {
@@ -157,7 +157,7 @@ fn handle_tools_call(id: Value, params: &Value) -> Response {
         Err(e) => Response::ok(
             id,
             serde_json::json!({
-                "content": [{ "type": "text", "text": format!("[tkr-mcp error] {e}") }],
+                "content": [{ "type": "text", "text": format!("[jkr-mcp error] {e}") }],
                 "isError": true,
             }),
         ),
@@ -181,10 +181,10 @@ fn resolve_root(args: &Value) -> Result<PathBuf> {
 }
 
 /// Run an index-backed query. If the index doesn't yet exist for this root,
-/// build it inline before retrying — drops the "run tkr_index_build first"
+/// build it inline before retrying — drops the "run jkr_index_build first"
 /// friction that real transcripts showed was a tool-adoption killer.
 ///
-/// On first-call: prepends a one-time `[tkr: built index in Ns]\n` line so
+/// On first-call: prepends a one-time `[jkr: built index in Ns]\n` line so
 /// the agent can attribute the latency. Subsequent calls hit the cached
 /// index normally and pay no overhead.
 fn with_auto_index<F>(root: &PathBuf, f: F) -> Result<String>
@@ -200,7 +200,7 @@ where
             let out = f(root)?.ok_or_else(|| {
                 anyhow::anyhow!("internal: index built but query still returned None")
             })?;
-            Ok(format!("[tkr: built index in {elapsed_ms}ms]\n{out}"))
+            Ok(format!("[jkr: built index in {elapsed_ms}ms]\n{out}"))
         }
     }
 }
@@ -302,8 +302,8 @@ fn call_read_smart(args: &Value) -> Result<String> {
 
 fn call_mesh_status(_args: &Value) -> Result<String> {
     // Same prompt-injection concern as call_jobs_list: don't let the LLM
-    // pick the host. Operators override via TKR_MESH_HOST.
-    let host = std::env::var("TKR_MESH_HOST").ok();
+    // pick the host. Operators override via JKR_MESH_HOST.
+    let host = std::env::var("JKR_MESH_HOST").ok();
     mesh::status(host.as_deref())
 }
 
@@ -313,8 +313,8 @@ fn call_jobs_list(args: &Value) -> Result<String> {
     // internal services (cloud metadata, localhost) and exfiltrate the
     // upstream's response/stderr through the tool result. Operators set
     // these via env vars at server start; env is trusted, LLM args are not.
-    let board = std::env::var("TKR_JOB_BOARD").ok();
-    let rpc_url = std::env::var("TKR_JOB_RPC_URL").ok();
+    let board = std::env::var("JKR_JOB_BOARD").ok();
+    let rpc_url = std::env::var("JKR_JOB_RPC_URL").ok();
     let limit = args
         .get("limit")
         .and_then(|v| v.as_u64())
@@ -355,7 +355,7 @@ mod tests {
     fn initialize_returns_capabilities() {
         let v = rpc(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#);
         assert_eq!(v["result"]["protocolVersion"], "2024-11-05");
-        assert_eq!(v["result"]["serverInfo"]["name"], "tkr-mcp");
+        assert_eq!(v["result"]["serverInfo"]["name"], "jkr-mcp");
     }
 
     #[test]
@@ -363,11 +363,11 @@ mod tests {
         let v = rpc(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#);
         let tools = v["result"]["tools"].as_array().unwrap();
         let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
-        assert!(names.contains(&"tkr_outline_file"));
-        assert!(names.contains(&"tkr_find_symbol"));
-        assert!(names.contains(&"tkr_grep_summary"));
-        assert!(names.contains(&"tkr_jobs_list"));
-        assert!(names.contains(&"tkr_mesh_status"));
+        assert!(names.contains(&"jkr_outline_file"));
+        assert!(names.contains(&"jkr_find_symbol"));
+        assert!(names.contains(&"jkr_grep_summary"));
+        assert!(names.contains(&"jkr_jobs_list"));
+        assert!(names.contains(&"jkr_mesh_status"));
     }
 
     #[test]
@@ -384,9 +384,9 @@ mod tests {
 
     #[test]
     fn with_auto_index_builds_on_first_call() {
-        // Fresh temp repo: no .tkr/index.sqlite exists. After one call to
+        // Fresh temp repo: no .jkr/index.sqlite exists. After one call to
         // an index-requiring tool, the index file should exist AND the
-        // response should carry the `[tkr: built index in Nms]` notice.
+        // response should carry the `[jkr: built index in Nms]` notice.
         let dir = tempfile::tempdir().unwrap();
         let src = dir.path().join("auto.rs");
         std::fs::write(
@@ -397,7 +397,7 @@ mod tests {
         let root_buf = dir.path().to_path_buf();
 
         // No index file before the call.
-        assert!(!root_buf.join(".tkr").join("index.sqlite").exists());
+        assert!(!root_buf.join(".jkr").join("index.sqlite").exists());
 
         let out = with_auto_index(&root_buf, |r| {
             index_backed::try_callers_of("target", r)
@@ -405,7 +405,7 @@ mod tests {
         .unwrap();
 
         assert!(
-            out.starts_with("[tkr: built index in"),
+            out.starts_with("[jkr: built index in"),
             "expected build notice, got:\n{out}"
         );
         assert!(
@@ -418,7 +418,7 @@ mod tests {
         })
         .unwrap();
         assert!(
-            !out2.starts_with("[tkr:"),
+            !out2.starts_with("[jkr:"),
             "second call should hit cached index (no notice), got:\n{out2}"
         );
     }
@@ -432,7 +432,7 @@ mod tests {
     #[test]
     fn tools_call_outline_missing_path_is_error() {
         let v = rpc(
-            r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"tkr_outline_file","arguments":{}}}"#,
+            r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"jkr_outline_file","arguments":{}}}"#,
         );
         // Tool errors come back as a successful JSON-RPC reply with isError=true.
         let content = v["result"]["content"][0]["text"].as_str().unwrap();

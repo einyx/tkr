@@ -71,7 +71,7 @@ mod imp {
                 return Vec::new();
             }
             // Cap input — embedding all of a 50K-line dump is too slow for
-            // an interactive `tkr suggest` invocation.
+            // an interactive `jkr suggest` invocation.
             let take = lines.len().min(self.max_lines);
             let texts: Vec<&str> = lines.iter().take(take).map(|l| l.line).collect();
             let embeddings = match self.model.embed(texts.clone(), None) {
@@ -130,12 +130,12 @@ pub use imp::EmbeddingRanker;
 
 /// Embed any noise_signatures rows that have no embedding yet, persist into
 /// the vault's `noise_embeddings` vec0 table. Lazy / batched — meant to be
-/// called once at the start of `tkr suggest --features embeddings`. Returns
+/// called once at the start of `jkr suggest --features embeddings`. Returns
 /// the number of new embeddings persisted.
 ///
 /// Stub when the `embeddings` feature is off (always returns 0).
 #[allow(unused_variables)]
-pub fn embed_pending_signatures(host: &dyn tkr_api::host::Host, batch: usize) -> usize {
+pub fn embed_pending_signatures(host: &dyn jkr_api::host::Host, batch: usize) -> usize {
     #[cfg(not(feature = "embeddings"))]
     {
         0
@@ -143,7 +143,7 @@ pub fn embed_pending_signatures(host: &dyn tkr_api::host::Host, batch: usize) ->
     #[cfg(feature = "embeddings")]
     {
         use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
-        let pending = match tkr_analytics::noise_signatures_without_embeddings_via_host(host, batch)
+        let pending = match jkr_analytics::noise_signatures_without_embeddings_via_host(host, batch)
         {
             Ok(v) if !v.is_empty() => v,
             _ => return 0,
@@ -159,7 +159,7 @@ pub fn embed_pending_signatures(host: &dyn tkr_api::host::Host, batch: usize) ->
         };
         let mut written = 0;
         for ((sig_id, _sample), emb) in pending.iter().zip(embeddings.iter()) {
-            if tkr_analytics::upsert_noise_embedding_via_host(host, *sig_id, emb).is_ok() {
+            if jkr_analytics::upsert_noise_embedding_via_host(host, *sig_id, emb).is_ok() {
                 written += 1;
             }
         }

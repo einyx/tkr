@@ -1,17 +1,17 @@
-//! `tkr hook claude` — Claude Code PreToolUse Bash hook.
+//! `jkr hook claude` — Claude Code PreToolUse Bash hook.
 //!
-//! `tkr hook universal` — same JSON response shape; accepts either Claude's
+//! `jkr hook universal` — same JSON response shape; accepts either Claude's
 //! `tool_input.command` or a top-level `"command"` field (shell / IDE wrappers).
 //!
 //! Reads a JSON object from stdin like:
 //!   {"tool_input": {"command": "git status"}}
 //!
-//! If the command can be rewritten with tkr, emits:
+//! If the command can be rewritten with jkr, emits:
 //!   {"hookSpecificOutput": {
 //!     "hookEventName": "PreToolUse",
 //!     "permissionDecision": "allow",
-//!     "permissionDecisionReason": "tkr auto-rewrite (token filter)",
-//!     "updatedInput": {"command": "tkr git status"}
+//!     "permissionDecisionReason": "jkr auto-rewrite (token filter)",
+//!     "updatedInput": {"command": "jkr git status"}
 //!   }}
 //!
 //! Otherwise exits silently (exit 0, no output) → command passes through unchanged.
@@ -98,7 +98,7 @@ where
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "allow",
-            "permissionDecisionReason": "tkr auto-rewrite (token filter)",
+            "permissionDecisionReason": "jkr auto-rewrite (token filter)",
             "updatedInput": updated
         }
     });
@@ -150,15 +150,15 @@ mod tests {
     }
 
     #[test]
-    fn already_tkr_no_output() {
-        assert_eq!(run(r#"{"tool_input":{"command":"tkr git status"}}"#), "");
+    fn already_jkr_no_output() {
+        assert_eq!(run(r#"{"tool_input":{"command":"jkr git status"}}"#), "");
     }
 
     #[test]
     fn known_command_emits_hook_response() {
         let out = run(r#"{"tool_input":{"command":"git status"}}"#);
         assert!(out.contains("\"permissionDecision\":\"allow\""));
-        assert!(out.contains("\"command\":\"tkr git status\""));
+        assert!(out.contains("\"command\":\"jkr git status\""));
     }
 
     #[test]
@@ -167,13 +167,13 @@ mod tests {
             run(r#"{"tool_input":{"command":"git status","timeout":5000,"description":"check"}}"#);
         assert!(out.contains("\"timeout\":5000"));
         assert!(out.contains("\"description\":\"check\""));
-        assert!(out.contains("\"command\":\"tkr git status\""));
+        assert!(out.contains("\"command\":\"jkr git status\""));
     }
 
     #[test]
     fn compound_command_each_segment_prefixed() {
         let out = run(r#"{"tool_input":{"command":"git add . && git commit -m hi"}}"#);
-        assert!(out.contains("\"command\":\"tkr git add . && tkr git commit -m hi\""));
+        assert!(out.contains("\"command\":\"jkr git add . && jkr git commit -m hi\""));
     }
 
     #[test]
@@ -195,13 +195,13 @@ mod tests {
     #[test]
     fn universal_top_level_command_rewrites() {
         let out = run_universal(r#"{"command":"git status"}"#);
-        assert!(out.contains("\"command\":\"tkr git status\""));
+        assert!(out.contains("\"command\":\"jkr git status\""));
     }
 
     #[test]
     fn universal_prefers_tool_input_over_top_level() {
         let out = run_universal(r#"{"tool_input":{"command":"git status"},"command":"echo noop"}"#);
-        assert!(out.contains("\"command\":\"tkr git status\""));
+        assert!(out.contains("\"command\":\"jkr git status\""));
     }
 }
 
@@ -216,7 +216,7 @@ mod tests {
 ///     "tool_response": "..." | {...}
 ///   }
 ///
-/// Records per-tool size analytics (so `tkr gain` covers the WHOLE
+/// Records per-tool size analytics (so `jkr gain` covers the WHOLE
 /// context spend, not just Bash) and emits a steering note via
 /// `hookSpecificOutput.additionalContext` when a result was likely too
 /// large. Cannot rewrite the result that already entered the LLM's
@@ -314,9 +314,9 @@ fn steering_note(tool: &str, payload: &Value, approx_tokens: usize) -> String {
                 .and_then(|v| v.as_str())
                 .unwrap_or("(unknown)");
             format!(
-                "[tkr] that Read returned ~{}K tokens from {}. \
+                "[jkr] that Read returned ~{}K tokens from {}. \
                  Next time, prefer narrowing with offset/limit, or \
-                 (when available) the tkr_outline / tkr_grep MCP tools \
+                 (when available) the jkr_outline / jkr_grep MCP tools \
                  for a structured summary.",
                 approx_tokens / 1000,
                 path
@@ -329,14 +329,14 @@ fn steering_note(tool: &str, payload: &Value, approx_tokens: usize) -> String {
                 .and_then(|v| v.as_str())
                 .unwrap_or("(unknown)");
             format!(
-                "[tkr] that Grep for {pattern:?} returned ~{}K tokens. \
+                "[jkr] that Grep for {pattern:?} returned ~{}K tokens. \
                  Consider using head_limit / type / path filters, or \
-                 (when available) the tkr_find_symbol MCP tool.",
+                 (when available) the jkr_find_symbol MCP tool.",
                 approx_tokens / 1000
             )
         }
         "Glob" => format!(
-            "[tkr] that Glob returned ~{}K tokens. Consider tighter \
+            "[jkr] that Glob returned ~{}K tokens. Consider tighter \
              patterns or path scoping.",
             approx_tokens / 1000
         ),

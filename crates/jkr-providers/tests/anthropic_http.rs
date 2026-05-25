@@ -1,5 +1,5 @@
-use tkr_agent::provider::{ContentBlock, Message, Provider, StopReason};
-use tkr_providers::AnthropicProvider;
+use jkr_agent::provider::{ContentBlock, Message, Provider, StopReason};
+use jkr_providers::AnthropicProvider;
 
 #[test]
 fn send_round_trips_through_mock_server() {

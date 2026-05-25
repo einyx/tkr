@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "tkr hook claude"
+            "command": "jkr hook claude"
           }
         ]
       }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "tkr hook post"
+            "command": "jkr hook post"
           }
         ]
       }

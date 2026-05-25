@@ -1,7 +1,7 @@
 // CLI tokens — Logto-gated minting of per-user bearer tokens for
-// the `tkr` CLI. Replaces shared-secret TKR_INGEST_TOKEN env vars on
+// the `jkr` CLI. Replaces shared-secret JKR_INGEST_TOKEN env vars on
 // user laptops: operators sign in to the dashboard once, mint a
-// token here, and `tkr login` stores it in their OS keychain.
+// token here, and `jkr login` stores it in their OS keychain.
 //
 // The freshly-minted token is shown ONCE — it never leaves the
 // server in hash-only list responses, so this panel must surface it
@@ -63,14 +63,14 @@ export function CliTokensPanel() {
 
   return (
     <Panel
-      title="CLI tokens · for `tkr login`"
+      title="CLI tokens · for `jkr login`"
       dot="live"
       count={`${tokens.length} active`}
     >
       <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
         <p className="muted" style={{ margin: 0, fontSize: 12, lineHeight: 1.5 }}>
-          Mint a per-user bearer token for the <code>tkr</code> CLI. Store with{" "}
-          <code>tkr login --url https://tkr.prysm.sh --token &lt;value&gt;</code>{" "}
+          Mint a per-user bearer token for the <code>jkr</code> CLI. Store with{" "}
+          <code>jkr login --url https://tkr.prysm.sh --token &lt;value&gt;</code>{" "}
           or paste interactively. Each token shown only once.
         </p>
 

@@ -1,4 +1,4 @@
-//! `tkr job` — agent JobBoard CLI. Post tasks, take open ones, deliver
+//! `jkr job` — agent JobBoard CLI. Post tasks, take open ones, deliver
 //! results, accept work, cancel/timeout. All on-chain via alloy; the
 //! actual job spec + result delivery happens off-chain (mesh DMs).
 

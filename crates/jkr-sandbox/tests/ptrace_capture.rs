@@ -1,8 +1,8 @@
 #![cfg(target_os = "linux")]
 use std::path::PathBuf;
-use tkr_sandbox::capture::run_with_capture;
-use tkr_sandbox::capture::trace::{CaptureKind, FileOp};
-use tkr_sandbox::policy::SandboxPolicy;
+use jkr_sandbox::capture::run_with_capture;
+use jkr_sandbox::capture::trace::{CaptureKind, FileOp};
+use jkr_sandbox::policy::SandboxPolicy;
 
 fn policy_allow(read: Vec<PathBuf>, write: Vec<PathBuf>) -> SandboxPolicy {
     let mut p = SandboxPolicy::default();
@@ -65,9 +65,9 @@ fn ptrace_capture_scenarios() {
 #[ignore = "timing benchmark; run manually with --ignored --nocapture"]
 fn ptrace_overhead_benchmark() {
     use std::time::Instant;
-    use tkr_sandbox::exec::run_sandboxed_output_only;
+    use jkr_sandbox::exec::run_sandboxed_output_only;
 
-    let worktree: std::path::PathBuf = "/home/alessio/tkr-sandbox-analysis".into();
+    let worktree: std::path::PathBuf = "/home/alessio/jkr-sandbox-analysis".into();
     let crates_dir = worktree.join("crates");
 
     // Mirror the allowlist used in the other scenarios, plus the worktree root

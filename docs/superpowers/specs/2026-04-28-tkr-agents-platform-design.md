@@ -1,4 +1,4 @@
-# tkr Agents — Design Spec
+# jkr Agents — Design Spec
 
 **Status:** Draft
 **Date:** 2026-04-28
@@ -8,15 +8,15 @@
 
 ## 1. Summary
 
-**tkr Agents** is a local-first, cost-metered, sovereign agent framework for infrastructure and SRE work. Users author agents in TOML (with Starlark for logic, Python SDK or Rust crates for power users), run them as a single Rust binary on their own box or in their own VPC, and pay for a hosted dashboard that turns fleet runs into cost receipts.
+**jkr Agents** is a local-first, cost-metered, sovereign agent framework for infrastructure and SRE work. Users author agents in TOML (with Starlark for logic, Python SDK or Rust crates for power users), run them as a single Rust binary on their own box or in their own VPC, and pay for a hosted dashboard that turns fleet runs into cost receipts.
 
-The product is built on three Rust primitives — the existing `tkr` filter library, a new `tkr-sandbox`, and a new `tkr-vault` — that collectively ensure an agent can do useful infra work without exfiltrating secrets, executing destructive actions outside its declared capabilities, or leaking raw telemetry to LLM providers.
+The product is built on three Rust primitives — the existing `jkr` filter library, a new `jkr-sandbox`, and a new `jkr-vault` — that collectively ensure an agent can do useful infra work without exfiltrating secrets, executing destructive actions outside its declared capabilities, or leaking raw telemetry to LLM providers.
 
 ## 2. Positioning
 
 > *The agent framework that knows `kubectl logs` is 80% noise — and won't ship the 20% that's a private key.*
 
-| | tkr Agents | VoltAgent | OpenSRE | LangGraph / Mastra |
+| | jkr Agents | VoltAgent | OpenSRE | LangGraph / Mastra |
 |---|---|---|---|---|
 | Domain focus | Infra / SRE | General | SRE | General |
 | Shape | Framework + runtime | Framework + dashboard | Toolkit / libraries | Framework |
@@ -38,7 +38,7 @@ Both are bottom-up, dev-led, self-serve. Same product at different price tiers.
 
 In priority order:
 
-1. **Ops/SRE-flavored framework.** Typed first-class tools for `kubectl`, `docker`, `journald`, `gh`, `git`, `shell`, HTTP — each with built-in `tkr` filtering. We do not compete for "build a chatbot."
+1. **Ops/SRE-flavored framework.** Typed first-class tools for `kubectl`, `docker`, `journald`, `gh`, `git`, `shell`, HTTP — each with built-in `jkr` filtering. We do not compete for "build a chatbot."
 2. **Local-first / sovereign.** Single static Rust binary. Runs on the user's box or inside their VPC. No telemetry leaves unless opted in per agent.
 3. **Cost-native.** Token savings are a primitive, not an afterthought. Every run produces a cost receipt; every dashboard view shows tokens-saved and dollars-saved.
 
@@ -47,7 +47,7 @@ In priority order:
 Same Rust core throughout. Each ring is the same binary doing more.
 
 1. **v1 — Agents.** Single-agent runs, manual + cron triggers, 6 typed tools, hosted dashboard with metered billing.
-2. **v2 — Workflows.** Multi-agent orchestration. Webhook / Slack / Alertmanager triggers. Egress proxy mode. Python SDK GA. tkr becomes "Temporal for AI ops work."
+2. **v2 — Workflows.** Multi-agent orchestration. Webhook / Slack / Alertmanager triggers. Egress proxy mode. Python SDK GA. jkr becomes "Temporal for AI ops work."
 3. **v3 — Platform.** Fleet control plane across local boxes, VPCs, edge. Tool/filter marketplace. RBAC, audit, SOC2. Agent ↔ agent capability tokens.
 
 ## 6. Authoring surfaces
@@ -67,36 +67,36 @@ We do NOT ship a TypeScript SDK in v1. Audience is infra, not frontend.
 
 Single binary, two modes:
 
-- **Local mode (v1).** `tkr agent run agent.toml`. Long-lived daemon optional (`tkr daemon start`) for cron + scheduled runs. Unix socket IPC, file mode 0600, no TCP listener by default.
-- **Clustered mode (v2).** Same binary as a workload runtime in a customer Kubernetes / VPC. Agents become workloads, scheduled by a tkr orchestrator. Code paths feature-flagged off in v1 but the abstractions ship from day one.
+- **Local mode (v1).** `jkr agent run agent.toml`. Long-lived daemon optional (`jkr daemon start`) for cron + scheduled runs. Unix socket IPC, file mode 0600, no TCP listener by default.
+- **Clustered mode (v2).** Same binary as a workload runtime in a customer Kubernetes / VPC. Agents become workloads, scheduled by a jkr orchestrator. Code paths feature-flagged off in v1 but the abstractions ship from day one.
 
 ### 7.2 Three load-bearing security primitives
 
-#### `tkr` egress filter *(existing crate, promoted)*
-The same filter library that powers the `tkr` CLI is the **single egress chokepoint** for tool output. Every tool result passes through `tkr` before reaching:
+#### `jkr` egress filter *(existing crate, promoted)*
+The same filter library that powers the `jkr` CLI is the **single egress chokepoint** for tool output. Every tool result passes through `jkr` before reaching:
 - the model (compression + redaction)
 - the local run history (compression)
 - the hosted dashboard (compression + extra redaction pass)
 
 Filters are typed per tool. Built-in redaction matches AWS/GCP/Azure keys, GH/GitLab tokens, JWTs, PEM blocks, `.env` assignments, kubeconfig client-cert blobs, datadog/grafana/PagerDuty API keys. Filter rules ship as Rust crates and as `*.star` files. Same code path produces the token-savings number.
 
-#### `tkr-sandbox`
+#### `jkr-sandbox`
 Every tool execution runs in a real sandbox in v1. No flag to disable; debug mode logs what *would* have been blocked.
 
 - **Linux:** `landlock` (FS allowlist) + `seccomp-bpf` (syscall allowlist per tool class) + user namespaces (UID isolation) + cgroups v2 (CPU/mem/PID caps). No `CAP_NET_RAW`, no `CAP_SYS_ADMIN`.
 - **macOS:** `sandbox_init` with per-tool `.sb` profiles.
-- **Per-tool profiles.** `kubectl` reads `~/.kube`, network to API server, FS write only in `/tmp/tkr-run-<id>`. `docker`, `shell`, `gh` each have their own profile.
+- **Per-tool profiles.** `kubectl` reads `~/.kube`, network to API server, FS write only in `/tmp/jkr-run-<id>`. `docker`, `shell`, `gh` each have their own profile.
 - **Network egress denied by default.** Opened by typed-tool declaration, per-host where possible.
 - Profile is computed from the manifest at load time and signed into the run record.
 - If a tool can't run sandboxed on the current OS → fail closed.
 
-#### `tkr-vault`
+#### `jkr-vault`
 Sovereign capability-based secret store. Agents never see raw secrets.
 
-- **Storage.** Sealed-at-rest file (`~/.tkr/vault.kdb` or `/var/lib/tkr/vault.kdb`) using age, sealed by a hardware-bound key (Secure Enclave on macOS, TPM 2.0 on Linux, OS keychain fallback).
+- **Storage.** Sealed-at-rest file (`~/.jkr/vault.kdb` or `/var/lib/jkr/vault.kdb`) using age, sealed by a hardware-bound key (Secure Enclave on macOS, TPM 2.0 on Linux, OS keychain fallback).
 - **Memory.** Unsealed only in memory, `mlock`'d, zeroize-on-drop, never paged to swap.
 - **Capability handles.** Manifest declares `vault_ref = "kube/prod-cluster"`. Runtime materializes the secret into the tool sandbox as a read-only tmpfs file at execution time, unmounts on completion. Agent and model never see the blob.
-- **Defense-in-depth.** `tkr` egress filter independently scans tool output for vault material; redacts if any leaks.
+- **Defense-in-depth.** `jkr` egress filter independently scans tool output for vault material; redacts if any leaks.
 - **Audit log.** Every materialization logged locally; mirrored to dashboard if telemetry opted in.
 
 **v1 sources:** native sealed vault (default), 1Password CLI, `pass`, `gh secret`, env vars, AWS/GCP secret managers (read-only adapters).
@@ -106,16 +106,16 @@ Sovereign capability-based secret store. Agents never see raw secrets.
 ### 7.3 Component layout
 
 ```
-tkr/
+jkr/
 ├── crates/
-│   ├── tkr-core/        # existing filter library; the egress primitive
-│   ├── tkr-cli/         # existing CLI; absorbs `tkr agent` subcommands
-│   ├── tkr-agent/       # NEW — agent runtime: TOML loader, run loop, model client
-│   ├── tkr-sandbox/     # NEW — landlock/seccomp/sandbox_init wrappers
-│   ├── tkr-vault/       # NEW — sealed vault, capability handles, source adapters
-│   ├── tkr-tools/       # NEW — typed tool implementations (kubectl, docker, etc.)
-│   ├── tkr-providers/   # NEW — LLM provider adapters (Anthropic, OpenAI, local)
-│   └── tkr-daemon/      # NEW — long-lived daemon, cron scheduler, IPC server
+│   ├── jkr-core/        # existing filter library; the egress primitive
+│   ├── jkr-cli/         # existing CLI; absorbs `jkr agent` subcommands
+│   ├── jkr-agent/       # NEW — agent runtime: TOML loader, run loop, model client
+│   ├── jkr-sandbox/     # NEW — landlock/seccomp/sandbox_init wrappers
+│   ├── jkr-vault/       # NEW — sealed vault, capability handles, source adapters
+│   ├── jkr-tools/       # NEW — typed tool implementations (kubectl, docker, etc.)
+│   ├── jkr-providers/   # NEW — LLM provider adapters (Anthropic, OpenAI, local)
+│   └── jkr-daemon/      # NEW — long-lived daemon, cron scheduler, IPC server
 ├── dashboard/           # NEW — hosted Next.js app: cost receipts, fleet view, billing
 └── docs/
 ```
@@ -126,20 +126,20 @@ tkr/
 TOML manifest
     │
     ▼
-tkr-agent loader ──► tkr-vault (resolve capability handles)
+jkr-agent loader ──► jkr-vault (resolve capability handles)
     │
     ▼
 loop:
     model.next() ──► tool_call
         │
         ▼
-    tkr-sandbox.execute(tool, args, capabilities)
+    jkr-sandbox.execute(tool, args, capabilities)
         │
         ▼
     raw_output (50KB)
         │
         ▼
-    tkr-core filter ──► compressed + redacted output (800B)
+    jkr-core filter ──► compressed + redacted output (800B)
         │
         ▼
     tool_result back to model
@@ -164,12 +164,12 @@ local run log (always) + dashboard (if opted in, metadata only by default)
 ## 8. v1 scope
 
 **In:**
-- `tkr agent run <manifest.toml>` (foreground)
-- `tkr daemon start` + cron-triggered runs
+- `jkr agent run <manifest.toml>` (foreground)
+- `jkr daemon start` + cron-triggered runs
 - 6 typed tools: `kubectl`, `docker`, `journald`, `gh`, `git`, `shell`
 - 2 LLM providers: Anthropic, OpenAI
-- `tkr-sandbox` on Linux + macOS
-- `tkr-vault` with native sealed vault + 1Password / pass / gh-secret / env / AWS/GCP secret manager adapters
+- `jkr-sandbox` on Linux + macOS
+- `jkr-vault` with native sealed vault + 1Password / pass / gh-secret / env / AWS/GCP secret manager adapters
 - Manifest signing (sigstore/cosign)
 - Hosted dashboard: per-tenant fleet view, run timeline, token-savings + cost analytics, Stripe metered billing (free tier + Pro $20/mo).
 
@@ -187,7 +187,7 @@ local run log (always) + dashboard (if opted in, metadata only by default)
 ## 9. Monetization
 
 **Free / OSS (MIT, Rust core):**
-- `tkr` CLI, `tkr agent run`, all three security primitives, all v1 tools and providers, local-only operation forever.
+- `jkr` CLI, `jkr agent run`, all three security primitives, all v1 tools and providers, local-only operation forever.
 
 **Paid (hosted dashboard):**
 - Free tier: up to 200 runs/month, 7-day retention, 1 user.
@@ -209,14 +209,14 @@ The OSS binary stays fully usable without ever talking to the dashboard. Local u
 |------|------------|
 | Agent framework category is brutal; we get drowned by Volt/Mastra/LangGraph | Don't fight them — own SRE/infra niche, don't ship a chatbot story at all |
 | Sandboxing is platform-specific and slow to land cleanly on macOS | Ship Linux first-class; macOS best-effort with documented gaps; treat WSL2 as the Windows story |
-| `tkr-vault` is a security product and we are not a security company | Lean on age/cosign/landlock — established primitives. No bespoke crypto. External audit before any enterprise sale. |
+| `jkr-vault` is a security product and we are not a security company | Lean on age/cosign/landlock — established primitives. No bespoke crypto. External audit before any enterprise sale. |
 | Hosted dashboard is meaningful backend work | v1 dashboard is a thin Next.js + Postgres + Stripe stack. Don't multi-tenant at infra level in v1 — row-level isolation is enough for paid Pro. |
 | Prompt injection via tool output leads to a destructive action despite sandbox | `approve` mode is the v1 default; `auto` requires explicit per-pattern allowlists; mutation-vs-read is hard-coded into typed tools. |
 | Token-savings claims are challenged | Ship the receipt: every run logs raw-bytes-in, filtered-bytes-in, model-tokens-charged, all client-verifiable. |
 
 ## 12. Open questions
 
-1. Naming — keep "tkr Agents" or rebrand the agent product (`tkr` stays the CLI/library)?
+1. Naming — keep "jkr Agents" or rebrand the agent product (`jkr` stays the CLI/library)?
 2. Dashboard host — start on Vercel/Fly/Render, or self-host from day one to align with the sovereignty pitch?
 3. Pricing meter — per agent-run, per token-saved, or flat tier? Per-agent-run is the simplest invoice; per-token-saved aligns incentives but is harder to bill.
 4. Do we publish a public filter/tool registry in v1, or hold for v2 to avoid supply-chain headaches?

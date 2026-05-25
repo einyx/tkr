@@ -9,11 +9,11 @@
 //! count is honest and avoids pulling a tokenizer dependency.
 //!
 //! Run from repo root:
-//!   cargo run -p tkr-mcp --example bench_find_symbol -- <repo_root> sym1 sym2 ...
+//!   cargo run -p jkr-mcp --example bench_find_symbol -- <repo_root> sym1 sym2 ...
 
 use std::path::PathBuf;
 use std::time::Instant;
-use tkr_mcp::{index_backed, search};
+use jkr_mcp::{index_backed, search};
 
 fn main() -> anyhow::Result<()> {
     let mut args = std::env::args().skip(1);

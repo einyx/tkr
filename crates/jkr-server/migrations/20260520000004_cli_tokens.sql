@@ -1,6 +1,6 @@
 -- Per-user CLI bearer tokens. Minted via `POST /api/v1/auth/cli-token`
 -- (Logto-session-gated, shown once, never retrievable). Used by the
--- `tkr` CLI to authenticate `/api/v1/sandbox/ingest` and (future)
+-- `jkr` CLI to authenticate `/api/v1/sandbox/ingest` and (future)
 -- other CLI-facing endpoints without sharing the shared-secret env
 -- token across machines. Each row stores only a SHA-256 hash of the
 -- token — DB compromise does not expose live tokens.

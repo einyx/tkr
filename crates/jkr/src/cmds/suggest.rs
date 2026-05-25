@@ -1,7 +1,7 @@
-//! `tkr suggest` — examine vault-backed analytics and suggest concrete filter
+//! `jkr suggest` — examine vault-backed analytics and suggest concrete filter
 //! improvements for commands with low savings ratios. Surfaces:
 //!   - high-volume / low-savings commands → which filter file to edit
-//!   - commands tkr is recording but has no filter file for
+//!   - commands jkr is recording but has no filter file for
 //!   - rough estimate of additional tokens we could save
 
 use crate::signature::signature_to_regex;
@@ -20,16 +20,16 @@ pub fn run() -> Result<()> {
     let vault = crate::host::boot::vault();
     let host_handle = crate::host::boot::get_host();
     let analytics_host =
-        crate::host::RealHost::new("tkr-analytics", vault, host_handle.bus.clone());
+        crate::host::RealHost::new("jkr-analytics", vault, host_handle.bus.clone());
     // Lazy: persist embeddings for any noise signatures missing them, so the
     // vault accumulates a vector index across sessions. No-op without the
     // `embeddings` cargo feature.
     let new_embeds = crate::embedding_ranker::embed_pending_signatures(&analytics_host, 256);
     if new_embeds > 0 {
-        eprintln!("tkr suggest: embedded {new_embeds} new noise signatures into the vault");
+        eprintln!("jkr suggest: embedded {new_embeds} new noise signatures into the vault");
     }
 
-    let mut rows = tkr_analytics::total_savings_via_host(&analytics_host).unwrap_or_default();
+    let mut rows = jkr_analytics::total_savings_via_host(&analytics_host).unwrap_or_default();
     if rows.is_empty() {
         println!("No analytics rows yet.");
         return Ok(());
@@ -46,7 +46,7 @@ pub fn run() -> Result<()> {
 
     println!();
     println!(
-        "{}{}tkr suggest{} — filter improvement opportunities based on your usage",
+        "{}{}jkr suggest{} — filter improvement opportunities based on your usage",
         p(BOLD),
         p(CYAN),
         p(RESET)
@@ -140,7 +140,7 @@ pub fn run() -> Result<()> {
 
     println!();
     println!(
-        "  {}docs: https://github.com/einyx/tkr#custom-filters · {}native-handlers.md{} (repo {}docs/native-handlers.md{})",
+        "  {}docs: https://github.com/einyx/jkr#custom-filters · {}native-handlers.md{} (repo {}docs/native-handlers.md{})",
         p(DIM),
         p(YELLOW),
         p(RESET),
@@ -151,9 +151,9 @@ pub fn run() -> Result<()> {
     Ok(())
 }
 
-fn print_noise_section(host: &dyn tkr_api::host::Host, on: bool) -> Result<()> {
+fn print_noise_section(host: &dyn jkr_api::host::Host, on: bool) -> Result<()> {
     let p = |c: &'static str| if on { c } else { "" };
-    let rows = tkr_analytics::top_noise_signatures_via_host(host, 5, 100).unwrap_or_default();
+    let rows = jkr_analytics::top_noise_signatures_via_host(host, 5, 100).unwrap_or_default();
     if rows.is_empty() {
         return Ok(());
     }
@@ -173,7 +173,7 @@ fn print_noise_section(host: &dyn tkr_api::host::Host, on: bool) -> Result<()> {
     let vault2 = crate::host::boot::vault();
     let host_handle2 = crate::host::boot::get_host();
     let analytics_host =
-        crate::host::RealHost::new("tkr-analytics", vault2, host_handle2.bus.clone());
+        crate::host::RealHost::new("jkr-analytics", vault2, host_handle2.bus.clone());
 
     for row in rows.iter().take(8) {
         let regex = signature_to_regex(&row.signature);
@@ -193,13 +193,13 @@ fn print_noise_section(host: &dyn tkr_api::host::Host, on: bool) -> Result<()> {
 
         // If this signature has an embedding in the vault, surface its k-NN
         // family — patterns that probably want the same suppress rule.
-        if let Ok(Some(sig_id)) = tkr_analytics::noise_signature_id_via_host(
+        if let Ok(Some(sig_id)) = jkr_analytics::noise_signature_id_via_host(
             &analytics_host,
             &row.command,
             &row.signature,
         ) {
             if let Ok(neighbors) =
-                tkr_analytics::nearest_to_signature_via_host(&analytics_host, sig_id, 3)
+                jkr_analytics::nearest_to_signature_via_host(&analytics_host, sig_id, 3)
             {
                 let close: Vec<_> = neighbors
                     .into_iter()
@@ -242,7 +242,7 @@ fn bundled_filter_set() -> Vec<String> {
         Some(
             dirs::home_dir()
                 .unwrap_or(PathBuf::from("."))
-                .join(".tkr/filters"),
+                .join(".jkr/filters"),
         ),
     ];
     for d in dirs.into_iter().flatten() {
@@ -278,14 +278,14 @@ fn print_native_ecosystem_notes(on: bool) -> Result<()> {
         p(RESET)
     );
     println!(
-        "  {}grep / rg{} — structured compression is default ({}TKR_NATIVE_GREP=0{} falls back to TOML only).",
+        "  {}grep / rg{} — structured compression is default ({}JKR_NATIVE_GREP=0{} falls back to TOML only).",
         p(DIM),
         p(RESET),
         p(YELLOW),
         p(RESET),
     );
     println!(
-        "  {}git status{} — eligible runs use {}-sb{} ({}TKR_NATIVE_GIT=0{} disables all git natives).",
+        "  {}git status{} — eligible runs use {}-sb{} ({}JKR_NATIVE_GIT=0{} disables all git natives).",
         p(DIM),
         p(RESET),
         p(DIM),
@@ -294,21 +294,21 @@ fn print_native_ecosystem_notes(on: bool) -> Result<()> {
         p(RESET),
     );
     println!(
-        "  {}git diff{} — condenses unified output; {}TKR_NATIVE_GIT_DIFF=0{} for stream+filters; >8MB diffs fall back.",
+        "  {}git diff{} — condenses unified output; {}JKR_NATIVE_GIT_DIFF=0{} for stream+filters; >8MB diffs fall back.",
         p(DIM),
         p(RESET),
         p(YELLOW),
         p(RESET),
     );
     println!(
-        "  {}ls{} — line-capped ({}TKR_NATIVE_LS=0{} for TOML-only).",
+        "  {}ls{} — line-capped ({}JKR_NATIVE_LS=0{} for TOML-only).",
         p(DIM),
         p(RESET),
         p(YELLOW),
         p(RESET),
     );
     println!(
-        "  {}cargo test{} — elides `{}test … ok{}` spam ({}TKR_NATIVE_CARGO_TEST=0{}).",
+        "  {}cargo test{} — elides `{}test … ok{}` spam ({}JKR_NATIVE_CARGO_TEST=0{}).",
         p(DIM),
         p(RESET),
         p(YELLOW),
@@ -317,7 +317,7 @@ fn print_native_ecosystem_notes(on: bool) -> Result<()> {
         p(RESET),
     );
     println!(
-        "  {}session log{} — {}TKR_NATIVE_SESSION_LOG=1{} → {}~/.tkr/native-handlers.jsonl{}",
+        "  {}session log{} — {}JKR_NATIVE_SESSION_LOG=1{} → {}~/.jkr/native-handlers.jsonl{}",
         p(DIM),
         p(RESET),
         p(YELLOW),
@@ -334,7 +334,7 @@ fn print_native_ecosystem_notes(on: bool) -> Result<()> {
         p(YELLOW),
     );
     println!(
-        "  {}`tkr rg`{}, {}`tkr grep`{}, {}`tkr cat`{} so traffic goes through tkr.",
+        "  {}`jkr rg`{}, {}`jkr grep`{}, {}`jkr cat`{} so traffic goes through jkr.",
         p(YELLOW),
         p(RESET),
         p(YELLOW),
@@ -343,7 +343,7 @@ fn print_native_ecosystem_notes(on: bool) -> Result<()> {
         p(RESET),
     );
     println!(
-        "  {}Heavy test runners{} — {}TKR_MAX_TOKENS{}, tweak {}{}~/.tkr/filters/*.toml{}, or narrower runs.",
+        "  {}Heavy test runners{} — {}JKR_MAX_TOKENS{}, tweak {}{}~/.jkr/filters/*.toml{}, or narrower runs.",
         p(DIM),
         p(RESET),
         p(YELLOW),
@@ -361,16 +361,16 @@ fn extra_command_hint(full_command: &str, cmd_first: &str) -> Option<String> {
     let f = full_command.to_lowercase();
     match cmd_first {
         "grep" | "rg" | "egrep" | "fgrep" => Some(
-            "ensure you invoke search via the shell (`tkr rg …`) so the native handler runs; with `rg --json`, matches are summarized like plain ripgrep output.".into(),
+            "ensure you invoke search via the shell (`jkr rg …`) so the native handler runs; with `rg --json`, matches are summarized like plain ripgrep output.".into(),
         ),
         "cargo" if f.contains("test") => Some(
-            "native `cargo test` elides passing `ok` lines (`TKR_NATIVE_CARGO_TEST=0` for full stream + filters); raise `TKR_NATIVE_CARGO_COMPILE_LINES` if compile noise is still heavy.".into(),
+            "native `cargo test` elides passing `ok` lines (`JKR_NATIVE_CARGO_TEST=0` for full stream + filters); raise `JKR_NATIVE_CARGO_COMPILE_LINES` if compile noise is still heavy.".into(),
         ),
         "go" if f.contains(" test") && !f.contains("help test") => Some(
-            "native `go test` elides verbose `=== RUN` / `--- PASS` lines (`TKR_NATIVE_GO_TEST=0` for full stream); skipped automatically for `-json`/`-bench`/`-fuzz`.".into(),
+            "native `go test` elides verbose `=== RUN` / `--- PASS` lines (`JKR_NATIVE_GO_TEST=0` for full stream); skipped automatically for `-json`/`-bench`/`-fuzz`.".into(),
         ),
         "jest" | "vitest" | "mocha" | "playwright" | "cypress" => Some(
-            "standalone test-runner binaries are covered by the same native shrinking as npm-style runs (`TKR_NATIVE_JS_TEST=0` for full output); `playwright` uses `playwright test`, `cypress` uses `cypress run`.".into(),
+            "standalone test-runner binaries are covered by the same native shrinking as npm-style runs (`JKR_NATIVE_JS_TEST=0` for full output); `playwright` uses `playwright test`, `cypress` uses `cypress run`.".into(),
         ),
         "npm" | "pnpm" | "yarn" | "npx" | "bunx" | "corepack"
             if f.contains("test")
@@ -379,41 +379,41 @@ fn extra_command_hint(full_command: &str, cmd_first: &str) -> Option<String> {
                 || f.contains("playwright") =>
         {
             Some(
-                "native JS/Deno/Bun test runs elide vitest ✓, jest PASS, deno `… ok`, bun `(pass)` (`TKR_NATIVE_JS_TEST=0` for full stream); optionally tighten package-manager filters or cap with `TKR_MAX_TOKENS`.".into(),
+                "native JS/Deno/Bun test runs elide vitest ✓, jest PASS, deno `… ok`, bun `(pass)` (`JKR_NATIVE_JS_TEST=0` for full stream); optionally tighten package-manager filters or cap with `JKR_MAX_TOKENS`.".into(),
             )
         }
         "deno" | "bun" if f.contains("test") => Some(
-            "native test output shrinking (`TKR_NATIVE_JS_TEST=0` for full stream); run via shell so `tkr` sees the command.".into(),
+            "native test output shrinking (`JKR_NATIVE_JS_TEST=0` for full stream); run via shell so `jkr` sees the command.".into(),
         ),
         "git" => {
             if f.contains("diff") {
                 Some(
-                    "native path condenses unified diff output (`TKR_NATIVE_GIT_DIFF=0` uses stream+filters only); huge diffs fall back automatically.".into(),
+                    "native path condenses unified diff output (`JKR_NATIVE_GIT_DIFF=0` uses stream+filters only); huge diffs fall back automatically.".into(),
                 )
             } else if f.contains("status") {
                 Some(
-                    "native path rewrites to `git status -sb` unless porcelain/verbose (`TKR_NATIVE_GIT=0` disables all git natives).".into(),
+                    "native path rewrites to `git status -sb` unless porcelain/verbose (`JKR_NATIVE_GIT=0` disables all git natives).".into(),
                 )
             } else {
                 None
             }
         }
         "ls" => Some(
-            "native caps line count (`TKR_NATIVE_LS_MAX_LINES`) — set `TKR_NATIVE_LS=0` to use filter TOML only.".into(),
+            "native caps line count (`JKR_NATIVE_LS_MAX_LINES`) — set `JKR_NATIVE_LS=0` to use filter TOML only.".into(),
         ),
         "pytest" | "py.test" => Some(
-            "native pytest elides verbose `PASSED` and dot-progress rows (`TKR_NATIVE_PYTEST=0` for the full stream).".into(),
+            "native pytest elides verbose `PASSED` and dot-progress rows (`JKR_NATIVE_PYTEST=0` for the full stream).".into(),
         ),
         "uv" | "poetry" | "pipenv" | "pdm"
             if f.contains("pytest") || f.contains(" -m pytest") =>
         {
             Some(
-                "native pytest wrapper (`TKR_NATIVE_PYTEST=0` to disable the native path for poetry/uv-style runs).".into(),
+                "native pytest wrapper (`JKR_NATIVE_PYTEST=0` to disable the native path for poetry/uv-style runs).".into(),
             )
         }
         c if (c.starts_with("python") || c == "py") && f.contains("-m pytest") => {
             Some(
-                "native pytest elides verbose `PASSED` / dot rows when run as `-m pytest` (`TKR_NATIVE_PYTEST=0` for full output).".into(),
+                "native pytest elides verbose `PASSED` / dot rows when run as `-m pytest` (`JKR_NATIVE_PYTEST=0` for full output).".into(),
             )
         }
         _ => None,

@@ -1,11 +1,11 @@
-//! tkr-mcp — MCP (Model Context Protocol) server.
+//! jkr-mcp — MCP (Model Context Protocol) server.
 //!
 //! Speaks JSON-RPC 2.0 over stdio. Exposes a small set of code-intelligence
 //! tools that return structured summaries instead of raw file contents:
 //!
-//!   tkr_outline_file  — symbols + line numbers (functions, structs, etc.)
-//!   tkr_find_symbol   — locate definitions of a symbol across the tree
-//!   tkr_grep_summary  — grep with per-file aggregation + line caps
+//!   jkr_outline_file  — symbols + line numbers (functions, structs, etc.)
+//!   jkr_find_symbol   — locate definitions of a symbol across the tree
+//!   jkr_grep_summary  — grep with per-file aggregation + line caps
 //!
 //! Why: Claude Code's native `Read` returns the entire file; `Grep` returns
 //! every match line. For large files / wide patterns those are 50-150K

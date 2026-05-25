@@ -109,7 +109,7 @@ mod tests {
 
     #[test]
     fn run_nonexistent_command_errors() {
-        let result = stream_command("__tkr_no_such_cmd_xyz", &[]);
+        let result = stream_command("__jkr_no_such_cmd_xyz", &[]);
         assert!(result.is_err());
     }
 

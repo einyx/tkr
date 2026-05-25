@@ -1,9 +1,9 @@
 use crate::host::{bus::InProcBus, vault::HostVault, RealHost};
 use anyhow::Result;
 use std::sync::{Arc, Mutex};
-use tkr_api::capability::CapSet;
-use tkr_api::plugin::Plugin;
-use tkr_api::Error;
+use jkr_api::capability::CapSet;
+use jkr_api::plugin::Plugin;
+use jkr_api::Error;
 
 pub struct PluginRegistry {
     vault: Arc<HostVault>,
@@ -31,7 +31,7 @@ impl PluginRegistry {
         }
     }
 
-    /// Provide a per-plugin capability grant set (typically read from `~/.tkr/config.toml`).
+    /// Provide a per-plugin capability grant set (typically read from `~/.jkr/config.toml`).
     pub fn grant(&mut self, plugin: impl Into<String>, caps: CapSet) {
         self.grants.insert(plugin.into(), caps);
     }
@@ -77,7 +77,7 @@ impl PluginRegistry {
     /// Run `on_load` for every registered plugin; abort startup on first error.
     pub fn load_all(&self) -> Result<()> {
         for e in &self.entries {
-            let host: std::sync::Arc<dyn tkr_api::host::Host> = e.host.clone();
+            let host: std::sync::Arc<dyn jkr_api::host::Host> = e.host.clone();
             let mut p = e.plugin.lock().unwrap();
             p.on_load(host)
                 .map_err(|err| anyhow::anyhow!("plugin {}: on_load: {}", e.name, err))?;
@@ -124,7 +124,7 @@ impl PluginRegistry {
 
     /// Iterate filter-capable plugins (those whose manifest declares `cap:stdout.filter`)
     /// and call `on_command_begin` once per plugin before any lines flow.
-    pub fn filters_command_begin(&self, ctx: &tkr_api::plugin::CommandCtx) {
+    pub fn filters_command_begin(&self, ctx: &jkr_api::plugin::CommandCtx) {
         for e in self.filter_entries() {
             let mut p = e.plugin.lock().unwrap();
             if let Err(err) = p.on_command_begin(ctx) {
@@ -141,7 +141,7 @@ impl PluginRegistry {
     pub fn run_filters_line(
         &self,
         mut line: String,
-        ctx: &tkr_api::plugin::CommandCtx,
+        ctx: &jkr_api::plugin::CommandCtx,
     ) -> Option<String> {
         for e in self.filter_entries() {
             if e.degraded.load(std::sync::atomic::Ordering::Relaxed) {
@@ -149,13 +149,13 @@ impl PluginRegistry {
             }
             let mut p = e.plugin.lock().unwrap();
             match p.on_line(&line, ctx) {
-                Ok(tkr_api::plugin::FilterDecision::Pass) => { /* keep line as-is */ }
-                Ok(tkr_api::plugin::FilterDecision::Suppress)
-                | Ok(tkr_api::plugin::FilterDecision::SuppressWithNote(_)) => return None,
-                Ok(tkr_api::plugin::FilterDecision::Replace(s)) => {
+                Ok(jkr_api::plugin::FilterDecision::Pass) => { /* keep line as-is */ }
+                Ok(jkr_api::plugin::FilterDecision::Suppress)
+                | Ok(jkr_api::plugin::FilterDecision::SuppressWithNote(_)) => return None,
+                Ok(jkr_api::plugin::FilterDecision::Replace(s)) => {
                     line = s;
                 }
-                Ok(tkr_api::plugin::FilterDecision::Annotate(s)) => {
+                Ok(jkr_api::plugin::FilterDecision::Annotate(s)) => {
                     line.push_str(&s);
                 }
                 Err(err) => {
@@ -169,7 +169,7 @@ impl PluginRegistry {
 
     /// Call `on_command_end` for each filter plugin and concatenate their newline-delimited
     /// summaries. Returns the joined summary block (may be empty).
-    pub fn filters_command_end(&self, ctx: &tkr_api::plugin::CommandCtx) -> String {
+    pub fn filters_command_end(&self, ctx: &jkr_api::plugin::CommandCtx) -> String {
         let mut summary = String::new();
         for e in self.filter_entries() {
             let mut p = e.plugin.lock().unwrap();
@@ -196,7 +196,7 @@ impl PluginRegistry {
             p.manifest()
                 .capabilities_required
                 .iter()
-                .any(|c| c == tkr_api::capability::STDOUT_FILTER)
+                .any(|c| c == jkr_api::capability::STDOUT_FILTER)
         })
     }
 }
@@ -206,7 +206,7 @@ mod tests {
     use super::*;
     use crate::host::vault::store::{MemStore, Store};
     use std::sync::Arc;
-    use tkr_api::manifest::Manifest;
+    use jkr_api::manifest::Manifest;
 
     struct Stub {
         name: &'static str,
@@ -224,17 +224,17 @@ mod tests {
         }
         fn on_load(
             &mut self,
-            _host: std::sync::Arc<dyn tkr_api::host::Host>,
-        ) -> tkr_api::Result<()> {
+            _host: std::sync::Arc<dyn jkr_api::host::Host>,
+        ) -> jkr_api::Result<()> {
             self.order
                 .lock()
                 .unwrap()
                 .push(format!("load:{}", self.name));
             Ok(())
         }
-        fn on_start(&mut self) -> tkr_api::Result<()> {
+        fn on_start(&mut self) -> jkr_api::Result<()> {
             if self.fail_start {
-                return Err(tkr_api::Error::Plugin("boom".into()));
+                return Err(jkr_api::Error::Plugin("boom".into()));
             }
             self.order
                 .lock()
@@ -242,7 +242,7 @@ mod tests {
                 .push(format!("start:{}", self.name));
             Ok(())
         }
-        fn on_shutdown(&mut self) -> tkr_api::Result<()> {
+        fn on_shutdown(&mut self) -> jkr_api::Result<()> {
             self.order
                 .lock()
                 .unwrap()
@@ -293,8 +293,8 @@ mod tests {
             }
             fn on_load(
                 &mut self,
-                _h: std::sync::Arc<dyn tkr_api::host::Host>,
-            ) -> tkr_api::Result<()> {
+                _h: std::sync::Arc<dyn jkr_api::host::Host>,
+            ) -> jkr_api::Result<()> {
                 Ok(())
             }
         }
@@ -334,27 +334,27 @@ mod tests_filters {
     use crate::host::vault::store::{MemStore, Store};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
-    use tkr_api::plugin::{CommandCtx, FilterDecision, Plugin};
+    use jkr_api::plugin::{CommandCtx, FilterDecision, Plugin};
 
     struct DropAll(Arc<AtomicUsize>);
 
     impl Plugin for DropAll {
-        fn manifest(&self) -> tkr_api::manifest::Manifest {
-            tkr_api::manifest::Manifest {
+        fn manifest(&self) -> jkr_api::manifest::Manifest {
+            jkr_api::manifest::Manifest {
                 name: "drop".into(),
                 version: "0".into(),
-                capabilities_required: vec![tkr_api::capability::STDOUT_FILTER.into()],
+                capabilities_required: vec![jkr_api::capability::STDOUT_FILTER.into()],
                 ..Default::default()
             }
         }
-        fn on_load(&mut self, _h: std::sync::Arc<dyn tkr_api::host::Host>) -> tkr_api::Result<()> {
+        fn on_load(&mut self, _h: std::sync::Arc<dyn jkr_api::host::Host>) -> jkr_api::Result<()> {
             Ok(())
         }
-        fn on_line(&mut self, _line: &str, _ctx: &CommandCtx) -> tkr_api::Result<FilterDecision> {
+        fn on_line(&mut self, _line: &str, _ctx: &CommandCtx) -> jkr_api::Result<FilterDecision> {
             self.0.fetch_add(1, Ordering::Relaxed);
             Ok(FilterDecision::Suppress)
         }
-        fn on_command_end(&mut self, _ctx: &CommandCtx) -> tkr_api::Result<String> {
+        fn on_command_end(&mut self, _ctx: &CommandCtx) -> jkr_api::Result<String> {
             Ok(format!("dropped {}\n", self.0.load(Ordering::Relaxed)))
         }
     }
@@ -372,8 +372,8 @@ mod tests_filters {
     fn run_filters_suppress() {
         let (mut reg, _v) = fresh_reg();
         let count = Arc::new(AtomicUsize::new(0));
-        let mut caps = tkr_api::capability::CapSet::default();
-        caps.grant(tkr_api::capability::STDOUT_FILTER);
+        let mut caps = jkr_api::capability::CapSet::default();
+        caps.grant(jkr_api::capability::STDOUT_FILTER);
         reg.grant("drop", caps);
         reg.register(Box::new(DropAll(count.clone()))).unwrap();
         reg.load_all().unwrap();

@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use serde::Deserialize;
 use serde_json::json;
-use tkr_agent::provider::{ContentBlock, Message, Provider, ProviderResponse, StopReason};
+use jkr_agent::provider::{ContentBlock, Message, Provider, ProviderResponse, StopReason};
 
 const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
 const API_VERSION: &str = "2023-06-01";

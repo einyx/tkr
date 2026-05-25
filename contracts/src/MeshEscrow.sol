@@ -8,7 +8,7 @@ import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
 import {ReentrancyGuard} from "openzeppelin/utils/ReentrancyGuard.sol";
 
 /// @title MeshEscrow
-/// @notice Per-session payment channels for tkr-mesh agents.
+/// @notice Per-session payment channels for jkr-mesh agents.
 ///
 /// Flow:
 ///   1. Payer opens a channel: deposits `amount` of `token` for `recipient`,
@@ -73,7 +73,7 @@ contract MeshEscrow is EIP712, ReentrancyGuard {
     error ExceedsDeposit();
     error LengthMismatch();
 
-    constructor() EIP712("tkr-mesh", "1") {}
+    constructor() EIP712("jkr-mesh", "1") {}
 
     // ---------- Open ----------
 

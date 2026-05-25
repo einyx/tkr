@@ -4,9 +4,9 @@
 
 import { useEffect, useState, useCallback } from "react";
 
-export const TKR_CHAIN_ID = 31337420;
-export const TKR_CHAIN_HEX = "0x1de2bcc";
-const TKR_RPC_URL =
+export const JKR_CHAIN_ID = 31337420;
+export const JKR_CHAIN_HEX = "0x1de2bcc";
+const JKR_RPC_URL =
   typeof window !== "undefined" && window.location.protocol === "https:"
     ? `${window.location.origin}/api/v1/chain/rpc`
     : "http://127.0.0.1:4000/api/v1/chain/rpc";
@@ -27,7 +27,7 @@ export interface WalletState {
   available: boolean;          // window.ethereum exists
   account: string | null;      // connected EOA, lowercase
   chainId: number | null;      // current chain
-  onTkrDevnet: boolean;        // chainId === TKR_CHAIN_ID
+  onTkrDevnet: boolean;        // chainId === JKR_CHAIN_ID
   connecting: boolean;
   error: string | null;
   connect: () => Promise<void>;
@@ -105,7 +105,7 @@ export function useWallet(): WalletState {
     try {
       await eth.request({
         method: "wallet_switchEthereumChain",
-        params: [{ chainId: TKR_CHAIN_HEX }],
+        params: [{ chainId: JKR_CHAIN_HEX }],
       });
     } catch (e: unknown) {
       // 4902 = chain not added. Suggest it.
@@ -115,10 +115,10 @@ export function useWallet(): WalletState {
           method: "wallet_addEthereumChain",
           params: [
             {
-              chainId: TKR_CHAIN_HEX,
-              chainName: "tkr devnet",
+              chainId: JKR_CHAIN_HEX,
+              chainName: "jkr devnet",
               nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-              rpcUrls: [TKR_RPC_URL],
+              rpcUrls: [JKR_RPC_URL],
               blockExplorerUrls: [],
             },
           ],
@@ -172,7 +172,7 @@ export function useWallet(): WalletState {
     available: !!eth,
     account,
     chainId,
-    onTkrDevnet: chainId === TKR_CHAIN_ID,
+    onTkrDevnet: chainId === JKR_CHAIN_ID,
     connecting,
     error,
     connect,

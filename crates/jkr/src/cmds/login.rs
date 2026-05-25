@@ -1,19 +1,19 @@
-//! `tkr login` / `tkr whoami` / `tkr logout`.
+//! `jkr login` / `jkr whoami` / `jkr logout`.
 //!
-//! Replaces the `TKR_INGEST_TOKEN` env var workflow with a real
-//! per-user bearer minted by tkr-server behind a Logto session. The
+//! Replaces the `JKR_INGEST_TOKEN` env var workflow with a real
+//! per-user bearer minted by jkr-server behind a Logto session. The
 //! token is stored in the OS keychain (Secret Service on Linux,
 //! Keychain on macOS) and read by `emit_ingest()` in `cmds::sandbox`
 //! whenever the CLI reports a sandbox run.
 //!
 //! Flow:
-//!   1. User runs `tkr login --url https://tkr.prysm.sh`.
+//!   1. User runs `jkr login --url https://tkr.prysm.sh`.
 //!   2. CLI opens the dashboard URL in the browser. The user signs
 //!      in to Logto if they aren't already, clicks "Generate CLI
 //!      token" in the CLI Tokens panel, and copies the resulting
 //!      token.
 //!   3. CLI prompts for the pasted token on stdin and stores it in
-//!      the keychain under (service="tkr-cli", user=`<url>`).
+//!      the keychain under (service="jkr-cli", user=`<url>`).
 //!
 //! Alternatively users can pass `--token <value>` directly (useful
 //! for scripted setup) or pre-mint via the dashboard.
@@ -21,8 +21,8 @@
 use anyhow::{anyhow, bail, Context, Result};
 use std::io::{BufRead, Write};
 
-const KEYRING_SERVICE: &str = "tkr-cli";
-const URL_KEY: &str = "tkr-cli/url";
+const KEYRING_SERVICE: &str = "jkr-cli";
+const URL_KEY: &str = "jkr-cli/url";
 
 /// Open the dashboard (or print the URL) and read a pasted token
 /// from stdin, then persist (url, token) in the keychain.
@@ -56,9 +56,9 @@ pub fn login(url: &str, token: Option<&str>, no_browser: bool) -> Result<()> {
     if token.is_empty() {
         bail!("no token provided");
     }
-    if !token.starts_with("tkr_") {
+    if !token.starts_with("jkr_") {
         eprintln!(
-            "warning: token does not start with `tkr_` — \
+            "warning: token does not start with `jkr_` — \
              continuing anyway in case the format changes"
         );
     }
@@ -66,7 +66,7 @@ pub fn login(url: &str, token: Option<&str>, no_browser: bool) -> Result<()> {
     keyring_set(URL_KEY, &url).context("store URL in keychain")?;
     keyring_set(&token_key(&url), &token).context("store token in keychain")?;
     println!("✓ stored token for {url}");
-    println!("  test with: tkr whoami");
+    println!("  test with: jkr whoami");
     Ok(())
 }
 
@@ -74,7 +74,7 @@ pub fn whoami() -> Result<()> {
     let url = match keyring_get(URL_KEY) {
         Ok(u) => u,
         Err(_) => {
-            println!("not signed in. run `tkr login`.");
+            println!("not signed in. run `jkr login`.");
             return Ok(());
         }
     };
@@ -82,7 +82,7 @@ pub fn whoami() -> Result<()> {
     println!("server:  {url}");
     match token {
         Some(t) => println!("token:   {}… (stored in keychain)", &t[..t.len().min(12)]),
-        None => println!("token:   (none — run `tkr login` again)"),
+        None => println!("token:   (none — run `jkr login` again)"),
     }
     Ok(())
 }
@@ -93,7 +93,7 @@ pub fn logout() -> Result<()> {
         let _ = keyring_delete(&token_key(&url));
     }
     let _ = keyring_delete(URL_KEY);
-    println!("✓ tkr credentials cleared");
+    println!("✓ jkr credentials cleared");
     Ok(())
 }
 
@@ -107,12 +107,12 @@ pub fn stored_credentials() -> Option<(String, String)> {
 }
 
 fn token_key(url: &str) -> String {
-    format!("tkr-cli/token:{url}")
+    format!("jkr-cli/token:{url}")
 }
 
 // On laptops the OS keychain is the right home for the token. On
 // headless servers + CI there's no Secret Service / Keychain daemon,
-// so we fall back to a 0600-perm file under ~/.config/tkr/. That's
+// so we fall back to a 0600-perm file under ~/.config/jkr/. That's
 // equivalent security-wise to env-var storage but persists across
 // shells. Both backends are tried, keychain first.
 fn keyring_set(key: &str, value: &str) -> Result<()> {
@@ -144,7 +144,7 @@ fn keyring_delete(key: &str) -> Result<()> {
 fn credentials_path() -> Result<std::path::PathBuf> {
     let dir = dirs::config_dir()
         .ok_or_else(|| anyhow!("could not resolve XDG config dir"))?
-        .join("tkr");
+        .join("jkr");
     std::fs::create_dir_all(&dir).context("create config dir")?;
     Ok(dir.join("credentials.toml"))
 }

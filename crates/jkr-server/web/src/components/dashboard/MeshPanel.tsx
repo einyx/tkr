@@ -28,7 +28,7 @@ export function MeshPanel({ status, error }: Props) {
         <div className="empty">loading…</div>
       ) : status.meshes.length === 0 ? (
         <div className="empty">
-          no peers connected. run <code>tkr mesh join &lt;invite-url&gt;</code> on a host to
+          no peers connected. run <code>jkr mesh join &lt;invite-url&gt;</code> on a host to
           appear here.
         </div>
       ) : (

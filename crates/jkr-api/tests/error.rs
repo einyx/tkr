@@ -1,4 +1,4 @@
-use tkr_api::Error;
+use jkr_api::Error;
 
 #[test]
 fn unknown_method_round_trips_via_display() {

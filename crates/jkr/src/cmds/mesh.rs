@@ -1,6 +1,6 @@
-//! `tkr mesh` — peer-messaging CLI on top of tkr-mesh::Client.
+//! `jkr mesh` — peer-messaging CLI on top of jkr-mesh::Client.
 //!
-//! Persists JoinedMesh records to ~/.tkr/mesh/<slug>.json (chmod 0600).
+//! Persists JoinedMesh records to ~/.jkr/mesh/<slug>.json (chmod 0600).
 //! Each record carries the secp256k1 secret used as both the mesh
 //! identity and the EVM wallet for payment receipts (Phase 3).
 
@@ -8,14 +8,14 @@ use anyhow::{anyhow, bail, Context, Result};
 use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
-use tkr_mesh::frames::Frame;
-use tkr_mesh::{enroll, Address, Client, Identity, Invite, JoinedMesh};
+use jkr_mesh::frames::Frame;
+use jkr_mesh::{enroll, Address, Client, Identity, Invite, JoinedMesh};
 
 // ---------- vault paths ----------
 
 fn mesh_dir() -> Result<PathBuf> {
     let home = dirs::home_dir().context("could not determine $HOME")?;
-    let dir = home.join(".tkr").join("mesh");
+    let dir = home.join(".jkr").join("mesh");
     fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
     Ok(dir)
 }
@@ -38,7 +38,7 @@ fn save_record(record: &JoinedMesh) -> Result<PathBuf> {
 fn load_record(slug: &str) -> Result<JoinedMesh> {
     let path = record_path(slug)?;
     JoinedMesh::load(&path)
-        .map_err(|e| anyhow!("load {} (run `tkr mesh join` first): {e:?}", path.display()))
+        .map_err(|e| anyhow!("load {} (run `jkr mesh join` first): {e:?}", path.display()))
 }
 
 fn identity_of(record: &JoinedMesh) -> Result<Identity> {
@@ -76,7 +76,7 @@ pub fn join(invite_url: &str, display_name: Option<&str>) -> Result<()> {
     println!("  address    {}", record.address);
     println!("  saved      {}", path.display());
     println!();
-    println!("Next: `tkr mesh tail {}` to receive messages.", record.mesh_slug);
+    println!("Next: `jkr mesh tail {}` to receive messages.", record.mesh_slug);
     Ok(())
 }
 
@@ -92,7 +92,7 @@ pub fn list() -> Result<()> {
     entries.sort_by_key(|e| e.file_name());
 
     if entries.is_empty() {
-        println!("(no joined meshes — `tkr mesh join <invite-url>` to start)");
+        println!("(no joined meshes — `jkr mesh join <invite-url>` to start)");
         return Ok(());
     }
 
@@ -198,7 +198,7 @@ pub fn tail(slug: &str, reconnect: bool) -> Result<()> {
     })
 }
 
-fn print_push(p: &tkr_mesh::frames::PushFields, identity: &Identity) {
+fn print_push(p: &jkr_mesh::frames::PushFields, identity: &Identity) {
     let ts = chrono::Utc::now().format("%H:%M:%S");
     match p.envelope.open(identity) {
         Ok(plaintext) => match std::str::from_utf8(&plaintext) {
@@ -275,7 +275,7 @@ pub fn invite_mint(
         slug.to_string(),
         broker_url.to_string(),
         expires_at,
-        tkr_mesh::Role::Member,
+        jkr_mesh::Role::Member,
     );
     let url = invite
         .to_url(broker_url)

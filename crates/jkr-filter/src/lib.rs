@@ -5,12 +5,12 @@ pub use v2::all_filters_v2;
 use anyhow::Result;
 use rules::{compile_group, CompiledRule, Rule};
 use serde::Deserialize;
-use tkr_api::{FilterResult, LegacyPlugin as Plugin};
+use jkr_api::{FilterResult, LegacyPlugin as Plugin};
 
 #[derive(Debug, Deserialize)]
 struct FilterDef {
     /// If set, group only applies when proxied command matches.
-    /// Example: "cargo" matches `tkr cargo build`. Omit to match any command.
+    /// Example: "cargo" matches `jkr cargo build`. Omit to match any command.
     command: Option<String>,
     /// If non-empty, group only applies when first arg matches one of these.
     /// Example: ["build", "test"] for cargo. Empty/omitted = any subcommand.

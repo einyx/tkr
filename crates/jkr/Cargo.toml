@@ -1,40 +1,40 @@
 [package]
-name = "tkr"
+name = "jkr"
 version = "0.3.3"
 publish = false
 edition = "2021"
 rust-version.workspace = true
 description = "Token-optimized CLI proxy for LLM development workflows"
-repository = "https://github.com/einyx/tkr"
+repository = "https://github.com/einyx/jkr"
 license = "Apache-2.0"
 keywords = ["cli", "llm", "token", "filter", "productivity"]
 categories = ["command-line-utilities", "development-tools"]
 build = "build.rs"
 
 [lib]
-name = "tkr"
+name = "jkr"
 path = "src/lib.rs"
 
 [[bin]]
-name = "tkr"
+name = "jkr"
 path = "src/main.rs"
 
 [features]
 default = []
-# Enable MiniLM-based noise clustering for `tkr suggest` (adds ~80MB ONNX
+# Enable MiniLM-based noise clustering for `jkr suggest` (adds ~80MB ONNX
 # runtime + downloads model on first use to ~/.cache/fastembed/).
 embeddings = ["dep:fastembed"]
 
 [dependencies]
-tkr-agent = { path = "../tkr-agent" }
-tkr-providers = { path = "../tkr-providers" }
-tkr-api = { path = "../tkr-api" }
-tkr-filter = { path = "../tkr-filter" }
-tkr-analytics = { path = "../tkr-analytics" }
-tkr-session-recorder = { path = "../tkr-session-recorder" }
-tkr-mesh = { path = "../tkr-mesh" }
-tkr-mcp = { path = "../tkr-mcp" }
-tkr-sandbox = { path = "../tkr-sandbox" }
+jkr-agent = { path = "../jkr-agent" }
+jkr-providers = { path = "../jkr-providers" }
+jkr-api = { path = "../jkr-api" }
+jkr-filter = { path = "../jkr-filter" }
+jkr-analytics = { path = "../jkr-analytics" }
+jkr-session-recorder = { path = "../jkr-session-recorder" }
+jkr-mesh = { path = "../jkr-mesh" }
+jkr-mcp = { path = "../jkr-mcp" }
+jkr-sandbox = { path = "../jkr-sandbox" }
 anyhow = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }

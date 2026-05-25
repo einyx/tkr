@@ -9,7 +9,7 @@ pub fn run(file: Option<PathBuf>) -> Result<()> {
     let record_path = match file {
         Some(p) => p,
         None => latest_run_record()
-            .context("no run records found; run `tkr agent run <manifest.toml>` first")?,
+            .context("no run records found; run `jkr agent run <manifest.toml>` first")?,
     };
     let meta =
         fs::metadata(&record_path).with_context(|| format!("stat {}", record_path.display()))?;
@@ -40,7 +40,7 @@ pub fn run(file: Option<PathBuf>) -> Result<()> {
         .unwrap_or(0);
     let saved_total = raw_total.saturating_sub(filtered_total);
 
-    println!("tkr explain");
+    println!("jkr explain");
     println!("  record: {}", record_path.display());
     println!("  agent: {agent}  status: {status}  started: {started_at}");
     println!(
@@ -103,7 +103,7 @@ fn safe(s: &str) -> String {
 
 fn latest_run_record() -> Option<PathBuf> {
     let home = dirs::home_dir()?;
-    let runs = home.join(".tkr").join("runs");
+    let runs = home.join(".jkr").join("runs");
     let mut entries: Vec<PathBuf> = fs::read_dir(runs)
         .ok()?
         .flatten()

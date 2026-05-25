@@ -1,7 +1,7 @@
 use crate::tool::{Tool, ToolResult};
 use anyhow::Result;
 use serde_json::Value;
-use tkr_sandbox::{run_sandboxed, SandboxPolicy};
+use jkr_sandbox::{run_sandboxed, SandboxPolicy};
 
 pub struct ProcessTool {
     name: String,

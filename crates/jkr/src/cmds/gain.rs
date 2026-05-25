@@ -1,7 +1,7 @@
 use crate::util::fmt_num;
 use anyhow::Result;
 use std::io::IsTerminal;
-use tkr_analytics::SavingsRow;
+use jkr_analytics::SavingsRow;
 
 const RESET: &str = "\x1b[0m";
 const BOLD: &str = "\x1b[1m";
@@ -43,17 +43,17 @@ pub fn run(breakdown: bool, sort: &str, plain: bool) -> Result<()> {
     let vault = crate::host::boot::vault();
     let host_handle = crate::host::boot::get_host();
     let analytics_host =
-        crate::host::RealHost::new("tkr-analytics", vault, host_handle.bus.clone());
-    let mut rows = match tkr_analytics::total_savings_via_host(&analytics_host) {
+        crate::host::RealHost::new("jkr-analytics", vault, host_handle.bus.clone());
+    let mut rows = match jkr_analytics::total_savings_via_host(&analytics_host) {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("tkr gain: could not read analytics from vault: {e}");
+            eprintln!("jkr gain: could not read analytics from vault: {e}");
             Vec::new()
         }
     };
     if rows.is_empty() {
-        println!("No analytics data yet — run commands through `tkr` (e.g. `tkr git status`).");
-        println!("If you already proxy commands but still see this, check stderr for `tkr: warning:` lines.");
+        println!("No analytics data yet — run commands through `jkr` (e.g. `jkr git status`).");
+        println!("If you already proxy commands but still see this, check stderr for `jkr: warning:` lines.");
         return Ok(());
     }
 
@@ -102,7 +102,7 @@ fn sort_rows(rows: &mut [SavingsRow], sort: &str) {
 }
 
 fn print_banner(s: &Style) {
-    let title = "tkr · token savings report";
+    let title = "jkr · token savings report";
     let inner = TABLE_WIDTH - 2;
     let pad = inner.saturating_sub(title.chars().count() + 2);
 

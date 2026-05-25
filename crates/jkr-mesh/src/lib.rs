@@ -1,4 +1,4 @@
-//! tkr-mesh — peer messaging mesh for tkr agents.
+//! jkr-mesh — peer messaging mesh for jkr agents.
 //!
 //! Identity is a secp256k1 keypair (same shape as an Ethereum wallet).
 //! The on-mesh address is the EIP-55 checksummed Ethereum address derived

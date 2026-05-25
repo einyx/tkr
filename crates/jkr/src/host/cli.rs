@@ -1,8 +1,8 @@
 use anyhow::Result;
 use clap::{Arg, Command};
 use serde_json::json;
-use tkr_api::bus::Bus;
-use tkr_api::manifest::CliSpec;
+use jkr_api::bus::Bus;
+use jkr_api::manifest::CliSpec;
 
 use crate::host::loader::PluginRegistry;
 
@@ -13,7 +13,7 @@ pub struct CliMount {
 
 /// Build the clap subcommand tree for plugin-mounted CLIs.
 pub fn build_plugin_cli(mounts: &[CliMount]) -> Command {
-    let mut root = Command::new("tkr-plugins").subcommand_required(false);
+    let mut root = Command::new("jkr-plugins").subcommand_required(false);
     for m in mounts {
         // Leak strings to satisfy clap's `Into<Str>` bound (which requires `&'static str`
         // or a `String`-backed type). We only do this at CLI build time (startup, not hot path).
@@ -34,7 +34,7 @@ pub fn build_plugin_cli(mounts: &[CliMount]) -> Command {
     root
 }
 
-/// Dispatch `tkr <plugin> <subcmd> [args...]`. Returns exit code.
+/// Dispatch `jkr <plugin> <subcmd> [args...]`. Returns exit code.
 ///
 /// `argv[0]` is the plugin name, `argv[1]` the subcommand name; rest are args.
 ///
@@ -45,7 +45,7 @@ pub fn build_plugin_cli(mounts: &[CliMount]) -> Command {
 /// deferred. For now, every subcommand accepts trailing positional args as `Vec<String>`.
 pub fn dispatch(reg: &PluginRegistry, bus: &dyn Bus, argv: &[String]) -> Result<i32> {
     if argv.len() < 2 {
-        return Err(anyhow::anyhow!("usage: tkr <plugin> <subcmd> [args...]"));
+        return Err(anyhow::anyhow!("usage: jkr <plugin> <subcmd> [args...]"));
     }
     let plugin = &argv[0];
     let subcmd = &argv[1];
@@ -55,7 +55,7 @@ pub fn dispatch(reg: &PluginRegistry, bus: &dyn Bus, argv: &[String]) -> Result<
         return Err(anyhow::anyhow!("unknown plugin: {plugin}"));
     }
 
-    let req = tkr_api::bus::Request {
+    let req = jkr_api::bus::Request {
         target: plugin.clone(),
         method: "cli.invoke".into(),
         payload: json!({ "subcmd": subcmd, "args": rest }),
@@ -89,9 +89,9 @@ mod tests {
     use crate::host::vault::store::{MemStore, Store};
     use crate::host::vault::HostVault;
     use std::sync::Arc;
-    use tkr_api::bus::Reply;
-    use tkr_api::manifest::Manifest;
-    use tkr_api::plugin::Plugin;
+    use jkr_api::bus::Reply;
+    use jkr_api::manifest::Manifest;
+    use jkr_api::plugin::Plugin;
 
     struct EchoPlugin;
 
@@ -100,21 +100,21 @@ mod tests {
             Manifest {
                 name: "demo".into(),
                 version: "0".into(),
-                cli_subcommands: vec![tkr_api::manifest::CliSpec {
+                cli_subcommands: vec![jkr_api::manifest::CliSpec {
                     name: "say".into(),
                     args: serde_json::json!({}),
                 }],
-                capabilities_required: vec![tkr_api::capability::CLI_SUBCOMMAND.into()],
+                capabilities_required: vec![jkr_api::capability::CLI_SUBCOMMAND.into()],
                 ..Default::default()
             }
         }
         fn on_load(
             &mut self,
-            _host: std::sync::Arc<dyn tkr_api::host::Host>,
-        ) -> tkr_api::Result<()> {
+            _host: std::sync::Arc<dyn jkr_api::host::Host>,
+        ) -> jkr_api::Result<()> {
             Ok(())
         }
-        fn on_request(&mut self, req: tkr_api::bus::Request) -> tkr_api::Result<Reply> {
+        fn on_request(&mut self, req: jkr_api::bus::Request) -> jkr_api::Result<Reply> {
             if req.method == "cli.invoke" {
                 let args: Vec<String> = req
                     .payload
@@ -134,7 +134,7 @@ mod tests {
                     }),
                 })
             } else {
-                Err(tkr_api::Error::UnknownMethod(req.method))
+                Err(jkr_api::Error::UnknownMethod(req.method))
             }
         }
     }
@@ -152,8 +152,8 @@ mod tests {
     #[test]
     fn dispatch_calls_plugin_cli_invoke() {
         let (mut reg, bus) = make_reg_and_bus();
-        let mut caps = tkr_api::capability::CapSet::default();
-        caps.grant(tkr_api::capability::CLI_SUBCOMMAND);
+        let mut caps = jkr_api::capability::CapSet::default();
+        caps.grant(jkr_api::capability::CLI_SUBCOMMAND);
         reg.grant("demo", caps);
         reg.register(Box::new(EchoPlugin)).unwrap();
 

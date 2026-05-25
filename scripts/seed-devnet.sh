@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/seed-devnet.sh — deploy MeshEscrow + JobBoard to the local anvil
 # (or wipe-and-redeploy after a chain restart) so the dashboard, MCP
-# tkr_jobs_list tool, and JobsPanel UI have something to render.
+# jkr_jobs_list tool, and JobsPanel UI have something to render.
 #
 # Idempotent: if both contracts already exist at their expected addresses,
 # the script exits cleanly without sending any tx. If only one is missing,
@@ -16,9 +16,9 @@
 #   JobBoard   = 0xe7f1…0512  (account[0] nonce 1)
 # The dashboard, CLI, and MCP server hard-code these values. If you re-seed
 # with a different deployer or out of order, update the constants in:
-#   crates/tkr/src/cli.rs                     DEFAULT_JOB_BOARD
-#   crates/tkr-server/web/src/views/JobsPanel.tsx                 JOB_BOARD
-#   crates/tkr-server/web/src/views/Landing.tsx                  MESH_ESCROW_ADDR
+#   crates/jkr/src/cli.rs                     DEFAULT_JOB_BOARD
+#   crates/jkr-server/web/src/views/JobsPanel.tsx                 JOB_BOARD
+#   crates/jkr-server/web/src/views/Landing.tsx                  MESH_ESCROW_ADDR
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -36,7 +36,7 @@ CAST=${CAST:-$(command -v cast || echo "$HOME/.foundry/bin/cast")}
 [ -x "$FORGE" ] || { echo "error: forge not found at $FORGE — install foundry" >&2; exit 1; }
 [ -x "$CAST" ]  || { echo "error: cast not found at $CAST" >&2; exit 1; }
 
-# Refuse to seed a non-anvil chain. tkr devnet chain id is 31337420; vanilla
+# Refuse to seed a non-anvil chain. jkr devnet chain id is 31337420; vanilla
 # anvil is 31337. Anything else is probably a real network — bail.
 CHAIN_ID=$("$CAST" chain-id --rpc-url "$RPC_URL" 2>/dev/null || echo 0)
 if [ "$CHAIN_ID" != "31337420" ] && [ "$CHAIN_ID" != "31337" ]; then
@@ -78,7 +78,7 @@ if has_code "$ESCROW_ADDR" && has_code "$JOBBOARD_ADDR"; then
   exit 0
 fi
 
-echo "→ seeding tkr devnet (chain id $CHAIN_ID)"
+echo "→ seeding jkr devnet (chain id $CHAIN_ID)"
 echo "  rpc:      $RPC_URL"
 echo "  deployer: $DEPLOYER_ADDR"
 
@@ -89,7 +89,7 @@ echo "  deployer: $DEPLOYER_ADDR"
 NONCE=$("$CAST" nonce "$DEPLOYER_ADDR" --rpc-url "$RPC_URL")
 if [ "$NONCE" != "0" ]; then
   echo "error: deployer nonce is $NONCE (expected 0 from clean genesis)" >&2
-  echo "       wipe the chain (docker compose down -v tkr-chain && docker compose up -d) and re-run" >&2
+  echo "       wipe the chain (docker compose down -v jkr-chain && docker compose up -d) and re-run" >&2
   exit 1
 fi
 
@@ -109,7 +109,7 @@ echo "=== nonce 1: deploy JobBoard ==="
 has_code "$JOBBOARD_ADDR" || { echo "error: JobBoard not at expected address" >&2; exit 1; }
 echo "✓ JobBoard   @ $JOBBOARD_ADDR"
 
-# Three sample jobs so the JobsPanel + tkr_jobs_list have data. Posted in
+# Three sample jobs so the JobsPanel + jkr_jobs_list have data. Posted in
 # ETH (token = 0x0). Reward funds come from the deployer's prefunded balance.
 #
 # postJob(bytes32 specHash, string specPreview, uint256 reward, address token, uint64 deadline)
@@ -129,8 +129,8 @@ post_job() {
     --value "$reward_wei" >/dev/null
   echo "  ✓ $preview ($reward_wei wei)"
 }
-post_job "outline crates/tkr-mesh/src/client.rs as a markdown summary"        100000000000000000   #  0.10 ETH
-post_job "find all callers of broker::BrokerState::route in tkr-server"      150000000000000000   #  0.15 ETH
+post_job "outline crates/jkr-mesh/src/client.rs as a markdown summary"        100000000000000000   #  0.10 ETH
+post_job "find all callers of broker::BrokerState::route in jkr-server"      150000000000000000   #  0.15 ETH
 post_job "add a /api/v1/mesh/peers endpoint listing connected addrs"         500000000000000000   #  0.50 ETH
 
 echo

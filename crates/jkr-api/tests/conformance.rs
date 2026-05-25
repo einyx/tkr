@@ -1,5 +1,5 @@
 #![cfg(feature = "test-host")]
-use tkr_api::{
+use jkr_api::{
     bus::{Event, Request},
     host::Host,
     manifest::SensitivityClass,
@@ -52,7 +52,7 @@ fn assert_host_conformance<H: Host>(h: &H) {
             caller: "t".into(),
         })
         .unwrap_err();
-    assert!(matches!(err, tkr_api::Error::UnknownMethod(_)));
+    assert!(matches!(err, jkr_api::Error::UnknownMethod(_)));
 
     // Vault state observable
     let _ = h.vault().state();

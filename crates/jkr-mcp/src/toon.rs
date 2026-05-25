@@ -9,18 +9,18 @@
 //!   ```text
 //!   find_symbol "Server" -- 2 hits
 //!   hits[2]{kind,name,path,start,end}:
-//!     function,Server,crates/tkr-mcp/src/server.rs,30,50
-//!     function,Server,crates/tkr-server/src/lib.rs,15,100
+//!     function,Server,crates/jkr-mcp/src/server.rs,30,50
+//!     function,Server,crates/jkr-server/src/lib.rs,15,100
 //!   ```
 //!
-//! Toggle with `TKR_TOON=1` in the MCP server's env. Off by default — we
+//! Toggle with `JKR_TOON=1` in the MCP server's env. Off by default — we
 //! ship behavior change behind a flag until users opt in.
 
 use std::fmt::Write;
 
 pub fn enabled() -> bool {
     matches!(
-        std::env::var("TKR_TOON").ok().as_deref(),
+        std::env::var("JKR_TOON").ok().as_deref(),
         Some("1" | "true" | "TRUE" | "yes")
     )
 }

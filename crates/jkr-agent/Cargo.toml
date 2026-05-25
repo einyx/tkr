@@ -1,21 +1,21 @@
 [package]
-name = "tkr-agent"
+name = "jkr-agent"
 publish = false
 version = "0.1.0"
 edition = "2021"
 rust-version.workspace = true
-description = "Agent runtime for the tkr token-optimized CLI proxy"
-repository = "https://github.com/einyx/tkr"
+description = "Agent runtime for the jkr token-optimized CLI proxy"
+repository = "https://github.com/einyx/jkr"
 license = "Apache-2.0"
 
 [lib]
-name = "tkr_agent"
+name = "jkr_agent"
 crate-type = ["rlib"]
 
 [dependencies]
-tkr-api = { path = "../tkr-api", version = "0.1.0" }
-tkr-filter = { path = "../tkr-filter", version = "0.1.0" }
-tkr-sandbox = { path = "../tkr-sandbox", version = "0.1.0" }
+jkr-api = { path = "../jkr-api", version = "0.1.0" }
+jkr-filter = { path = "../jkr-filter", version = "0.1.0" }
+jkr-sandbox = { path = "../jkr-sandbox", version = "0.1.0" }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -24,4 +24,4 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 mockito = { workspace = true }
-tkr-providers = { path = "../tkr-providers" }
+jkr-providers = { path = "../jkr-providers" }

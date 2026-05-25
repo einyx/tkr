@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::sync::RwLock;
-use tkr_api::bus::{Bus, Event, Reply, Request};
-use tkr_api::capability::CapSet;
-use tkr_api::{Error, Result as ApiResult};
+use jkr_api::bus::{Bus, Event, Reply, Request};
+use jkr_api::capability::CapSet;
+use jkr_api::{Error, Result as ApiResult};
 
 type Handler = Box<dyn Fn(Request) -> ApiResult<Reply> + Send + Sync>;
 type Subscriber = Box<dyn Fn(Event) -> ApiResult<()> + Send + Sync>;

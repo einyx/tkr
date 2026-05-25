@@ -1,5 +1,5 @@
 //! Native **`go test`** — elide verbose `=== RUN` / `--- PASS` pairs (same idea as `cargo test`).
-//! Env: **`TKR_NATIVE_GO_TEST=0`** disables.
+//! Env: **`JKR_NATIVE_GO_TEST=0`** disables.
 //!
 //! Skips shrinking when **`-json`**, **`-bench`**, or **`-fuzz`** is present (different output shape).
 
@@ -13,7 +13,7 @@ use std::sync::LazyLock;
 
 pub fn env_disabled() -> bool {
     matches!(
-        std::env::var("TKR_NATIVE_GO_TEST").ok().as_deref(),
+        std::env::var("JKR_NATIVE_GO_TEST").ok().as_deref(),
         Some("0") | Some("false") | Some("off")
     )
 }
@@ -104,7 +104,7 @@ pub fn run(cmd: &str, args: &[String]) -> Result<Option<NativeOutcome>> {
         let raw = match stream.next() {
             None => break,
             Some(Err(e)) => {
-                eprintln!("tkr: native go test: {e}");
+                eprintln!("jkr: native go test: {e}");
                 continue;
             }
             Some(Ok(line)) => line,
@@ -118,7 +118,7 @@ pub fn run(cmd: &str, args: &[String]) -> Result<Option<NativeOutcome>> {
 
         if elided > 0 {
             let msg = format!(
-                "… ({} verbose pass/run lines elided — set `TKR_NATIVE_GO_TEST=0` for full log)\n",
+                "… ({} verbose pass/run lines elided — set `JKR_NATIVE_GO_TEST=0` for full log)\n",
                 elided
             );
             bytes_out += msg.len() as u64;

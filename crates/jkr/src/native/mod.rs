@@ -29,7 +29,7 @@ pub struct NativeOutcome {
     pub exit_code: i32,
 }
 
-/// When `TKR_NATIVE_SESSION_LOG=1`, append one JSON line per native run (see `session_log`).
+/// When `JKR_NATIVE_SESSION_LOG=1`, append one JSON line per native run (see `session_log`).
 pub fn log_session_line(cmd: &str, args: &[String], pipeline: &PipelineResult, exit_code: i32) {
     session_log::maybe_append(cmd, args, pipeline, exit_code);
 }

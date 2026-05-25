@@ -1,10 +1,10 @@
 use std::sync::Arc;
-use tkr_api::bus::Bus;
-use tkr_api::handles::{Fs, Kv, Sqlite};
-use tkr_api::host::Host;
-use tkr_api::manifest::SensitivityClass;
-use tkr_api::vault::Vault;
-use tkr_api::{Error, Result as ApiResult};
+use jkr_api::bus::Bus;
+use jkr_api::handles::{Fs, Kv, Sqlite};
+use jkr_api::host::Host;
+use jkr_api::manifest::SensitivityClass;
+use jkr_api::vault::Vault;
+use jkr_api::{Error, Result as ApiResult};
 
 use crate::host::bus::InProcBus;
 use crate::host::vault::{

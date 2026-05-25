@@ -1,5 +1,5 @@
-use tkr_agent::provider::{ContentBlock, Message, Provider, StopReason};
-use tkr_providers::OllamaProvider;
+use jkr_agent::provider::{ContentBlock, Message, Provider, StopReason};
+use jkr_providers::OllamaProvider;
 
 #[test]
 fn send_round_trips_through_mock_server() {

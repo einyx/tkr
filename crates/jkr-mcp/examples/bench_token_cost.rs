@@ -7,13 +7,13 @@
 //! tokenizer dependency.
 //!
 //! Usage:
-//!   cargo run -p tkr-mcp --release --example bench_token_cost -- <repo_root>
+//!   cargo run -p jkr-mcp --release --example bench_token_cost -- <repo_root>
 //!
 //! Defaults to `.` if no arg given. Prints a per-tool table, then a total
 //! "session budget" assuming a representative mix of calls.
 
 use std::path::PathBuf;
-use tkr_mcp::{index_backed, outline};
+use jkr_mcp::{index_backed, outline};
 
 /// Representative queries by tool. Mirrors what a real agent session looks
 /// like — a handful of symbol lookups + structural questions, not exhaustive
@@ -31,9 +31,9 @@ struct Queries {
 fn queries() -> Queries {
     Queries {
         outline_files: vec![
-            "crates/tkr-mcp/src/index_backed.rs",
-            "crates/tkr-mcp/src/server.rs",
-            "crates/tkr-sandbox/src/macos.rs",
+            "crates/jkr-mcp/src/index_backed.rs",
+            "crates/jkr-mcp/src/server.rs",
+            "crates/jkr-sandbox/src/macos.rs",
         ],
         find_symbols: vec!["run_sandboxed", "try_find_symbol", "build_profile"],
         signatures: vec!["run_sandboxed", "try_call_path"],
@@ -74,7 +74,7 @@ fn main() -> anyhow::Result<()> {
         }
         bytes += outline::render_outline(&p)?.len();
     }
-    record("tkr_outline_file", bytes, q.outline_files.len());
+    record("jkr_outline_file", bytes, q.outline_files.len());
 
     // find_symbol
     let mut bytes = 0usize;
@@ -83,7 +83,7 @@ fn main() -> anyhow::Result<()> {
             bytes += out.len();
         }
     }
-    record("tkr_find_symbol", bytes, q.find_symbols.len());
+    record("jkr_find_symbol", bytes, q.find_symbols.len());
 
     // signature
     let mut bytes = 0usize;
@@ -92,7 +92,7 @@ fn main() -> anyhow::Result<()> {
             bytes += out.len();
         }
     }
-    record("tkr_signature", bytes, q.signatures.len());
+    record("jkr_signature", bytes, q.signatures.len());
 
     // read_smart
     let mut bytes = 0usize;
@@ -101,7 +101,7 @@ fn main() -> anyhow::Result<()> {
             bytes += out.len();
         }
     }
-    record("tkr_read_smart", bytes, q.read_smarts.len());
+    record("jkr_read_smart", bytes, q.read_smarts.len());
 
     // callers_of
     let mut bytes = 0usize;
@@ -110,7 +110,7 @@ fn main() -> anyhow::Result<()> {
             bytes += out.len();
         }
     }
-    record("tkr_callers_of", bytes, q.callers.len());
+    record("jkr_callers_of", bytes, q.callers.len());
 
     // callees_of
     let mut bytes = 0usize;
@@ -119,7 +119,7 @@ fn main() -> anyhow::Result<()> {
             bytes += out.len();
         }
     }
-    record("tkr_callees_of", bytes, q.callees.len());
+    record("jkr_callees_of", bytes, q.callees.len());
 
     // call_path
     let mut bytes = 0usize;
@@ -128,7 +128,7 @@ fn main() -> anyhow::Result<()> {
             bytes += out.len();
         }
     }
-    record("tkr_call_path", bytes, q.call_paths.len());
+    record("jkr_call_path", bytes, q.call_paths.len());
 
     println!();
     println!("{:<22} {:>6} {:>10} {:>10}", "tool", "calls", "bytes", "B/call");

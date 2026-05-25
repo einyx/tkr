@@ -19,7 +19,7 @@ static FALLBACK_COMMANDS: &[&str] = &[
 pub fn run(history_override: Option<PathBuf>, limit: usize) -> Result<()> {
     let home = dirs::home_dir().unwrap_or_default();
 
-    println!("tkr discover — scanning for savings opportunities\n");
+    println!("jkr discover — scanning for savings opportunities\n");
 
     let history_path = history_override
         .or_else(default_history_path)
@@ -33,7 +33,7 @@ pub fn run(history_override: Option<PathBuf>, limit: usize) -> Result<()> {
         let line = line
             .trim_start_matches(|c: char| c == ':' || c.is_ascii_digit() || c == ';' || c == ' ');
         for cmd in &commands {
-            if line.starts_with(cmd) && !line.starts_with("tkr ") {
+            if line.starts_with(cmd) && !line.starts_with("jkr ") {
                 *missed.entry(cmd.clone()).or_default() += 1;
             }
         }
@@ -44,9 +44,9 @@ pub fn run(history_override: Option<PathBuf>, limit: usize) -> Result<()> {
     } else {
         let mut sorted: Vec<_> = missed.iter().collect();
         sorted.sort_by(|a, b| b.1.cmp(a.1));
-        println!("Commands run without tkr (estimated missed savings):\n");
+        println!("Commands run without jkr (estimated missed savings):\n");
         for (cmd, count) in sorted {
-            println!("  {cmd:<20} {count:>6} times — try: tkr {cmd} ...");
+            println!("  {cmd:<20} {count:>6} times — try: jkr {cmd} ...");
         }
         println!(
             "\nScanned {} commands from filters/fallbacks over last {} history lines ({})",
@@ -54,7 +54,7 @@ pub fn run(history_override: Option<PathBuf>, limit: usize) -> Result<()> {
             limit,
             history_path.display()
         );
-        println!("\nTip: add `alias git='tkr git'` (and similar) to your shell profile to proxy automatically.");
+        println!("\nTip: add `alias git='jkr git'` (and similar) to your shell profile to proxy automatically.");
     }
 
     Ok(())
@@ -104,7 +104,7 @@ fn candidate_filter_dirs() -> Vec<PathBuf> {
         dirs.push(p);
     }
     if let Some(home) = dirs::home_dir() {
-        dirs.push(home.join(".tkr/filters"));
+        dirs.push(home.join(".jkr/filters"));
     }
     dirs
 }

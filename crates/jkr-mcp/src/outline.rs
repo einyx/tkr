@@ -30,11 +30,11 @@ pub fn render_outline(path: &Path) -> Result<String> {
     // the next agent attempt lands on the right tool.
     if path.is_dir() {
         return Ok(format!(
-            "tkr_outline_file expects a single FILE, got directory: {}\n\
+            "jkr_outline_file expects a single FILE, got directory: {}\n\
              For directory-level orientation try one of:\n  \
-             - tkr_grep_summary  — pattern across many files\n  \
-             - tkr_find_symbol   — locate a specific name\n  \
-             - tkr_read_smart    — natural-language question across the index\n",
+             - jkr_grep_summary  — pattern across many files\n  \
+             - jkr_find_symbol   — locate a specific name\n  \
+             - jkr_read_smart    — natural-language question across the index\n",
             path.display()
         ));
     }
@@ -90,7 +90,7 @@ pub fn render_outline(path: &Path) -> Result<String> {
     ));
     if symbols.is_empty() {
         // Fallback: header-only summary. Didactic Read-hint dropped (agents
-        // calling tkr_outline_file already know about Read offset/limit).
+        // calling jkr_outline_file already know about Read offset/limit).
         let preview = std::str::from_utf8(&bytes)
             .unwrap_or("(binary)")
             .lines()
@@ -333,7 +333,7 @@ pub struct Beta { x: u32 }
 
     #[test]
     fn directory_path_redirects_to_other_tools() {
-        // Real transcript evidence: agent passed `/home/alessio/tkr` (a
+        // Real transcript evidence: agent passed `/home/alessio/jkr` (a
         // directory) instead of a file. Should produce a helpful redirect
         // pointing at the right tool, not an `Is a directory (os error 21)`.
         let dir = tempfile::tempdir().unwrap();
@@ -342,8 +342,8 @@ pub struct Beta { x: u32 }
             out.contains("expects a single FILE"),
             "missing helpful redirect:\n{out}"
         );
-        assert!(out.contains("tkr_grep_summary"), "no redirect to grep_summary:\n{out}");
-        assert!(out.contains("tkr_find_symbol"), "no redirect to find_symbol:\n{out}");
+        assert!(out.contains("jkr_grep_summary"), "no redirect to grep_summary:\n{out}");
+        assert!(out.contains("jkr_find_symbol"), "no redirect to find_symbol:\n{out}");
     }
 
     #[test]
@@ -403,7 +403,7 @@ pub struct Beta { x: u32 }
     fn tempfile_write(name: &str, content: &str) -> TempFile {
         let mut path = std::env::temp_dir();
         path.push(format!(
-            "tkr-mcp-test-{}-{}",
+            "jkr-mcp-test-{}-{}",
             std::process::id(),
             name
         ));

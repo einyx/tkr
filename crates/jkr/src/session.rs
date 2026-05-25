@@ -8,7 +8,7 @@ use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::net::UnixStream;
 
-/// Live session events for `tkr watch` (Unix domain socket). No-op on Windows.
+/// Live session events for `jkr watch` (Unix domain socket). No-op on Windows.
 #[derive(Clone)]
 pub struct Session {
     #[cfg(unix)]
@@ -76,7 +76,7 @@ mod tests {
 
     #[test]
     fn session_no_ops_when_socket_missing() {
-        let session = Session::connect("/tmp/__tkr_no_such_socket_xyz");
+        let session = Session::connect("/tmp/__jkr_no_such_socket_xyz");
         session.command_start("git", "status");
         session.command_end(100, 50);
     }

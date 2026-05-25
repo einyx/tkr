@@ -1,6 +1,6 @@
 use serde_json::json;
 use std::sync::{Arc, Mutex};
-use tkr_api::{
+use jkr_api::{
     bus::{Reply, Request},
     capability,
     host::Host,
@@ -33,7 +33,7 @@ const SCHEMA_SQL: &str = "
     CREATE INDEX IF NOT EXISTS idx_noise_command ON noise_signatures(command);
 ";
 
-/// sqlite-vec `vec0` module — installed lazily so `command_stats` / `tkr gain`
+/// sqlite-vec `vec0` module — installed lazily so `command_stats` / `jkr gain`
 /// still work when vec0 fails to load on a host (broken extension, stale build).
 const SCHEMA_VEC_EMBEDDINGS: &str = "
     CREATE VIRTUAL TABLE IF NOT EXISTS noise_embeddings USING vec0(
@@ -91,7 +91,7 @@ impl AnalyticsPluginV2 {
     /// Execute a closure with the vault sqlite handle, if the host is present.
     fn with_sqlite<F, R>(&self, f: F) -> Option<R>
     where
-        F: FnOnce(&dyn tkr_api::handles::Sqlite) -> R,
+        F: FnOnce(&dyn jkr_api::handles::Sqlite) -> R,
     {
         let guard = self.host.lock().unwrap();
         let host = guard.as_ref()?;
@@ -144,14 +144,14 @@ impl Default for AnalyticsPluginV2 {
 impl Plugin for AnalyticsPluginV2 {
     fn manifest(&self) -> Manifest {
         Manifest {
-            name: "tkr-analytics".into(),
+            name: "jkr-analytics".into(),
             version: env!("CARGO_PKG_VERSION").into(),
             capabilities_required: vec![
                 capability::VAULT_READ_PUBLIC.into(),
                 capability::VAULT_WRITE_PUBLIC.into(),
                 capability::STDOUT_FILTER.into(),
             ],
-            services_exposed: vec![tkr_api::manifest::ServiceSpec {
+            services_exposed: vec![jkr_api::manifest::ServiceSpec {
                 method: "analytics.savings".into(),
                 required_caps: vec![],
             }],
@@ -169,8 +169,8 @@ impl Plugin for AnalyticsPluginV2 {
         let _ = host.sqlite(SCHEMA_SQL, SensitivityClass::Public);
 
         // One-shot legacy migration: only run if the legacy DB file still exists.
-        // We skip reading/writing ~/.tkr/schema.json because the mere presence
-        // of ~/.tkr/analytics.db is already the guard — once it's renamed to
+        // We skip reading/writing ~/.jkr/schema.json because the mere presence
+        // of ~/.jkr/analytics.db is already the guard — once it's renamed to
         // .migrated the check is O(1) (stat call, ~1μs).
         // Non-fatal: migration failure is logged and ignored.
         if legacy_db_exists() {
@@ -372,7 +372,7 @@ pub fn noise_signature_id_via_host(
 
 /// Return all noise_signatures rows that have no corresponding row in the
 /// noise_embeddings table — the work queue for the lazy embed-and-persist
-/// step in `tkr suggest`.
+/// step in `jkr suggest`.
 pub fn noise_signatures_without_embeddings_via_host(
     host: &dyn Host,
     limit: usize,
@@ -404,7 +404,7 @@ pub fn noise_signatures_without_embeddings_via_host(
 
 /// Upsert a command-stats row into the vault sqlite using any `Host` impl.
 /// Lets non-plugin code (proxy::run) record per-run savings directly without
-/// going through the legacy session-socket / `tkr watch` daemon path.
+/// going through the legacy session-socket / `jkr watch` daemon path.
 pub fn record_command_stat_via_host(
     host: &dyn Host,
     command: &str,
@@ -539,18 +539,18 @@ pub fn top_noise_signatures_via_host(
 /// If not, we can skip the entire migration path in O(1).
 fn legacy_db_exists() -> bool {
     dirs::home_dir()
-        .map(|h| h.join(".tkr").join("analytics.db").exists())
+        .map(|h| h.join(".jkr").join("analytics.db").exists())
         .unwrap_or(false)
 }
 
-/// Import rows from `~/.tkr/analytics.db` into the vault sqlite, then rename
-/// the file to `~/.tkr/analytics.db.migrated` to prevent double-migration.
+/// Import rows from `~/.jkr/analytics.db` into the vault sqlite, then rename
+/// the file to `~/.jkr/analytics.db.migrated` to prevent double-migration.
 fn migrate_legacy_db(host: &dyn Host) -> ApiResult<()> {
     let home = match dirs::home_dir() {
         Some(h) => h,
         None => return Ok(()),
     };
-    let legacy_path = home.join(".tkr").join("analytics.db");
+    let legacy_path = home.join(".jkr").join("analytics.db");
     if !legacy_path.exists() {
         return Ok(());
     }
@@ -646,7 +646,7 @@ fn migrate_legacy_db(host: &dyn Host) -> ApiResult<()> {
     }
 
     // Rename the legacy file so we don't re-migrate on next startup.
-    let migrated_path = home.join(".tkr").join("analytics.db.migrated");
+    let migrated_path = home.join(".jkr").join("analytics.db.migrated");
     let _ = std::fs::rename(&legacy_path, &migrated_path);
 
     Ok(())
@@ -659,27 +659,27 @@ mod tests {
     use super::*;
     use std::sync::Arc;
     #[cfg(feature = "test-host")]
-    use tkr_api::plugin::CommandCtx;
-    use tkr_api::plugin::Plugin;
+    use jkr_api::plugin::CommandCtx;
+    use jkr_api::plugin::Plugin;
 
-    // Use TestHost from tkr-api (test-host feature) wrapped in Arc.
+    // Use TestHost from jkr-api (test-host feature) wrapped in Arc.
     // TestSqlite is a no-op (records calls, returns empty rows), which is
     // sufficient to verify the call contract without needing a real DB.
     #[cfg(feature = "test-host")]
     fn make_test_host() -> Arc<dyn Host + 'static> {
-        Arc::new(tkr_api::test_host::TestHost::new("tkr-analytics"))
+        Arc::new(jkr_api::test_host::TestHost::new("jkr-analytics"))
     }
 
     #[cfg(not(feature = "test-host"))]
     mod noop_host_stub {
         use std::sync::Arc;
 
-        use tkr_api::bus::{Bus, Event, Reply, Request};
-        use tkr_api::handles::{Fs, Kv, Sqlite};
-        use tkr_api::host::Host;
-        use tkr_api::manifest::SensitivityClass;
-        use tkr_api::vault::{SealState, Vault};
-        use tkr_api::{Error, Result as ApiResult};
+        use jkr_api::bus::{Bus, Event, Reply, Request};
+        use jkr_api::handles::{Fs, Kv, Sqlite};
+        use jkr_api::host::Host;
+        use jkr_api::manifest::SensitivityClass;
+        use jkr_api::vault::{SealState, Vault};
+        use jkr_api::{Error, Result as ApiResult};
 
         struct StubBus;
 
@@ -759,9 +759,9 @@ mod tests {
     #[cfg(feature = "test-host")]
     #[test]
     fn aggregates_chars_in_per_command() {
-        use tkr_api::test_host::TestHost;
+        use jkr_api::test_host::TestHost;
 
-        let host_inner = Arc::new(TestHost::new("tkr-analytics"));
+        let host_inner = Arc::new(TestHost::new("jkr-analytics"));
         // Coerce Arc<TestHost> to Arc<dyn Host> for the plugin.
         let host: Arc<dyn Host + 'static> = host_inner.clone();
         let mut p = AnalyticsPluginV2::new();
@@ -804,7 +804,7 @@ mod tests {
 
         let reply = p
             .on_request(Request {
-                target: "tkr-analytics".into(),
+                target: "jkr-analytics".into(),
                 method: "analytics.savings".into(),
                 payload: json!({}),
                 caller: "test".into(),
@@ -825,7 +825,7 @@ mod tests {
 
         let err = p
             .on_request(Request {
-                target: "tkr-analytics".into(),
+                target: "jkr-analytics".into(),
                 method: "bad.method".into(),
                 payload: json!({}),
                 caller: "test".into(),
@@ -843,11 +843,11 @@ mod tests {
 
         // Create a temp directory to act as HOME.
         let fake_home = tempdir().unwrap();
-        let tkr_dir = fake_home.path().join(".tkr");
-        std::fs::create_dir_all(&tkr_dir).unwrap();
+        let jkr_dir = fake_home.path().join(".jkr");
+        std::fs::create_dir_all(&jkr_dir).unwrap();
 
         // Populate legacy DB with one row.
-        let legacy_db_path = tkr_dir.join("analytics.db");
+        let legacy_db_path = jkr_dir.join("analytics.db");
         {
             let conn = Connection::open(&legacy_db_path).unwrap();
             conn.execute_batch(
@@ -888,7 +888,7 @@ mod tests {
             !legacy_db_path.exists(),
             "legacy db should have been renamed after migration"
         );
-        let migrated = tkr_dir.join("analytics.db.migrated");
+        let migrated = jkr_dir.join("analytics.db.migrated");
         assert!(migrated.exists(), "migrated sentinel file should exist");
 
         unsafe {

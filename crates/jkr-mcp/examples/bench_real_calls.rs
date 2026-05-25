@@ -1,32 +1,32 @@
 //! Replay a corpus of real MCP tool calls and measure per-call byte cost.
 //!
 //! Reads a JSONL corpus where each line is `{"tool": "...", "args": {...}}`,
-//! re-runs each call through the index-backed handlers in tkr-mcp, and
+//! re-runs each call through the index-backed handlers in jkr-mcp, and
 //! reports the actual byte count per tool. This is the honest measurement
 //! the hand-picked `bench_token_cost` was a proxy for.
 //!
 //! Build a corpus from your own agent transcripts:
 //!
 //!   cd ~/.claude/projects/<your-project>
-//!   <extract tool_use blocks where name starts with mcp__tkr__,
+//!   <extract tool_use blocks where name starts with mcp__jkr__,
 //!    emit one JSON object per line with `tool` and `args`>
 //!
 //! Then:
 //!
-//!   cargo run -p tkr-mcp --release --example bench_real_calls -- corpus.jsonl
+//!   cargo run -p jkr-mcp --release --example bench_real_calls -- corpus.jsonl
 //!
 //! If the corpus is empty or tiny, that *is* the signal — there's no
 //! adoption to optimize for yet.
 //!
 //! Usage:
-//!   cargo run -p tkr-mcp --release --example bench_real_calls -- <corpus.jsonl>
+//!   cargo run -p jkr-mcp --release --example bench_real_calls -- <corpus.jsonl>
 
 use anyhow::{bail, Result};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use tkr_mcp::{index_backed, outline};
+use jkr_mcp::{index_backed, outline};
 
 #[derive(serde::Deserialize)]
 struct Call {
@@ -50,7 +50,7 @@ fn dispatch(call: &Call) -> Result<Option<String>> {
         None => std::env::current_dir()?,
     };
     match call.tool.as_str() {
-        "tkr_outline_file" => {
+        "jkr_outline_file" => {
             let path = arg_str(&call.args, "path")
                 .ok_or_else(|| anyhow::anyhow!("missing path"))?;
             let p = PathBuf::from(path);
@@ -63,30 +63,30 @@ fn dispatch(call: &Call) -> Result<Option<String>> {
             }
             outline::render_outline(&p).map(Some)
         }
-        "tkr_find_symbol" => {
+        "jkr_find_symbol" => {
             let name = arg_str(&call.args, "name").ok_or_else(|| anyhow::anyhow!("missing name"))?;
             index_backed::try_find_symbol(name, &root)
         }
-        "tkr_signature" => {
+        "jkr_signature" => {
             let name = arg_str(&call.args, "name").ok_or_else(|| anyhow::anyhow!("missing name"))?;
             index_backed::try_signature(name, &root)
         }
-        "tkr_read_smart" => {
+        "jkr_read_smart" => {
             let q = arg_str(&call.args, "question")
                 .ok_or_else(|| anyhow::anyhow!("missing question"))?;
             let limit = arg_u64(&call.args, "limit").unwrap_or(8) as usize;
             let verbose = arg_bool(&call.args, "verbose").unwrap_or(false);
             index_backed::try_read_smart(q, &root, limit, verbose)
         }
-        "tkr_callers_of" => {
+        "jkr_callers_of" => {
             let name = arg_str(&call.args, "name").ok_or_else(|| anyhow::anyhow!("missing name"))?;
             index_backed::try_callers_of(name, &root)
         }
-        "tkr_callees_of" => {
+        "jkr_callees_of" => {
             let name = arg_str(&call.args, "name").ok_or_else(|| anyhow::anyhow!("missing name"))?;
             index_backed::try_callees_of(name, &root)
         }
-        "tkr_call_path" => {
+        "jkr_call_path" => {
             let from = arg_str(&call.args, "from")
                 .ok_or_else(|| anyhow::anyhow!("missing from"))?;
             let to = arg_str(&call.args, "to").ok_or_else(|| anyhow::anyhow!("missing to"))?;

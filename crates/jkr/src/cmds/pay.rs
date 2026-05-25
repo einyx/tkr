@@ -1,12 +1,12 @@
-//! `tkr pay` — agent-to-agent payments. Off-chain receipt issuance and
+//! `jkr pay` — agent-to-agent payments. Off-chain receipt issuance and
 //! verification today; on-chain `claim` lands once a MeshEscrow address
 //! is deployed.
 
 use anyhow::{anyhow, bail, Context, Result};
 use std::io::Read;
 use std::path::Path;
-use tkr_mesh::payment::{EscrowDomain, Receipt};
-use tkr_mesh::{Address, Identity};
+use jkr_mesh::payment::{EscrowDomain, Receipt};
+use jkr_mesh::{Address, Identity};
 
 pub fn receipt_issue(
     session_id: &str,
@@ -195,7 +195,7 @@ fn parse_session_id(s: &str) -> Result<[u8; 32]> {
 
 /// Load a private key from a file. Accepts either a single line of hex
 /// (with or without 0x prefix) or a file in `KEY=value` shape with a
-/// `TKR_PAYMENT_KEY=...` line.
+/// `JKR_PAYMENT_KEY=...` line.
 fn load_identity(path: &Path) -> Result<Identity> {
     let raw = std::fs::read_to_string(path)
         .with_context(|| format!("read key file {}", path.display()))?;
@@ -237,7 +237,7 @@ mod tests {
 
     #[test]
     fn pick_hex_handles_env_format() {
-        let env = "# comment\nTKR_PAYMENT_KEY=0x1111111111111111111111111111111111111111111111111111111111111111\n";
+        let env = "# comment\nJKR_PAYMENT_KEY=0x1111111111111111111111111111111111111111111111111111111111111111\n";
         let h = pick_hex(env).unwrap();
         assert!(h.starts_with("0x11"));
     }
@@ -263,7 +263,7 @@ mod tests {
         secret[31] = 1;
         let identity = Identity::from_secret_bytes(&secret).unwrap();
         let payer_addr = identity.address().to_checksum();
-        writeln!(key_file, "TKR_PAYMENT_KEY=0x{}", hex::encode(secret)).unwrap();
+        writeln!(key_file, "JKR_PAYMENT_KEY=0x{}", hex::encode(secret)).unwrap();
         key_file.flush().unwrap();
 
         // Issue captures stdout, but for the test we call the lower-level

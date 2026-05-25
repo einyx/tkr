@@ -1,55 +1,55 @@
-# tkr-sandbox: FS Allowlist MVP — Implementation Plan (Plan 2 of 6)
+# jkr-sandbox: FS Allowlist MVP — Implementation Plan (Plan 2 of 6)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development.
 
-**Goal:** Add a `tkr-sandbox` crate that confines tool process execution to a per-tool filesystem allowlist. Linux uses `landlock`; macOS uses `sandbox-exec`. A new `ProcessTool` adapter lets any external command be registered as a sandboxed `Tool`. Integration tests verify enforcement.
+**Goal:** Add a `jkr-sandbox` crate that confines tool process execution to a per-tool filesystem allowlist. Linux uses `landlock`; macOS uses `sandbox-exec`. A new `ProcessTool` adapter lets any external command be registered as a sandboxed `Tool`. Integration tests verify enforcement.
 
-**Architecture:** New crate `tkr-sandbox` with two backends behind one `enforce()` API. `SandboxPolicy` is a serde struct. `ProcessTool` is a generic `Tool` that spawns a child command under policy. Tests gated by `#[cfg(target_os = ...)]` verify a write outside the allowlist fails.
+**Architecture:** New crate `jkr-sandbox` with two backends behind one `enforce()` API. `SandboxPolicy` is a serde struct. `ProcessTool` is a generic `Tool` that spawns a child command under policy. Tests gated by `#[cfg(target_os = ...)]` verify a write outside the allowlist fails.
 
 **Out of scope (Plan 2.5+):** seccomp, network-egress policy, cgroups, UID isolation, signed policy.
 
 **Tech Stack:** `landlock` 0.4, `/usr/bin/sandbox-exec`, `std::process::Command`, `tempfile`.
 
-**Spec reference:** `docs/superpowers/specs/2026-04-28-tkr-agents-platform-design.md` §7.2, §8.
+**Spec reference:** `docs/superpowers/specs/2026-04-28-jkr-agents-platform-design.md` §7.2, §8.
 
 ---
 
 ## File Structure
 
 **New crate:**
-- `crates/tkr-sandbox/{Cargo.toml,src/lib.rs,src/policy.rs,src/error.rs,src/exec.rs,src/linux.rs,src/macos.rs,tests/fs_enforcement.rs}`
+- `crates/jkr-sandbox/{Cargo.toml,src/lib.rs,src/policy.rs,src/error.rs,src/exec.rs,src/linux.rs,src/macos.rs,tests/fs_enforcement.rs}`
 
 **Modified:**
 - `Cargo.toml` (workspace) — add member, `landlock` and `tempfile` workspace deps
-- `crates/tkr-agent/Cargo.toml` — depend on `tkr-sandbox`
-- `crates/tkr-agent/src/tools/{mod.rs,process.rs}` — `ProcessTool` adapter
-- `crates/tkr-agent/src/lib.rs` — re-export `ProcessTool`
-- `crates/tkr-agent/tests/sandboxed_loop.rs` — end-to-end test
+- `crates/jkr-agent/Cargo.toml` — depend on `jkr-sandbox`
+- `crates/jkr-agent/src/tools/{mod.rs,process.rs}` — `ProcessTool` adapter
+- `crates/jkr-agent/src/lib.rs` — re-export `ProcessTool`
+- `crates/jkr-agent/tests/sandboxed_loop.rs` — end-to-end test
 
 ---
 
-## Task 1: Scaffold `tkr-sandbox`
+## Task 1: Scaffold `jkr-sandbox`
 
 - [ ] **Step 1.1: Update workspace `Cargo.toml`**
 
-In `members`, add `"crates/tkr-sandbox"`. In `[workspace.dependencies]` add:
+In `members`, add `"crates/jkr-sandbox"`. In `[workspace.dependencies]` add:
 
 ```toml
 landlock = "0.4"
 tempfile = "3"
 ```
 
-- [ ] **Step 1.2: Create `crates/tkr-sandbox/Cargo.toml`**
+- [ ] **Step 1.2: Create `crates/jkr-sandbox/Cargo.toml`**
 
 ```toml
 [package]
-name = "tkr-sandbox"
+name = "jkr-sandbox"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
 
 [lib]
-name = "tkr_sandbox"
+name = "jkr_sandbox"
 crate-type = ["rlib"]
 
 [dependencies]
@@ -68,7 +68,7 @@ tempfile = { workspace = true }
 toml = { workspace = true }
 ```
 
-- [ ] **Step 1.3: Create `crates/tkr-sandbox/src/lib.rs`**
+- [ ] **Step 1.3: Create `crates/jkr-sandbox/src/lib.rs`**
 
 ```rust
 pub mod error;
@@ -95,15 +95,15 @@ Each stub is a single-line comment naming the task that will fill it (Task 2 →
 `cargo check --workspace` must pass.
 
 ```bash
-git add Cargo.toml crates/tkr-sandbox
-git commit -m "scaffold tkr-sandbox crate"
+git add Cargo.toml crates/jkr-sandbox
+git commit -m "scaffold jkr-sandbox crate"
 ```
 
 ---
 
 ## Task 2: `SandboxError`
 
-Replace `crates/tkr-sandbox/src/error.rs`:
+Replace `crates/jkr-sandbox/src/error.rs`:
 
 ```rust
 use thiserror::Error;
@@ -131,13 +131,13 @@ mod tests {
 }
 ```
 
-Run `cargo test -p tkr-sandbox --lib error::`. Commit: `tkr-sandbox: error type`.
+Run `cargo test -p jkr-sandbox --lib error::`. Commit: `jkr-sandbox: error type`.
 
 ---
 
 ## Task 3: `SandboxPolicy`
 
-Replace `crates/tkr-sandbox/src/policy.rs`:
+Replace `crates/jkr-sandbox/src/policy.rs`:
 
 ```rust
 use serde::{Deserialize, Serialize};
@@ -214,13 +214,13 @@ fs_write = ["/tmp"]"#;
 }
 ```
 
-Run `cargo test -p tkr-sandbox --lib policy::`. Commit: `tkr-sandbox: SandboxPolicy + builder`.
+Run `cargo test -p jkr-sandbox --lib policy::`. Commit: `jkr-sandbox: SandboxPolicy + builder`.
 
 ---
 
 ## Task 4: Cross-platform `run_sandboxed` entry point
 
-Replace `crates/tkr-sandbox/src/exec.rs`:
+Replace `crates/jkr-sandbox/src/exec.rs`:
 
 ```rust
 use crate::error::SandboxError;
@@ -286,7 +286,7 @@ mod tests {
 }
 ```
 
-Run `cargo test -p tkr-sandbox --lib exec::`. Commit: `tkr-sandbox: cross-platform run_sandboxed entry point`.
+Run `cargo test -p jkr-sandbox --lib exec::`. Commit: `jkr-sandbox: cross-platform run_sandboxed entry point`.
 
 ---
 
@@ -294,7 +294,7 @@ Run `cargo test -p tkr-sandbox --lib exec::`. Commit: `tkr-sandbox: cross-platfo
 
 **The implementer must read landlock 0.4 docs before this step:** <https://docs.rs/landlock/0.4/landlock/>. Pin landlock at 0.4. Landlock restriction is one-way per thread; we apply it in the child via `pre_exec`.
 
-Replace `crates/tkr-sandbox/src/linux.rs`:
+Replace `crates/jkr-sandbox/src/linux.rs`:
 
 ```rust
 use crate::error::SandboxError;
@@ -367,13 +367,13 @@ fn apply_landlock(
 }
 ```
 
-**Verification:** before completing, run `cargo check -p tkr-sandbox` on Linux. If landlock 0.4 type symbols differ, adjust imports/calls; the semantics remain the same. Commit: `tkr-sandbox: Linux landlock backend`.
+**Verification:** before completing, run `cargo check -p jkr-sandbox` on Linux. If landlock 0.4 type symbols differ, adjust imports/calls; the semantics remain the same. Commit: `jkr-sandbox: Linux landlock backend`.
 
 ---
 
 ## Task 6: macOS backend (sandbox-exec wrapper)
 
-Replace `crates/tkr-sandbox/src/macos.rs`:
+Replace `crates/jkr-sandbox/src/macos.rs`:
 
 ```rust
 use crate::error::SandboxError;
@@ -438,16 +438,16 @@ mod tests {
 }
 ```
 
-Run `cargo test -p tkr-sandbox --lib macos::` on macOS. Commit: `tkr-sandbox: macOS sandbox-exec backend`.
+Run `cargo test -p jkr-sandbox --lib macos::` on macOS. Commit: `jkr-sandbox: macOS sandbox-exec backend`.
 
 ---
 
 ## Task 7: Integration test — write outside allowlist must fail
 
-Create `crates/tkr-sandbox/tests/fs_enforcement.rs`:
+Create `crates/jkr-sandbox/tests/fs_enforcement.rs`:
 
 ```rust
-use tkr_sandbox::{run_sandboxed, SandboxPolicy};
+use jkr_sandbox::{run_sandboxed, SandboxPolicy};
 
 fn run_test() {
     let allowed = tempfile::tempdir().unwrap();
@@ -492,7 +492,7 @@ fn linux_blocks_write_outside_allowlist() { run_test(); }
 fn macos_blocks_write_outside_allowlist() { run_test(); }
 ```
 
-Run `cargo test -p tkr-sandbox --test fs_enforcement` — passes on Linux (kernel ≥ 5.13) and macOS. Commit: `tkr-sandbox: FS enforcement integration test`.
+Run `cargo test -p jkr-sandbox --test fs_enforcement` — passes on Linux (kernel ≥ 5.13) and macOS. Commit: `jkr-sandbox: FS enforcement integration test`.
 
 If Linux kernel is too old, mark the test `#[ignore]` and document — do NOT relax the assertion.
 
@@ -500,24 +500,24 @@ If Linux kernel is too old, mark the test `#[ignore]` and document — do NOT re
 
 ## Task 8: `ProcessTool` adapter
 
-Add to `crates/tkr-agent/Cargo.toml` `[dependencies]`:
+Add to `crates/jkr-agent/Cargo.toml` `[dependencies]`:
 ```toml
-tkr-sandbox = { path = "../tkr-sandbox" }
+jkr-sandbox = { path = "../jkr-sandbox" }
 ```
 
-Edit `crates/tkr-agent/src/tools/mod.rs`:
+Edit `crates/jkr-agent/src/tools/mod.rs`:
 ```rust
 pub mod echo;
 pub mod process;
 ```
 
-Create `crates/tkr-agent/src/tools/process.rs`:
+Create `crates/jkr-agent/src/tools/process.rs`:
 
 ```rust
 use crate::tool::{Tool, ToolResult};
 use anyhow::Result;
 use serde_json::Value;
-use tkr_sandbox::{run_sandboxed, SandboxPolicy};
+use jkr_sandbox::{run_sandboxed, SandboxPolicy};
 
 pub struct ProcessTool {
     name: String,
@@ -619,25 +619,25 @@ mod tests {
 }
 ```
 
-Add to `crates/tkr-agent/src/lib.rs`:
+Add to `crates/jkr-agent/src/lib.rs`:
 ```rust
 pub use tools::process::ProcessTool;
 ```
 
-Run `cargo test -p tkr-agent --lib tools::process`. Commit: `tkr-agent: ProcessTool adapter on tkr-sandbox`.
+Run `cargo test -p jkr-agent --lib tools::process`. Commit: `jkr-agent: ProcessTool adapter on jkr-sandbox`.
 
 ---
 
 ## Task 9: End-to-end test — sandboxed ProcessTool in agent loop
 
-Create `crates/tkr-agent/tests/sandboxed_loop.rs`:
+Create `crates/jkr-agent/tests/sandboxed_loop.rs`:
 
 ```rust
 use serde_json::json;
 use std::cell::RefCell;
-use tkr_agent::provider::{ContentBlock, Message, Provider, ProviderResponse, StopReason};
-use tkr_agent::{Manifest, ProcessTool, ToolRegistry};
-use tkr_sandbox::SandboxPolicy;
+use jkr_agent::provider::{ContentBlock, Message, Provider, ProviderResponse, StopReason};
+use jkr_agent::{Manifest, ProcessTool, ToolRegistry};
+use jkr_sandbox::SandboxPolicy;
 
 struct ScriptedProvider { script: RefCell<Vec<ProviderResponse>> }
 impl Provider for ScriptedProvider {
@@ -687,19 +687,19 @@ name = "x"
 "#).unwrap();
     let mut tools = ToolRegistry::new();
     tools.register(Box::new(process_tool));
-    let outcome = tkr_agent::run(&manifest, &provider, &mut tools, None).unwrap();
+    let outcome = jkr_agent::run(&manifest, &provider, &mut tools, None).unwrap();
     assert_eq!(outcome.steps, 2);
     assert_eq!(outcome.final_text, "fin");
     assert!(outcome.raw_bytes_total > 0);
 }
 ```
 
-Add to `crates/tkr-agent/Cargo.toml` `[dev-dependencies]` if missing:
+Add to `crates/jkr-agent/Cargo.toml` `[dev-dependencies]` if missing:
 ```toml
-tkr-sandbox = { path = "../tkr-sandbox" }
+jkr-sandbox = { path = "../jkr-sandbox" }
 ```
 
-Run `cargo test -p tkr-agent --test sandboxed_loop`. Commit: `tkr-agent: end-to-end test with sandboxed ProcessTool`.
+Run `cargo test -p jkr-agent --test sandboxed_loop`. Commit: `jkr-agent: end-to-end test with sandboxed ProcessTool`.
 
 ---
 

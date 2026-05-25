@@ -1,12 +1,12 @@
 // Browser-side EVM JSON-RPC client used by the Landing page to surface
-// tkr-devnet vitals. Routes through tkr-server's `/api/v1/chain/rpc`
+// jkr-devnet vitals. Routes through jkr-server's `/api/v1/chain/rpc`
 // passthrough so the browser doesn't need direct access to the anvil
 // node — same-origin, no CORS dance.
 //
 // Lifted out of Landing.tsx so the public page doesn't carry 150 lines
 // of RPC plumbing in the middle of its render tree.
 
-/// MeshEscrow address on the tkr devnet. Deterministic — first deploy
+/// MeshEscrow address on the jkr devnet. Deterministic — first deploy
 /// from anvil[0] always lands here.
 export const MESH_ESCROW_ADDR = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 

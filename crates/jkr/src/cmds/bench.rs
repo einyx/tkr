@@ -1,4 +1,4 @@
-//! `tkr bench <cmd>` — measure raw vs filtered output for a command, report
+//! `jkr bench <cmd>` — measure raw vs filtered output for a command, report
 //! savings ratio. Useful for tuning filters and showing users the win on
 //! their actual workloads.
 
@@ -9,7 +9,7 @@ use std::process::{Command, Stdio};
 
 pub fn run(parts: &[String]) -> Result<()> {
     if parts.is_empty() {
-        anyhow::bail!("usage: tkr bench <command> [args...]");
+        anyhow::bail!("usage: jkr bench <command> [args...]");
     }
     let (cmd, args) = parts.split_first().unwrap();
     let arg_strs: Vec<&str> = args.iter().map(String::as_str).collect();
@@ -20,7 +20,7 @@ pub fn run(parts: &[String]) -> Result<()> {
     let raw = capture_combined(cmd, &arg_strs).context("running raw command")?;
 
     // 2. Filtered run — invoke ourselves so the proxy pipeline runs.
-    let me = std::env::current_exe().context("locating current tkr binary")?;
+    let me = std::env::current_exe().context("locating current jkr binary")?;
     let mut full_args: Vec<String> = vec![cmd.clone()];
     full_args.extend(args.iter().cloned());
     let filt = capture_combined(

@@ -53,7 +53,7 @@ export interface SessionMeta {
   session_id: string;
   agent: string;
   started_at: string;
-  tkr_version: string;
+  jkr_version: string;
 }
 
 export interface SessionEvent {
@@ -70,7 +70,7 @@ export interface SessionEvent {
   exit_code?: number;
 }
 
-// Mirror of tkr-server::LlmCallReceipt. Populated by every call that
+// Mirror of jkr-server::LlmCallReceipt. Populated by every call that
 // flows through the /v1/messages Anthropic-wire proxy (and, future,
 // the OpenAI ingress). Surfaced on the landing's "live gateway" panel.
 export interface LlmCallReceipt {

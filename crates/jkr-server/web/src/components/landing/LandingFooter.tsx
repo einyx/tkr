@@ -11,8 +11,8 @@ export function LandingFooter() {
         Prysm
       </a>{" "}
       stack ·{" "}
-      <a href="https://github.com/einyx/tkr" target="_blank" rel="noopener noreferrer">
-        github.com/einyx/tkr
+      <a href="https://github.com/einyx/jkr" target="_blank" rel="noopener noreferrer">
+        github.com/einyx/jkr
       </a>
     </footer>
   );

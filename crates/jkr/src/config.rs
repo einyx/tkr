@@ -36,9 +36,9 @@ impl Default for CoreConfig {
     fn default() -> Self {
         let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
         Self {
-            plugin_dir: home.join(".tkr/plugins").to_string_lossy().into(),
-            socket_path: home.join(".tkr/session.sock").to_string_lossy().into(),
-            filter_dir: home.join(".tkr/filters").to_string_lossy().into(),
+            plugin_dir: home.join(".jkr/plugins").to_string_lossy().into(),
+            socket_path: home.join(".jkr/session.sock").to_string_lossy().into(),
+            filter_dir: home.join(".jkr/filters").to_string_lossy().into(),
             output_prefix: String::new(),
         }
     }
@@ -49,7 +49,7 @@ impl Default for PluginsConfig {
         Self {
             // Analytics is recorded by proxy::run from the canonical PipelineResult,
             // not via the plugin chain (suppressed lines short-circuit before reaching plugins).
-            chain: vec!["tkr-filter".into()],
+            chain: vec!["jkr-filter".into()],
             analytics: AnalyticsConfig::default(),
         }
     }
@@ -59,7 +59,7 @@ impl Default for AnalyticsConfig {
     fn default() -> Self {
         let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
         Self {
-            db_path: home.join(".tkr/analytics.db").to_string_lossy().into(),
+            db_path: home.join(".jkr/analytics.db").to_string_lossy().into(),
         }
     }
 }
@@ -77,11 +77,11 @@ pub fn load() -> Result<Config> {
 pub fn config_path() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join(".tkr/config.toml")
+        .join(".jkr/config.toml")
 }
 
 pub fn bundled_filters_dir() -> Option<PathBuf> {
-    option_env!("TKR_BUNDLED_FILTERS_DIR").map(PathBuf::from)
+    option_env!("JKR_BUNDLED_FILTERS_DIR").map(PathBuf::from)
 }
 
 #[cfg(test)]
@@ -91,7 +91,7 @@ mod tests {
     #[test]
     fn default_config_has_filter_plugin() {
         let cfg = Config::default();
-        assert_eq!(cfg.plugins.chain, vec!["tkr-filter"]);
+        assert_eq!(cfg.plugins.chain, vec!["jkr-filter"]);
     }
 
     #[test]

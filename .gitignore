@@ -13,12 +13,12 @@ docs/superpowers/
 /tmp/
 
 # Runtime secrets — never commit. The example template is checked in
-# at deploy/tkr-server.env.example.
-/tkr-server.env
+# at deploy/jkr-server.env.example.
+/jkr-server.env
 .env
 deploy/keys/*
 !deploy/keys/README.md
 data/
 
-# tkr-index local index DB
-.tkr/
+# jkr-index local index DB
+.jkr/

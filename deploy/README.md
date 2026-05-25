@@ -1,12 +1,12 @@
-# tkr-server deploy
+# jkr-server deploy
 
-Two supported shapes for running `tkr-server` behind nginx at
+Two supported shapes for running `jkr-server` behind nginx at
 `tkr.prysm.sh`. **Pick one — they manage the same port.** Compose is the
 default.
 
 - **Docker Compose** (recommended) — `docker-compose.yml` in the repo
   root, see *Compose install* below.
-- **systemd** — `deploy/tkr-server.service`, see *systemd install*.
+- **systemd** — `deploy/jkr-server.service`, see *systemd install*.
 
 ---
 
@@ -14,8 +14,8 @@ default.
 
 ```sh
 # 1. One-time: prepare the env file with a strong password
-install -m 0600 deploy/tkr-server.env.example tkr-server.env
-sed -i "s|^TKR_ADMIN_PASSWORD=.*|TKR_ADMIN_PASSWORD=$(openssl rand -hex 32)|" tkr-server.env
+install -m 0600 deploy/jkr-server.env.example jkr-server.env
+sed -i "s|^JKR_ADMIN_PASSWORD=.*|JKR_ADMIN_PASSWORD=$(openssl rand -hex 32)|" jkr-server.env
 
 # 2. Build + start
 docker compose up -d --build
@@ -23,7 +23,7 @@ docker compose up -d --build
 # 3. Verify
 docker compose ps
 curl -fsS http://127.0.0.1:4000/health
-docker compose logs -f tkr-server
+docker compose logs -f jkr-server
 ```
 
 The container binds to `127.0.0.1:4000` on the host (loopback-only). nginx
@@ -38,7 +38,7 @@ docker compose up -d --build
 ### Rotate the password
 
 ```sh
-sed -i "s|^TKR_ADMIN_PASSWORD=.*|TKR_ADMIN_PASSWORD=$(openssl rand -hex 32)|" tkr-server.env
+sed -i "s|^JKR_ADMIN_PASSWORD=.*|JKR_ADMIN_PASSWORD=$(openssl rand -hex 32)|" jkr-server.env
 docker compose up -d
 ```
 
@@ -56,42 +56,42 @@ docker compose up -d
 
 ```sh
 # 1. Build the release binary
-cargo build -p tkr-server --release
+cargo build -p jkr-server --release
 
 # 2. Create the env directory and drop in your secrets
-sudo install -d -m 0755 /etc/tkr
-sudo install -m 0600 deploy/tkr-server.env.example /etc/tkr/tkr-server.env
-sudoedit /etc/tkr/tkr-server.env       # set TKR_ADMIN_PASSWORD
+sudo install -d -m 0755 /etc/jkr
+sudo install -m 0600 deploy/jkr-server.env.example /etc/jkr/jkr-server.env
+sudoedit /etc/jkr/jkr-server.env       # set JKR_ADMIN_PASSWORD
 
 # Quick way to mint a strong password into the file:
-#   sudo sed -i "s|^TKR_ADMIN_PASSWORD=.*|TKR_ADMIN_PASSWORD=$(openssl rand -hex 32)|" /etc/tkr/tkr-server.env
+#   sudo sed -i "s|^JKR_ADMIN_PASSWORD=.*|JKR_ADMIN_PASSWORD=$(openssl rand -hex 32)|" /etc/jkr/jkr-server.env
 
 # 3. Install the unit and enable it
-sudo install -m 0644 deploy/tkr-server.service /etc/systemd/system/tkr-server.service
+sudo install -m 0644 deploy/jkr-server.service /etc/systemd/system/jkr-server.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now tkr-server
+sudo systemctl enable --now jkr-server
 ```
 
 ## Verify
 
 ```sh
-systemctl status tkr-server
+systemctl status jkr-server
 curl -fsS http://127.0.0.1:4000/health
-journalctl -u tkr-server -f          # live tail
+journalctl -u jkr-server -f          # live tail
 ```
 
 ## After updating the binary
 
 ```sh
-cargo build -p tkr-server --release
-sudo systemctl restart tkr-server
+cargo build -p jkr-server --release
+sudo systemctl restart jkr-server
 ```
 
 ## Rotating the password
 
 ```sh
-sudoedit /etc/tkr/tkr-server.env
-sudo systemctl restart tkr-server
+sudoedit /etc/jkr/jkr-server.env
+sudo systemctl restart jkr-server
 ```
 
 Existing browser sessions become invalid (the in-memory session store is
@@ -102,7 +102,7 @@ wiped on restart); users sign in again with the new password.
 The unit applies common systemd hardening: `NoNewPrivileges`,
 `ProtectSystem=strict`, `ProtectHome=read-only`, `PrivateTmp`,
 `MemoryDenyWriteExecute`, empty `CapabilityBoundingSet`. The service is
-allowed to write only to `/home/alessio/tkr` (build/cargo state).
+allowed to write only to `/home/alessio/jkr` (build/cargo state).
 
 If you move the repo or run as a different user, edit the `User=`,
 `Group=`, `WorkingDirectory=`, `ExecStart=`, and `ReadWritePaths=` lines.

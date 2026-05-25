@@ -100,7 +100,7 @@ impl Receipt {
 
 impl EscrowDomain {
     /// EIP-712 domain separator. Must match MeshEscrow's
-    /// `EIP712("tkr-mesh", "1")` constructor.
+    /// `EIP712("jkr-mesh", "1")` constructor.
     pub fn separator(&self) -> [u8; 32] {
         // typeHash = keccak("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
         let type_hash = Keccak256::digest(
@@ -108,7 +108,7 @@ impl EscrowDomain {
         );
         let mut buf = Vec::with_capacity(5 * 32);
         buf.extend_from_slice(&type_hash);
-        buf.extend_from_slice(&Keccak256::digest(b"tkr-mesh"));
+        buf.extend_from_slice(&Keccak256::digest(b"jkr-mesh"));
         buf.extend_from_slice(&Keccak256::digest(b"1"));
         buf.extend_from_slice(&u256_be(self.chain_id as u128));
         buf.extend_from_slice(&address_padded(&self.verifying_contract));

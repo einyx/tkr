@@ -46,7 +46,7 @@ export function SessionDetail({ id, onBack }: Props) {
   return (
     <>
       <header>
-        <div className="brand">tkr</div>
+        <div className="brand">jkr</div>
         <div className="who">
           <a
             href="#"

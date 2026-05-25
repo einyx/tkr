@@ -95,7 +95,7 @@ fn hello_digest(mesh_id: &str, addr: &Address, session_id: &str, ts: u64) -> [u8
     // Domain-tagged keccak so the hello signature can never be confused
     // with an EIP-712 invite or a payment receipt.
     let mut h = Keccak256::new();
-    h.update(b"tkr-mesh/v1/hello\n");
+    h.update(b"jkr-mesh/v1/hello\n");
     h.update(mesh_id.as_bytes());
     h.update(b"\n");
     h.update(addr.as_bytes());

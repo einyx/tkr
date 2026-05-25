@@ -1,9 +1,9 @@
 //! Calibration tool: reads stdin, runs through a filter pack, prints stats.
-//! Usage: `cat fixture.txt | cargo run --example measure -p tkr-filter -- <command> [subcommand]`
+//! Usage: `cat fixture.txt | cargo run --example measure -p jkr-filter -- <command> [subcommand]`
 
 use std::io::{self, BufRead, Write};
-use tkr_api::{FilterResult, LegacyPlugin as Plugin};
-use tkr_filter::FilterPlugin;
+use jkr_api::{FilterResult, LegacyPlugin as Plugin};
+use jkr_filter::FilterPlugin;
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();

@@ -23,7 +23,7 @@ export function LandingNav({ onSignIn }: Props) {
       <div className="lp-nav-actions">
         <a
           className="lp-nav-ghost"
-          href="https://github.com/einyx/tkr"
+          href="https://github.com/einyx/jkr"
           target="_blank"
           rel="noopener noreferrer"
         >

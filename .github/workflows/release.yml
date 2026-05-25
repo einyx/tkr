@@ -18,25 +18,25 @@ jobs:
         include:
           - target: aarch64-apple-darwin
             os: macos-latest
-            archive: tkr-aarch64-apple-darwin.tar.gz
+            archive: jkr-aarch64-apple-darwin.tar.gz
             use_cross: false
           # Build Intel macOS on Apple Silicon runners (macos-13 queue often stalls).
           - target: x86_64-apple-darwin
             os: macos-latest
-            archive: tkr-x86_64-apple-darwin.tar.gz
+            archive: jkr-x86_64-apple-darwin.tar.gz
             use_cross: false
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            archive: tkr-x86_64-unknown-linux-gnu.tar.gz
+            archive: jkr-x86_64-unknown-linux-gnu.tar.gz
             use_cross: false
             install_dbus: true
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
-            archive: tkr-aarch64-unknown-linux-gnu.tar.gz
+            archive: jkr-aarch64-unknown-linux-gnu.tar.gz
             use_cross: true
           - target: x86_64-pc-windows-msvc
             os: windows-latest
-            archive: tkr-x86_64-pc-windows-msvc.tar.gz
+            archive: jkr-x86_64-pc-windows-msvc.tar.gz
             use_cross: false
 
     steps:
@@ -60,7 +60,7 @@ jobs:
         if: matrix.use_cross
         env:
           TARGET: ${{ matrix.target }}
-        run: cross build --release -p tkr --target "$TARGET"
+        run: cross build --release -p jkr --target "$TARGET"
 
       - name: Build (cargo)
         if: ${{ !matrix.use_cross }}
@@ -69,7 +69,7 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
-          cargo build --release -p tkr --target "$TARGET"
+          cargo build --release -p jkr --target "$TARGET"
 
       - name: Import Apple Developer ID
         if: contains(matrix.target, 'apple-darwin') && env.APPLE_CERT_P12_BASE64 != ''
@@ -79,7 +79,7 @@ jobs:
         run: |
           set -euo pipefail
           KEYCHAIN_PASSWORD="$(openssl rand -hex 32)"
-          CERT_FILE="$(mktemp -t tkr-cert.XXXXXX.p12)"
+          CERT_FILE="$(mktemp -t jkr-cert.XXXXXX.p12)"
           trap 'rm -f "$CERT_FILE"' EXIT
           echo "$APPLE_CERT_P12_BASE64" | base64 --decode > "$CERT_FILE"
           ls -l "$CERT_FILE"
@@ -106,8 +106,8 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
-          BIN="target/${TARGET}/release/tkr"
-          IDENTIFIER=com.einyx.tkr
+          BIN="target/${TARGET}/release/jkr"
+          IDENTIFIER=com.einyx.jkr
           IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
             | grep "Developer ID Application" \
             | head -1 \
@@ -131,7 +131,7 @@ jobs:
           set -euo pipefail
           exe=""
           case "$TARGET" in *windows*) exe=".exe" ;; esac
-          BIN="target/${TARGET}/release/tkr${exe}"
+          BIN="target/${TARGET}/release/jkr${exe}"
           tar czf "$ARCHIVE" -C "$(dirname "$BIN")" "$(basename "$BIN")"
           python3 -c "import hashlib, pathlib, os; p=pathlib.Path(os.environ['ARCHIVE']); print(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name)" > "${ARCHIVE}.sha256"
 
@@ -183,8 +183,8 @@ jobs:
         run: |
           VERSION="${REF#refs/tags/v}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          for asset in tkr-aarch64-apple-darwin tkr-x86_64-apple-darwin \
-                       tkr-aarch64-unknown-linux-gnu tkr-x86_64-unknown-linux-gnu; do
+          for asset in jkr-aarch64-apple-darwin jkr-x86_64-apple-darwin \
+                       jkr-aarch64-unknown-linux-gnu jkr-x86_64-unknown-linux-gnu; do
             sha=$(cut -d' ' -f1 < "${asset}.tar.gz.sha256")
             slug=$(echo "${asset}" | tr '[:lower:]-' '[:upper:]_')
             echo "sha_${slug}=${sha}" >> "$GITHUB_OUTPUT"
@@ -200,28 +200,28 @@ jobs:
       - name: Bump formula
         env:
           VERSION: ${{ steps.sha.outputs.version }}
-          SHA_AARCH64_DARWIN: ${{ steps.sha.outputs.sha_TKR_AARCH64_APPLE_DARWIN }}
-          SHA_X86_64_DARWIN: ${{ steps.sha.outputs.sha_TKR_X86_64_APPLE_DARWIN }}
-          SHA_AARCH64_LINUX: ${{ steps.sha.outputs.sha_TKR_AARCH64_UNKNOWN_LINUX_GNU }}
-          SHA_X86_64_LINUX: ${{ steps.sha.outputs.sha_TKR_X86_64_UNKNOWN_LINUX_GNU }}
+          SHA_AARCH64_DARWIN: ${{ steps.sha.outputs.sha_JKR_AARCH64_APPLE_DARWIN }}
+          SHA_X86_64_DARWIN: ${{ steps.sha.outputs.sha_JKR_X86_64_APPLE_DARWIN }}
+          SHA_AARCH64_LINUX: ${{ steps.sha.outputs.sha_JKR_AARCH64_UNKNOWN_LINUX_GNU }}
+          SHA_X86_64_LINUX: ${{ steps.sha.outputs.sha_JKR_X86_64_UNKNOWN_LINUX_GNU }}
         run: |
           set -euo pipefail
           cd tap
           python3 - <<PYEOF
           import re, os, pathlib
-          p = pathlib.Path("Formula/tkr.rb")
+          p = pathlib.Path("Formula/jkr.rb")
           src = p.read_text()
           src = re.sub(r'^  version "[^"]+"', f'  version "{os.environ["VERSION"]}"', src, count=1, flags=re.M)
           # Order matches the formula: macOS arm, macOS intel, linux arm, linux intel.
           mapping = [
-            (r'tkr-aarch64-apple-darwin\.tar\.gz"\n      sha256 "[^"]+"',
-             f'tkr-aarch64-apple-darwin.tar.gz"\n      sha256 "{os.environ["SHA_AARCH64_DARWIN"]}"'),
-            (r'tkr-x86_64-apple-darwin\.tar\.gz"\n      sha256 "[^"]+"',
-             f'tkr-x86_64-apple-darwin.tar.gz"\n      sha256 "{os.environ["SHA_X86_64_DARWIN"]}"'),
-            (r'tkr-aarch64-unknown-linux-gnu\.tar\.gz"\n      sha256 "[^"]+"',
-             f'tkr-aarch64-unknown-linux-gnu.tar.gz"\n      sha256 "{os.environ["SHA_AARCH64_LINUX"]}"'),
-            (r'tkr-x86_64-unknown-linux-gnu\.tar\.gz"\n      sha256 "[^"]+"',
-             f'tkr-x86_64-unknown-linux-gnu.tar.gz"\n      sha256 "{os.environ["SHA_X86_64_LINUX"]}"'),
+            (r'jkr-aarch64-apple-darwin\.tar\.gz"\n      sha256 "[^"]+"',
+             f'jkr-aarch64-apple-darwin.tar.gz"\n      sha256 "{os.environ["SHA_AARCH64_DARWIN"]}"'),
+            (r'jkr-x86_64-apple-darwin\.tar\.gz"\n      sha256 "[^"]+"',
+             f'jkr-x86_64-apple-darwin.tar.gz"\n      sha256 "{os.environ["SHA_X86_64_DARWIN"]}"'),
+            (r'jkr-aarch64-unknown-linux-gnu\.tar\.gz"\n      sha256 "[^"]+"',
+             f'jkr-aarch64-unknown-linux-gnu.tar.gz"\n      sha256 "{os.environ["SHA_AARCH64_LINUX"]}"'),
+            (r'jkr-x86_64-unknown-linux-gnu\.tar\.gz"\n      sha256 "[^"]+"',
+             f'jkr-x86_64-unknown-linux-gnu.tar.gz"\n      sha256 "{os.environ["SHA_X86_64_LINUX"]}"'),
           ]
           for pat, repl in mapping:
             src = re.sub(pat, repl, src, count=1)
@@ -238,8 +238,8 @@ jobs:
             echo "no formula change to push"
             exit 0
           fi
-          git config user.name "tkr-release-bot"
-          git config user.email "tkr-release-bot@users.noreply.github.com"
-          git add Formula/tkr.rb
-          git commit -m "release: tkr v${VERSION}"
+          git config user.name "jkr-release-bot"
+          git config user.email "jkr-release-bot@users.noreply.github.com"
+          git add Formula/jkr.rb
+          git commit -m "release: jkr v${VERSION}"
           git push

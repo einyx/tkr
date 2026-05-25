@@ -10,8 +10,8 @@ use crate::host::vault::seal::SealStateMachine;
 use crate::host::vault::store::{MemStore, Store};
 use anyhow::{anyhow, Result};
 use std::sync::{Arc, Mutex};
-use tkr_api::manifest::SensitivityClass;
-use tkr_api::vault::{SealState, Vault as VaultTrait};
+use jkr_api::manifest::SensitivityClass;
+use jkr_api::vault::{SealState, Vault as VaultTrait};
 use zeroize::Zeroizing;
 
 fn now_ts() -> u64 {
@@ -156,29 +156,29 @@ impl VaultTrait for HostVault {
         self.sm.lock().unwrap().state()
     }
 
-    fn read_secret(&self, key: &str) -> tkr_api::Result<Vec<u8>> {
+    fn read_secret(&self, key: &str) -> jkr_api::Result<Vec<u8>> {
         let zeroizing = self
             .read(SensitivityClass::Secret, key, "host")
             .map_err(|e| {
                 if e.to_string().contains("vault sealed") {
-                    tkr_api::Error::Sealed
+                    jkr_api::Error::Sealed
                 } else {
-                    tkr_api::Error::Vault(e.to_string())
+                    jkr_api::Error::Vault(e.to_string())
                 }
             })?
-            .ok_or_else(|| tkr_api::Error::Vault(format!("missing key {key}")))?;
+            .ok_or_else(|| jkr_api::Error::Vault(format!("missing key {key}")))?;
         // Callers receiving plaintext are responsible for zeroizing on their side;
         // intermediate copies inside the vault are wiped via Zeroizing drop.
         Ok((*zeroizing).clone())
     }
 
-    fn write_secret(&self, key: &str, val: &[u8]) -> tkr_api::Result<()> {
+    fn write_secret(&self, key: &str, val: &[u8]) -> jkr_api::Result<()> {
         self.write(SensitivityClass::Secret, key, val, "host")
             .map_err(|e| {
                 if e.to_string().contains("vault sealed") {
-                    tkr_api::Error::Sealed
+                    jkr_api::Error::Sealed
                 } else {
-                    tkr_api::Error::Vault(e.to_string())
+                    jkr_api::Error::Vault(e.to_string())
                 }
             })
     }
