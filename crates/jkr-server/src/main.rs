@@ -1,3 +1,4 @@
+mod agents;
 mod broker;
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
