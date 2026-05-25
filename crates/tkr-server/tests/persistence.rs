@@ -69,11 +69,16 @@ async fn start_server(extra_env: &[(&str, String)]) -> ServerGuard {
     }
     let child = cmd.spawn().expect("spawn tkr-server");
     for _ in 0..80 {
-        if let Ok(resp) = ureq::get(&format!("http://127.0.0.1:{port}/health"))
-            .timeout(Duration::from_millis(250))
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .http_status_as_error(false)
+            .timeout_global(Some(Duration::from_millis(250)))
+            .build()
+            .into();
+        if let Ok(resp) = agent
+            .get(&format!("http://127.0.0.1:{port}/health"))
             .call()
         {
-            if resp.status() == 200 {
+            if resp.status().as_u16() == 200 {
                 return ServerGuard { child, port };
             }
         }
@@ -165,11 +170,13 @@ async fn session_survives_server_restart() {
     let cookie = {
         let guard = start_server(&env).await;
         let resp = ureq::post(&format!("http://127.0.0.1:{}/api/auth/login", guard.port))
-            .set("content-type", "application/json")
-            .send_string(r#"{"password":"correctbattery"}"#)
+            .header("content-type", "application/json")
+            .send(r#"{"password":"correctbattery"}"#)
             .expect("login");
-        assert_eq!(resp.status(), 200, "login should succeed");
-        resp.header("set-cookie")
+        assert_eq!(resp.status().as_u16(), 200, "login should succeed");
+        resp.headers()
+            .get("set-cookie")
+            .and_then(|v| v.to_str().ok())
             .expect("login should set tkr_session cookie")
             .split(';')
             .next()
@@ -183,11 +190,11 @@ async fn session_survives_server_restart() {
     // Phase B — restart, re-use the cookie against /api/auth/me.
     let guard = start_server(&env).await;
     let resp = ureq::get(&format!("http://127.0.0.1:{}/api/auth/me", guard.port))
-        .set("cookie", &cookie)
+        .header("cookie", &cookie)
         .call()
         .expect("me");
     assert_eq!(
-        resp.status(),
+        resp.status().as_u16(),
         200,
         "session minted before restart should still be valid after restart"
     );
@@ -227,13 +234,21 @@ async fn oauth_state_survives_server_restart() {
     // a dedicated agent.
     let state_param = {
         let guard = start_server(&env).await;
-        let agent = ureq::AgentBuilder::new().redirects(0).build();
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .http_status_as_error(false)
+            .max_redirects(0)
+            .build()
+            .into();
         let resp = agent
             .get(&format!("http://127.0.0.1:{}/auth/logto/start", guard.port))
             .call()
             .expect("logto start");
-        assert_eq!(resp.status(), 302, "should redirect to Logto");
-        let location = resp.header("location").expect("location header");
+        assert_eq!(resp.status().as_u16(), 302, "should redirect to Logto");
+        let location = resp
+            .headers()
+            .get("location")
+            .and_then(|v| v.to_str().ok())
+            .expect("location header");
         // Pull state= from the query string.
         location
             .split(&['?', '&'][..])
@@ -313,11 +328,13 @@ async fn receipts_queue_persists_across_restart() {
     let env = server_env(&database_url, &redis_url);
     let guard = start_server(&env).await;
     let login = ureq::post(&format!("http://127.0.0.1:{}/api/auth/login", guard.port))
-        .set("content-type", "application/json")
-        .send_string(r#"{"password":"correctbattery"}"#)
+        .header("content-type", "application/json")
+        .send(r#"{"password":"correctbattery"}"#)
         .expect("login");
     let cookie = login
-        .header("set-cookie")
+        .headers()
+        .get("set-cookie")
+        .and_then(|v| v.to_str().ok())
         .unwrap()
         .split(';')
         .next()
@@ -331,10 +348,11 @@ async fn receipts_queue_persists_across_restart() {
         "http://127.0.0.1:{}/api/v1/llm/receipts/drain",
         guard.port
     ))
-    .set("cookie", &cookie)
-    .send_string("{}")
+    .header("cookie", &cookie)
+    .send("{}")
     .expect("drain")
-    .into_json()
+    .into_body()
+    .read_json()
     .expect("drain json");
     assert_eq!(
         resp["count"].as_u64().unwrap_or(0),
@@ -347,10 +365,11 @@ async fn receipts_queue_persists_across_restart() {
         "http://127.0.0.1:{}/api/v1/llm/receipts/drain",
         guard.port
     ))
-    .set("cookie", &cookie)
-    .send_string("{}")
+    .header("cookie", &cookie)
+    .send("{}")
     .expect("drain 2")
-    .into_json()
+    .into_body()
+    .read_json()
     .expect("drain json 2");
     assert_eq!(
         resp2["count"].as_u64().unwrap_or(99),

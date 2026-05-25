@@ -50,11 +50,16 @@ async fn start_server() -> ServerGuard {
 
     // Poll /health until ready.
     for _ in 0..50 {
-        if let Ok(resp) = ureq::get(&format!("http://127.0.0.1:{port}/health"))
-            .timeout(Duration::from_millis(200))
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .http_status_as_error(false)
+            .timeout_global(Some(Duration::from_millis(200)))
+            .build()
+            .into();
+        if let Ok(resp) = agent
+            .get(&format!("http://127.0.0.1:{port}/health"))
             .call()
         {
-            if resp.status() == 200 {
+            if resp.status().as_u16() == 200 {
                 return ServerGuard { child, port };
             }
         }
@@ -71,7 +76,9 @@ fn login_and_get_cookie(port: u16) -> String {
         .send_json(serde_json::json!({ "password": "correct" }))
         .expect("login http");
     let set_cookie = resp
-        .header("set-cookie")
+        .headers()
+        .get("set-cookie")
+        .and_then(|v| v.to_str().ok())
         .expect("set-cookie header on login");
     set_cookie
         .split(';')
@@ -212,10 +219,10 @@ async fn enroll_with_override(
     });
 
     let resp = ureq::post(&format!("http://127.0.0.1:{port}/api/v1/mesh/join"))
-        .set("cookie", &format!("tkr_session={cookie}"))
+        .header("cookie", &format!("tkr_session={cookie}"))
         .send_json(body)
         .expect("join http");
-    let body: serde_json::Value = resp.into_json().expect("join json");
+    let body: serde_json::Value = resp.into_body().read_json().expect("join json");
     assert_eq!(body["ok"], serde_json::Value::Bool(true), "{body}");
     let member_id = body["memberId"].as_str().expect("memberId").to_string();
 

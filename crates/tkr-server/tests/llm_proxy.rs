@@ -46,11 +46,16 @@ async fn start_server(extra_env: &[(&str, String)]) -> ServerGuard {
     }
     let child = cmd.spawn().expect("spawn tkr-server");
     for _ in 0..50 {
-        if let Ok(resp) = ureq::get(&format!("http://127.0.0.1:{port}/health"))
-            .timeout(Duration::from_millis(200))
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .http_status_as_error(false)
+            .timeout_global(Some(Duration::from_millis(200)))
+            .build()
+            .into();
+        if let Ok(resp) = agent
+            .get(&format!("http://127.0.0.1:{port}/health"))
             .call()
         {
-            if resp.status() == 200 {
+            if resp.status().as_u16() == 200 {
                 return ServerGuard { child, port };
             }
         }
@@ -230,17 +235,17 @@ async fn v1_messages_proxies_to_upstream() {
     let body = req_body.to_string();
     let resp = tokio::task::spawn_blocking(move || {
         ureq::post(&format!("http://127.0.0.1:{port}/v1/messages"))
-            .set("content-type", "application/json")
-            .set("x-api-key", "sk-test")
-            .set("anthropic-version", "2023-06-01")
-            .send_string(&body)
+            .header("content-type", "application/json")
+            .header("x-api-key", "sk-test")
+            .header("anthropic-version", "2023-06-01")
+            .send(&body)
     })
     .await
     .unwrap()
     .expect("post /v1/messages");
 
-    assert_eq!(resp.status(), 200, "proxy should return upstream status");
-    let body = resp.into_string().expect("body");
+    assert_eq!(resp.status().as_u16(), 200, "proxy should return upstream status");
+    let body = resp.into_body().read_to_string().expect("body");
     let json: serde_json::Value = serde_json::from_str(&body).expect("json");
     assert_eq!(json["model"], "claude-sonnet-4-6");
     assert_eq!(json["usage"]["input_tokens"], 5);
@@ -270,24 +275,24 @@ async fn v1_messages_propagates_upstream_error_status() {
     let server = start_server(&[("TKR_ANTHROPIC_UPSTREAM", upstream_url)]).await;
 
     let port = server.port;
-    let resp = tokio::task::spawn_blocking(move || {
-        ureq::post(&format!("http://127.0.0.1:{port}/v1/messages"))
-            .set("content-type", "application/json")
-            .set("x-api-key", "sk-bad")
-            .set("anthropic-version", "2023-06-01")
-            .send_string(
+    let (status, body) = tokio::task::spawn_blocking(move || {
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .http_status_as_error(false)
+            .build()
+            .into();
+        let r = agent
+            .post(&format!("http://127.0.0.1:{port}/v1/messages"))
+            .header("content-type", "application/json")
+            .header("x-api-key", "sk-bad")
+            .header("anthropic-version", "2023-06-01")
+            .send(
                 r#"{"model":"claude-sonnet-4-6","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}"#,
             )
+            .expect("send failed");
+        (r.status().as_u16(), r.into_body().read_to_string().unwrap())
     })
     .await
     .unwrap();
-
-    // ureq raises Err on non-2xx by default; unpack either branch.
-    let (status, body) = match resp {
-        Ok(r) => (r.status(), r.into_string().unwrap()),
-        Err(ureq::Error::Status(s, r)) => (s, r.into_string().unwrap()),
-        Err(e) => panic!("transport error: {e}"),
-    };
 
     assert_eq!(
         status, 401,
@@ -310,11 +315,11 @@ async fn v1_messages_forwards_anthropic_auth_headers() {
     let port = server.port;
     let _ = tokio::task::spawn_blocking(move || {
         ureq::post(&format!("http://127.0.0.1:{port}/v1/messages"))
-            .set("content-type", "application/json")
-            .set("x-api-key", "sk-secret-abc")
-            .set("anthropic-version", "2023-06-01")
-            .set("anthropic-beta", "prompt-caching-2024-07-31")
-            .send_string(
+            .header("content-type", "application/json")
+            .header("x-api-key", "sk-secret-abc")
+            .header("anthropic-version", "2023-06-01")
+            .header("anthropic-beta", "prompt-caching-2024-07-31")
+            .send(
                 r#"{"model":"claude-sonnet-4-6","max_tokens":4,"messages":[{"role":"user","content":"hi"}]}"#,
             )
             .expect("post")
@@ -363,10 +368,10 @@ async fn v1_messages_records_call_in_recent_buffer() {
     let port = server.port;
     let _ = tokio::task::spawn_blocking(move || {
         ureq::post(&format!("http://127.0.0.1:{port}/v1/messages"))
-            .set("content-type", "application/json")
-            .set("x-api-key", "sk-test")
-            .set("anthropic-version", "2023-06-01")
-            .send_string(
+            .header("content-type", "application/json")
+            .header("x-api-key", "sk-test")
+            .header("anthropic-version", "2023-06-01")
+            .send(
                 r#"{"model":"claude-sonnet-4-6","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}"#,
             )
             .expect("post")
@@ -378,7 +383,8 @@ async fn v1_messages_records_call_in_recent_buffer() {
         ureq::get(&format!("http://127.0.0.1:{port}/api/v1/llm/recent"))
             .call()
             .expect("recent")
-            .into_string()
+            .into_body()
+            .read_to_string()
             .unwrap()
     })
     .await
@@ -444,10 +450,10 @@ async fn v1_messages_relays_streaming_response_verbatim() {
     let port = server.port;
     let resp = tokio::task::spawn_blocking(move || {
         ureq::post(&format!("http://127.0.0.1:{port}/v1/messages"))
-            .set("content-type", "application/json")
-            .set("x-api-key", "sk-test")
-            .set("anthropic-version", "2023-06-01")
-            .send_string(
+            .header("content-type", "application/json")
+            .header("x-api-key", "sk-test")
+            .header("anthropic-version", "2023-06-01")
+            .send(
                 r#"{"model":"claude-sonnet-4-6","max_tokens":32,"stream":true,"messages":[{"role":"user","content":"hi"}]}"#,
             )
     })
@@ -455,13 +461,13 @@ async fn v1_messages_relays_streaming_response_verbatim() {
     .unwrap()
     .expect("post /v1/messages streaming");
 
-    assert_eq!(resp.status(), 200);
-    let ct = resp.header("content-type").unwrap_or("");
+    assert_eq!(resp.status().as_u16(), 200);
+    let ct = resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("");
     assert!(
         ct.contains("text/event-stream"),
         "expected text/event-stream content-type, got: {ct}"
     );
-    let body = resp.into_string().expect("body");
+    let body = resp.into_body().read_to_string().expect("body");
     // Response-side scrubbing performs a JSON round-trip on every
     // `data: {…}` line, so bytes aren't byte-identical to the
     // upstream wire any more. The contract instead: every event is
@@ -543,14 +549,15 @@ async fn v1_messages_streaming_records_call_with_usage() {
     // which removes the race against the /api/v1/llm/recent poll below.
     let _ = tokio::task::spawn_blocking(move || {
         ureq::post(&format!("http://127.0.0.1:{port}/v1/messages"))
-            .set("content-type", "application/json")
-            .set("x-api-key", "sk-test")
-            .set("anthropic-version", "2023-06-01")
-            .send_string(
+            .header("content-type", "application/json")
+            .header("x-api-key", "sk-test")
+            .header("anthropic-version", "2023-06-01")
+            .send(
                 r#"{"model":"claude-sonnet-4-6","max_tokens":32,"stream":true,"messages":[{"role":"user","content":"hi"}]}"#,
             )
             .expect("post")
-            .into_string()
+            .into_body()
+            .read_to_string()
             .expect("drain stream")
     })
     .await
@@ -564,7 +571,8 @@ async fn v1_messages_streaming_records_call_with_usage() {
         ureq::get(&format!("http://127.0.0.1:{port}/api/v1/llm/recent"))
             .call()
             .expect("recent")
-            .into_string()
+            .into_body()
+            .read_to_string()
             .unwrap()
     })
     .await
@@ -596,17 +604,17 @@ async fn v1_chat_completions_proxies_non_streaming() {
     let body = req_body.to_string();
     let resp = tokio::task::spawn_blocking(move || {
         ureq::post(&format!("http://127.0.0.1:{port}/v1/chat/completions"))
-            .set("content-type", "application/json")
-            .set("authorization", "Bearer sk-test-abc")
-            .set("openai-organization", "org-xyz")
-            .send_string(&body)
+            .header("content-type", "application/json")
+            .header("authorization", "Bearer sk-test-abc")
+            .header("openai-organization", "org-xyz")
+            .send(&body)
     })
     .await
     .unwrap()
     .expect("post /v1/chat/completions");
 
-    assert_eq!(resp.status(), 200);
-    let body = resp.into_string().expect("body");
+    assert_eq!(resp.status().as_u16(), 200);
+    let body = resp.into_body().read_to_string().expect("body");
     let json: serde_json::Value = serde_json::from_str(&body).expect("json");
     assert_eq!(json["model"], "gpt-4o-mini");
     assert_eq!(json["usage"]["prompt_tokens"], 11);
@@ -644,9 +652,9 @@ async fn v1_chat_completions_records_call_in_recent_buffer() {
     let port = server.port;
     let _ = tokio::task::spawn_blocking(move || {
         ureq::post(&format!("http://127.0.0.1:{port}/v1/chat/completions"))
-            .set("content-type", "application/json")
-            .set("authorization", "Bearer sk-test")
-            .send_string(
+            .header("content-type", "application/json")
+            .header("authorization", "Bearer sk-test")
+            .send(
                 r#"{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}"#,
             )
             .expect("post")
@@ -658,7 +666,8 @@ async fn v1_chat_completions_records_call_in_recent_buffer() {
         ureq::get(&format!("http://127.0.0.1:{port}/api/v1/llm/recent"))
             .call()
             .expect("recent")
-            .into_string()
+            .into_body()
+            .read_to_string()
             .unwrap()
     })
     .await
@@ -704,9 +713,9 @@ async fn v1_chat_completions_relays_streaming_response_verbatim() {
     let port = server.port;
     let resp = tokio::task::spawn_blocking(move || {
         ureq::post(&format!("http://127.0.0.1:{port}/v1/chat/completions"))
-            .set("content-type", "application/json")
-            .set("authorization", "Bearer sk-test")
-            .send_string(
+            .header("content-type", "application/json")
+            .header("authorization", "Bearer sk-test")
+            .send(
                 r#"{"model":"gpt-4o-mini","stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hi"}]}"#,
             )
     })
@@ -714,13 +723,13 @@ async fn v1_chat_completions_relays_streaming_response_verbatim() {
     .unwrap()
     .expect("post stream");
 
-    assert_eq!(resp.status(), 200);
-    let ct = resp.header("content-type").unwrap_or("");
+    assert_eq!(resp.status().as_u16(), 200);
+    let ct = resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("");
     assert!(
         ct.contains("text/event-stream"),
         "expected text/event-stream, got: {ct}"
     );
-    let body = resp.into_string().expect("body");
+    let body = resp.into_body().read_to_string().expect("body");
     // See note on the Anthropic version of this test: response-side
     // scrubbing JSON-round-trips every data: line, so bytes diverge
     // from upstream wire formatting. Compare by parsed JSON instead.
@@ -748,13 +757,14 @@ async fn v1_chat_completions_streaming_records_call_with_usage() {
     // push_receipt) to complete before our /api/v1/llm/recent poll.
     let _ = tokio::task::spawn_blocking(move || {
         ureq::post(&format!("http://127.0.0.1:{port}/v1/chat/completions"))
-            .set("content-type", "application/json")
-            .set("authorization", "Bearer sk-test")
-            .send_string(
+            .header("content-type", "application/json")
+            .header("authorization", "Bearer sk-test")
+            .send(
                 r#"{"model":"gpt-4o-mini","stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hi"}]}"#,
             )
             .expect("post")
-            .into_string()
+            .into_body()
+            .read_to_string()
             .expect("drain stream")
     })
     .await
@@ -764,7 +774,8 @@ async fn v1_chat_completions_streaming_records_call_with_usage() {
         ureq::get(&format!("http://127.0.0.1:{port}/api/v1/llm/recent"))
             .call()
             .expect("recent")
-            .into_string()
+            .into_body()
+            .read_to_string()
             .unwrap()
     })
     .await
@@ -796,10 +807,10 @@ async fn v1_messages_scrubs_credentials_before_forwarding_to_upstream() {
     let body = req_body.to_string();
     let _ = tokio::task::spawn_blocking(move || {
         ureq::post(&format!("http://127.0.0.1:{port}/v1/messages"))
-            .set("content-type", "application/json")
-            .set("x-api-key", "sk-test")
-            .set("anthropic-version", "2023-06-01")
-            .send_string(&body)
+            .header("content-type", "application/json")
+            .header("x-api-key", "sk-test")
+            .header("anthropic-version", "2023-06-01")
+            .send(&body)
             .expect("post")
     })
     .await
@@ -826,7 +837,8 @@ async fn v1_messages_scrubs_credentials_before_forwarding_to_upstream() {
         ureq::get(&format!("http://127.0.0.1:{port}/api/v1/filter/stats"))
             .call()
             .expect("stats")
-            .into_string()
+            .into_body()
+            .read_to_string()
             .unwrap()
     })
     .await
@@ -849,9 +861,9 @@ async fn v1_chat_completions_scrubs_credentials_before_forwarding() {
     let body = req_body.to_string();
     let _ = tokio::task::spawn_blocking(move || {
         ureq::post(&format!("http://127.0.0.1:{port}/v1/chat/completions"))
-            .set("content-type", "application/json")
-            .set("authorization", "Bearer sk-test")
-            .send_string(&body)
+            .header("content-type", "application/json")
+            .header("authorization", "Bearer sk-test")
+            .send(&body)
             .expect("post")
     })
     .await
@@ -894,7 +906,8 @@ async fn llm_receipts_queue_and_drain_round_trip() {
             ))
             .call()
             .expect("stats")
-            .into_string()
+            .into_body()
+            .read_to_string()
             .unwrap()
         })
         .await
@@ -908,10 +921,10 @@ async fn llm_receipts_queue_and_drain_round_trip() {
     // 2) Make a single LLM call.
     let _ = tokio::task::spawn_blocking(move || {
         ureq::post(&format!("http://127.0.0.1:{port}/v1/messages"))
-            .set("content-type", "application/json")
-            .set("x-api-key", "sk-test")
-            .set("anthropic-version", "2023-06-01")
-            .send_string(
+            .header("content-type", "application/json")
+            .header("x-api-key", "sk-test")
+            .header("anthropic-version", "2023-06-01")
+            .send(
                 r#"{"model":"claude-sonnet-4-6","max_tokens":4,"messages":[{"role":"user","content":"hi"}]}"#,
             )
             .expect("post")
@@ -928,7 +941,8 @@ async fn llm_receipts_queue_and_drain_round_trip() {
             ))
             .call()
             .expect("stats")
-            .into_string()
+            .into_body()
+            .read_to_string()
             .unwrap()
         })
         .await
@@ -945,9 +959,10 @@ async fn llm_receipts_queue_and_drain_round_trip() {
             ureq::post(&format!(
                 "http://127.0.0.1:{port}/api/v1/llm/receipts/drain"
             ))
-            .send_string("")
+            .send("")
             .expect("drain")
-            .into_string()
+            .into_body()
+            .read_to_string()
             .unwrap()
         })
         .await
@@ -970,7 +985,8 @@ async fn llm_receipts_queue_and_drain_round_trip() {
             ))
             .call()
             .expect("stats")
-            .into_string()
+            .into_body()
+            .read_to_string()
             .unwrap()
         })
         .await
@@ -996,15 +1012,15 @@ async fn v1_messages_logs_prompt_injection_hit_in_filter_stats() {
     let body = req_body.to_string();
     let resp = tokio::task::spawn_blocking(move || {
         ureq::post(&format!("http://127.0.0.1:{port}/v1/messages"))
-            .set("content-type", "application/json")
-            .set("x-api-key", "sk-test")
-            .set("anthropic-version", "2023-06-01")
-            .send_string(&body)
+            .header("content-type", "application/json")
+            .header("x-api-key", "sk-test")
+            .header("anthropic-version", "2023-06-01")
+            .send(&body)
     })
     .await
     .unwrap()
     .expect("post");
-    assert_eq!(resp.status(), 200, "Log action must NOT block the request");
+    assert_eq!(resp.status().as_u16(), 200, "Log action must NOT block the request");
 
     // The mock upstream still got the body (we don't strip injection text).
     let received = upstream.received.lock().unwrap().clone().expect("upstream got nothing");
@@ -1022,7 +1038,8 @@ async fn v1_messages_logs_prompt_injection_hit_in_filter_stats() {
             ureq::get(&format!("http://127.0.0.1:{port}/api/v1/filter/stats"))
                 .call()
                 .expect("stats")
-                .into_string()
+                .into_body()
+                .read_to_string()
                 .unwrap()
         })
         .await
@@ -1060,11 +1077,16 @@ async fn upstream_concurrency_cap_returns_429_when_full() {
     // Fire the first request; it will hold the permit for ~800ms.
     let body_a = body.to_string();
     let r1 = tokio::task::spawn_blocking(move || {
-        ureq::post(&format!("http://127.0.0.1:{port}/v1/messages"))
-            .set("content-type", "application/json")
-            .set("x-api-key", "sk-test")
-            .set("anthropic-version", "2023-06-01")
-            .send_string(&body_a)
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .http_status_as_error(false)
+            .build()
+            .into();
+        agent
+            .post(&format!("http://127.0.0.1:{port}/v1/messages"))
+            .header("content-type", "application/json")
+            .header("x-api-key", "sk-test")
+            .header("anthropic-version", "2023-06-01")
+            .send(&body_a)
     });
 
     // Give request #1 enough head-start to acquire the permit + start
@@ -1074,11 +1096,16 @@ async fn upstream_concurrency_cap_returns_429_when_full() {
 
     let body_b = body.to_string();
     let r2 = tokio::task::spawn_blocking(move || {
-        ureq::post(&format!("http://127.0.0.1:{port}/v1/messages"))
-            .set("content-type", "application/json")
-            .set("x-api-key", "sk-test")
-            .set("anthropic-version", "2023-06-01")
-            .send_string(&body_b)
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .http_status_as_error(false)
+            .build()
+            .into();
+        agent
+            .post(&format!("http://127.0.0.1:{port}/v1/messages"))
+            .header("content-type", "application/json")
+            .header("x-api-key", "sk-test")
+            .header("anthropic-version", "2023-06-01")
+            .send(&body_b)
     });
 
     let r1_resp = r1.await.unwrap();
@@ -1086,17 +1113,19 @@ async fn upstream_concurrency_cap_returns_429_when_full() {
 
     // First request should succeed.
     assert_eq!(
-        r1_resp.expect("r1 ok").status(),
+        r1_resp.expect("r1 ok").status().as_u16(),
         200,
         "first request should pass when cap=1 and only one in flight"
     );
 
     // Second request should be 429'd by tkr-server, NOT reach upstream.
-    let (status, retry_after) = match r2_resp {
-        Ok(r) => (r.status(), r.header("retry-after").map(|s| s.to_string())),
-        Err(ureq::Error::Status(c, r)) => (c, r.header("retry-after").map(|s| s.to_string())),
-        Err(e) => panic!("transport error on r2: {e}"),
-    };
+    let r2 = r2_resp.expect("r2 send failed");
+    let status = r2.status().as_u16();
+    let retry_after = r2
+        .headers()
+        .get("retry-after")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
     assert_eq!(status, 429, "second request should 429 when cap is full");
     assert_eq!(
         retry_after.as_deref(),
@@ -1110,7 +1139,8 @@ async fn upstream_concurrency_cap_returns_429_when_full() {
             ureq::get(&format!("http://127.0.0.1:{port}/api/v1/filter/stats"))
                 .call()
                 .expect("stats")
-                .into_string()
+                .into_body()
+                .read_to_string()
                 .unwrap()
         })
         .await
@@ -1158,10 +1188,10 @@ async fn v1_messages_scrubs_secrets_out_of_upstream_response() {
     let port = server.port;
     let resp = tokio::task::spawn_blocking(move || {
         ureq::post(&format!("http://127.0.0.1:{port}/v1/messages"))
-            .set("content-type", "application/json")
-            .set("x-api-key", "sk-test")
-            .set("anthropic-version", "2023-06-01")
-            .send_string(
+            .header("content-type", "application/json")
+            .header("x-api-key", "sk-test")
+            .header("anthropic-version", "2023-06-01")
+            .send(
                 r#"{"model":"claude-sonnet-4-6","max_tokens":4,"messages":[{"role":"user","content":"hi"}]}"#,
             )
     })
@@ -1169,7 +1199,7 @@ async fn v1_messages_scrubs_secrets_out_of_upstream_response() {
     .unwrap()
     .expect("post");
 
-    let body = resp.into_string().expect("body");
+    let body = resp.into_body().read_to_string().expect("body");
     // The client must never see the raw key, even if upstream sent it.
     assert!(
         !body.contains("AKIAIOSFODNN7EXAMPLE"),
@@ -1206,14 +1236,15 @@ async fn v1_messages_scrubs_secrets_out_of_streaming_response() {
     let port = server.port;
     let body = tokio::task::spawn_blocking(move || {
         ureq::post(&format!("http://127.0.0.1:{port}/v1/messages"))
-            .set("content-type", "application/json")
-            .set("x-api-key", "sk-test")
-            .set("anthropic-version", "2023-06-01")
-            .send_string(
+            .header("content-type", "application/json")
+            .header("x-api-key", "sk-test")
+            .header("anthropic-version", "2023-06-01")
+            .send(
                 r#"{"model":"claude-sonnet-4-6","max_tokens":32,"stream":true,"messages":[{"role":"user","content":"hi"}]}"#,
             )
             .expect("post")
-            .into_string()
+            .into_body()
+            .read_to_string()
             .expect("drain stream")
     })
     .await
@@ -1238,7 +1269,8 @@ async fn v1_messages_scrubs_secrets_out_of_streaming_response() {
         ureq::get(&format!("http://127.0.0.1:{port}/api/v1/llm/recent"))
             .call()
             .expect("recent")
-            .into_string()
+            .into_body()
+            .read_to_string()
             .unwrap()
     })
     .await
@@ -1260,14 +1292,16 @@ async fn sandbox_endpoint_returns_503_when_disabled() {
     let server = start_server(&[]).await;
     let port = server.port;
     let (status, body) = tokio::task::spawn_blocking(move || {
-        match ureq::post(&format!("http://127.0.0.1:{port}/api/v1/sandbox/exec"))
-            .set("content-type", "application/json")
-            .send_string(r#"{"command":"echo","args":["hi"]}"#)
-        {
-            Ok(r) => (r.status(), r.into_string().unwrap_or_default()),
-            Err(ureq::Error::Status(c, r)) => (c, r.into_string().unwrap_or_default()),
-            Err(e) => panic!("transport: {e}"),
-        }
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .http_status_as_error(false)
+            .build()
+            .into();
+        let r = agent
+            .post(&format!("http://127.0.0.1:{port}/api/v1/sandbox/exec"))
+            .header("content-type", "application/json")
+            .send(r#"{"command":"echo","args":["hi"]}"#)
+            .expect("send failed");
+        (r.status().as_u16(), r.into_body().read_to_string().unwrap_or_default())
     })
     .await
     .unwrap();
@@ -1281,14 +1315,16 @@ async fn sandbox_endpoint_requires_session() {
     let server = start_server(&[("TKR_SANDBOX_EXEC", "true".to_string())]).await;
     let port = server.port;
     let (status, _body) = tokio::task::spawn_blocking(move || {
-        match ureq::post(&format!("http://127.0.0.1:{port}/api/v1/sandbox/exec"))
-            .set("content-type", "application/json")
-            .send_string(r#"{"command":"echo","args":["hi"]}"#)
-        {
-            Ok(r) => (r.status(), r.into_string().unwrap_or_default()),
-            Err(ureq::Error::Status(c, r)) => (c, r.into_string().unwrap_or_default()),
-            Err(e) => panic!("transport: {e}"),
-        }
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .http_status_as_error(false)
+            .build()
+            .into();
+        let r = agent
+            .post(&format!("http://127.0.0.1:{port}/api/v1/sandbox/exec"))
+            .header("content-type", "application/json")
+            .send(r#"{"command":"echo","args":["hi"]}"#)
+            .expect("send failed");
+        (r.status().as_u16(), r.into_body().read_to_string().unwrap_or_default())
     })
     .await
     .unwrap();
@@ -1305,15 +1341,17 @@ async fn sandbox_endpoint_denies_non_allowlisted_command() {
     let body = r#"{"command":"bash","args":["-c","echo hi"]}"#.to_string();
     let cookie_clone = cookie.clone();
     let (status, resp_body) = tokio::task::spawn_blocking(move || {
-        match ureq::post(&format!("http://127.0.0.1:{port}/api/v1/sandbox/exec"))
-            .set("content-type", "application/json")
-            .set("cookie", &format!("tkr_session={cookie_clone}"))
-            .send_string(&body)
-        {
-            Ok(r) => (r.status(), r.into_string().unwrap_or_default()),
-            Err(ureq::Error::Status(c, r)) => (c, r.into_string().unwrap_or_default()),
-            Err(e) => panic!("transport: {e}"),
-        }
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .http_status_as_error(false)
+            .build()
+            .into();
+        let r = agent
+            .post(&format!("http://127.0.0.1:{port}/api/v1/sandbox/exec"))
+            .header("content-type", "application/json")
+            .header("cookie", &format!("tkr_session={cookie_clone}"))
+            .send(&body)
+            .expect("send failed");
+        (r.status().as_u16(), r.into_body().read_to_string().unwrap_or_default())
     })
     .await
     .unwrap();
@@ -1326,7 +1364,8 @@ async fn sandbox_endpoint_denies_non_allowlisted_command() {
             ureq::get(&format!("http://127.0.0.1:{port}/api/v1/sandbox/stats"))
                 .call()
                 .expect("stats")
-                .into_string()
+                .into_body()
+                .read_to_string()
                 .unwrap()
         })
         .await
@@ -1345,7 +1384,11 @@ async fn login_loopback(port: u16) -> String {
         let resp = ureq::post(&format!("http://127.0.0.1:{port}/api/auth/login"))
             .send_json(serde_json::json!({ "password": "correct" }))
             .expect("login");
-        resp.header("set-cookie").unwrap().to_string()
+        resp.headers()
+            .get("set-cookie")
+            .and_then(|v| v.to_str().ok())
+            .unwrap()
+            .to_string()
     })
     .await
     .unwrap();

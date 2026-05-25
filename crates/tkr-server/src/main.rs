@@ -1974,37 +1974,42 @@ async fn proxy_llm_request(
         // Hold the concurrency permit for the entire blocking call.
         // Dropped when this closure returns, releasing the slot.
         let _permit = permit;
-        let mut req = ureq::post(&url_for_blocking)
-            .set("content-type", "application/json")
-            .timeout(Duration::from_secs(120));
+        // ureq 3.x: opt out of status-as-error so 4xx/5xx come back as
+        // Ok and we can read the upstream error body for surfacing.
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .http_status_as_error(false)
+            .timeout_global(Some(Duration::from_secs(120)))
+            .build()
+            .into();
+        let mut req = agent
+            .post(&url_for_blocking)
+            .header("content-type", "application/json");
         for (name, value) in &collected_headers {
-            req = req.set(name, value);
+            req = req.header(*name, value.as_str());
         }
-        req.send_bytes(&body_vec)
+        req.send(&body_vec)
     })
     .await;
 
     let (status_code, response_body): (u16, Vec<u8>) = match upstream_result {
         Ok(Ok(resp)) => {
-            let code = resp.status();
+            let code = resp.status().as_u16();
             let bytes = response_body_to_bytes(resp);
+            if !(200..300).contains(&code) {
+                // 4xx/5xx body carries the upstream reason (e.g. Anthropic's
+                // `{"error":{"type":"authentication_error","message":"..."}}`).
+                // Log it so operators can diagnose OAuth/key rejections
+                // without re-instrumenting. Truncated to bound noise.
+                let preview = String::from_utf8_lossy(&bytes);
+                let preview: String = preview.chars().take(512).collect();
+                eprintln!(
+                    "tkr-server: upstream {} returned {} — body: {}",
+                    cfg.provider, code, preview
+                );
+            }
             (code, bytes)
         }
-        Ok(Err(ureq::Error::Status(code, resp))) => {
-            let bytes = response_body_to_bytes(resp);
-            // 4xx/5xx body carries the upstream reason (e.g. Anthropic's
-            // `{"error":{"type":"authentication_error","message":"..."}}`).
-            // Log it so operators can diagnose OAuth/key rejections
-            // without re-instrumenting. Truncated to bound noise.
-            let preview = String::from_utf8_lossy(&bytes);
-            let preview: String = preview.chars().take(512).collect();
-            eprintln!(
-                "tkr-server: upstream {} returned {} — body: {}",
-                cfg.provider, code, preview
-            );
-            (code, bytes)
-        }
-        Ok(Err(ureq::Error::Transport(t))) => {
+        Ok(Err(t)) => {
             return json_error(
                 StatusCode::BAD_GATEWAY,
                 "upstream_transport",
@@ -2143,24 +2148,32 @@ async fn proxy_llm_streaming(
         // dropped when the blocking task returns (after upstream EOF
         // or client disconnect).
         let _permit = permit;
-        let mut req = ureq::post(&url)
-            .set("content-type", "application/json")
-            // Streaming completions can run minutes on long contexts.
-            // ureq's timeout is end-to-end including reads.
-            .timeout(Duration::from_secs(600));
+        // Streaming completions can run minutes on long contexts;
+        // timeout_global is end-to-end including reads. Status-as-error
+        // disabled so a 4xx/5xx still yields a readable response.
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .http_status_as_error(false)
+            .timeout_global(Some(Duration::from_secs(600)))
+            .build()
+            .into();
+        let mut req = agent
+            .post(&url)
+            .header("content-type", "application/json");
         for (name, value) in &headers {
-            req = req.set(name, value);
+            req = req.header(*name, value.as_str());
         }
-        let (status, response) = match req.send_bytes(&body) {
-            Ok(r) => (r.status(), r),
-            Err(ureq::Error::Status(code, r)) => (code, r),
-            Err(ureq::Error::Transport(t)) => {
+        let response = match req.send(&body) {
+            Ok(r) => r,
+            Err(t) => {
                 let _ = head_tx.send(Err(format!("upstream transport error: {t}")));
                 return;
             }
         };
+        let status = response.status().as_u16();
         let content_type = response
-            .header("content-type")
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
             .unwrap_or("text/event-stream")
             .to_string();
         if head_tx.send(Ok((status, content_type))).is_err() {
@@ -2175,7 +2188,7 @@ async fn proxy_llm_streaming(
         // raw bytes so usage extraction is unaffected by redaction.
         let mut rewriter = SseRewriter::new();
         let redactor = state_clone.inner.redactor.clone();
-        let mut reader = response.into_reader();
+        let mut reader = response.into_body().into_reader();
         let mut buf = vec![0u8; 8 * 1024];
         loop {
             use std::io::Read;
@@ -2527,14 +2540,14 @@ fn scrub_sse_delta(v: &mut serde_json::Value, redactor: &RedactionEngine) {
     }
 }
 
-/// Best-effort capture of a ureq Response body. `into_reader` consumes
-/// the response; we cap at 16 MiB to mirror the manual-TCP impl.
-fn response_body_to_bytes(resp: ureq::Response) -> Vec<u8> {
-    use std::io::Read;
-    let mut reader = resp.into_reader().take(16 * 1024 * 1024);
-    let mut out = Vec::new();
-    let _ = reader.read_to_end(&mut out);
-    out
+/// Best-effort capture of a ureq Response body. Consumes the response;
+/// we cap at 16 MiB to mirror the manual-TCP impl.
+fn response_body_to_bytes(resp: ureq::http::Response<ureq::Body>) -> Vec<u8> {
+    resp.into_body()
+        .with_config()
+        .limit(16 * 1024 * 1024)
+        .read_to_vec()
+        .unwrap_or_default()
 }
 
 /// Extract `model` + token usage from a JSON LLM response body and push
@@ -4535,26 +4548,22 @@ async fn handle_logto_callback(req: Request<Incoming>, state: AppState) -> Respo
             urlencode(&verifier),
             urlencode(&app_id),
         );
-        ureq::post(&token_url)
-            .set("authorization", &format!("Basic {basic}"))
-            .set("content-type", "application/x-www-form-urlencoded")
-            .timeout(Duration::from_secs(30))
-            .send_string(&body)
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .http_status_as_error(false)
+            .timeout_global(Some(Duration::from_secs(30)))
+            .build()
+            .into();
+        agent
+            .post(&token_url)
+            .header("authorization", &format!("Basic {basic}"))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .send(&body)
     })
     .await;
 
     let token_resp = match token_result {
         Ok(Ok(r)) => r,
-        Ok(Err(ureq::Error::Status(code, r))) => {
-            let body = r.into_string().unwrap_or_default();
-            return json_error(
-                StatusCode::BAD_GATEWAY,
-                "token_exchange_failed",
-                &format!("logto token endpoint returned {code}: {}", truncate(&body, 300)),
-                &HeaderMap::new(),
-            );
-        }
-        Ok(Err(ureq::Error::Transport(t))) => {
+        Ok(Err(t)) => {
             return json_error(
                 StatusCode::BAD_GATEWAY,
                 "token_exchange_transport",
@@ -4572,7 +4581,8 @@ async fn handle_logto_callback(req: Request<Incoming>, state: AppState) -> Respo
         }
     };
 
-    let token_body = match token_resp.into_string() {
+    let token_status = token_resp.status().as_u16();
+    let token_body = match token_resp.into_body().read_to_string() {
         Ok(s) => s,
         Err(_) => {
             return json_error(
@@ -4583,6 +4593,17 @@ async fn handle_logto_callback(req: Request<Incoming>, state: AppState) -> Respo
             )
         }
     };
+    if !(200..300).contains(&token_status) {
+        return json_error(
+            StatusCode::BAD_GATEWAY,
+            "token_exchange_failed",
+            &format!(
+                "logto token endpoint returned {token_status}: {}",
+                truncate(&token_body, 300)
+            ),
+            &HeaderMap::new(),
+        );
+    }
     let token_json: serde_json::Value = match serde_json::from_str(&token_body) {
         Ok(v) => v,
         Err(_) => {

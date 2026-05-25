@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```sh
 cargo build --release -p tkr              # ship binary
 cargo test --release -p <crate> --lib     # unit tests for one crate
-cargo test --release                      # full workspace (slow; tkr-server may be broken — see below)
+cargo test --release                      # full workspace (slow; tkr-server's persistence/mesh_e2e tests need Postgres/Redis/a broker)
 make build                                # same as cargo build, with rustup-cargo guard
 ```
 
@@ -32,7 +32,7 @@ crates/
   tkr-mcp/        MCP server for code-intel tools — the "structured query" half
   tkr-index/      Tree-sitter + SQLite persistent code index (the data tkr-mcp queries)
   tkr-sandbox/    Landlock (Linux) / sandbox-exec (macOS) child execution
-  tkr-server/     Web dashboard + LLM proxy + receipt store (currently broken on main; see below)
+  tkr-server/     Web dashboard + LLM proxy + receipt store (workspace member; not in the shipped release artifact)
   tkr-mesh/       p2p mesh — broker enrollment, payments, JobBoard contract calls
   tkr-providers/  Anthropic/Ollama API adapters (one schema, two wire formats)
   tkr-agent/      Agent loop primitives (used by tkr-server's gateway)
@@ -72,9 +72,9 @@ Top-level MCP tool families:
 
 `tkr sandbox run -- <cmd>` is the user-facing wrapper. `tkr sandbox claude` is the agent-friendly preset: cwd is the only writable path, `~/.claude` is read-only, auth/locale env vars forwarded. The sandbox crate's `spawn_and_collect` reader-threads enforce a configurable byte cap (default 16 MiB total, split per-stream) and a wall-clock timeout.
 
-### LLM proxy / mesh (currently disabled paths)
+### LLM proxy / mesh
 
-`tkr-server` is the gateway: `/v1/messages` (Anthropic) and `/v1/chat/completions` (OpenAI) proxies with concurrency caps, pre-flight `RedactionEngine` (AWS keys, GitHub PATs, OpenAI/Anthropic keys, JWTs), `SseRewriter` for streaming response scrubbing, and an `InjectionEngine` heuristic for prompt-injection patterns. **`tkr-server` does not currently compile against ureq 3.x** (3 token-exchange sites + `response_body_to_bytes` helper need the migration that `tkr-providers`/`tkr-mesh`/`tkr` got in #15). It is not part of `make publish`'s release artifact, so the CLI ships unblocked.
+`tkr-server` is the gateway: `/v1/messages` (Anthropic) and `/v1/chat/completions` (OpenAI) proxies with concurrency caps, pre-flight `RedactionEngine` (AWS keys, GitHub PATs, OpenAI/Anthropic keys, JWTs), `SseRewriter` for streaming response scrubbing, and an `InjectionEngine` heuristic for prompt-injection patterns. It is a workspace member but **not** part of `make publish`'s release artifact, so the shipped CLI doesn't link its deps. Re-adding it to the workspace pulls sqlx 0.8.0 + rustls 0.21 / rustls-webpki 0.101 into the shared `Cargo.lock` (dependabot will flag these); sqlx can't be bumped past 0.8.0 because its newer `libsqlite3-sys` conflicts with the `rusqlite 0.31` (`links = "sqlite3"`) that `tkr-index` pins. The upstream-proxy and token-exchange paths use ureq 3.x (`Agent::config_builder().http_status_as_error(false)` to read 4xx/5xx bodies; `into_body().read_to_string()` / `read_to_vec()` for response bodies).
 
 `tkr-mesh` does broker enrollment via HTTPS POST to `/join` then upgrades to WebSocket for the live channel. `MESH_WS_COOKIE` env var gates the join (and the WS upgrade). The mesh registry on-chain is the JobBoard contract (`contracts/`) — Solidity, deployed via `anvil` locally or testnet.
 
