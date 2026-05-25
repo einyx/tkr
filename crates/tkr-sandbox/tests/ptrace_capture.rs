@@ -60,3 +60,65 @@ fn ptrace_capture_scenarios() {
     scenario_denied_read();
     scenario_follows_children();
 }
+
+#[test]
+#[ignore = "timing benchmark; run manually with --ignored --nocapture"]
+fn ptrace_overhead_benchmark() {
+    use std::time::Instant;
+    use tkr_sandbox::exec::run_sandboxed_output_only;
+
+    let worktree: std::path::PathBuf = "/home/alessio/tkr-sandbox-analysis".into();
+    let crates_dir = worktree.join("crates");
+
+    // Mirror the allowlist used in the other scenarios, plus the worktree root
+    // so grep can traverse the crates directory.
+    let policy = policy_allow(
+        vec![
+            worktree.clone(),
+            "/usr".into(),
+            "/bin".into(),
+            "/lib".into(),
+            "/lib64".into(),
+            "/etc".into(),
+            // grep binary may live under /proc/self/exe symlink resolution
+            "/proc".into(),
+        ],
+        vec![],
+    );
+
+    let crates_str = crates_dir.to_str().unwrap();
+    let reps = 5;
+    let mut capture_total = std::time::Duration::ZERO;
+    let mut plain_total = std::time::Duration::ZERO;
+    let mut last_file_count = 0usize;
+
+    for i in 0..reps {
+        // capture path
+        let t = Instant::now();
+        let (_, trace) = run_with_capture("grep", &["-r", "fn ", crates_str], &policy)
+            .expect("run_with_capture failed");
+        capture_total += t.elapsed();
+        if i == reps - 1 {
+            last_file_count = trace.files.len();
+        }
+
+        // output-only path
+        let t = Instant::now();
+        run_sandboxed_output_only("grep", &["-r", "fn ", crates_str], &policy)
+            .expect("run_sandboxed_output_only failed");
+        plain_total += t.elapsed();
+    }
+
+    println!("ptrace capture: {:?} total over {reps} reps", capture_total);
+    println!("output-only:    {:?} total over {reps} reps", plain_total);
+    println!(
+        "overhead ratio: {:.2}x",
+        capture_total.as_secs_f64() / plain_total.as_secs_f64()
+    );
+    println!("trace.files.len() on last capture run: {last_file_count}");
+
+    assert!(
+        last_file_count > 0,
+        "trace.files was empty — Landlock likely blocked grep from reading crates/"
+    );
+}
