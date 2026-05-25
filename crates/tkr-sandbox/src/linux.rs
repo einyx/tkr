@@ -51,7 +51,7 @@ pub fn run(
     spawn_and_collect(cmd, &policy.limits)
 }
 
-fn apply_rlimits(limits: &crate::policy::SandboxLimits) -> Result<(), String> {
+pub(crate) fn apply_rlimits(limits: &crate::policy::SandboxLimits) -> Result<(), String> {
     use rlimit::{setrlimit, Resource};
     if let Some(n) = limits.memory_bytes {
         setrlimit(Resource::AS, n, n).map_err(|e| format!("AS: {e}"))?;
@@ -65,7 +65,7 @@ fn apply_rlimits(limits: &crate::policy::SandboxLimits) -> Result<(), String> {
     Ok(())
 }
 
-fn apply_landlock_full(
+pub(crate) fn apply_landlock_full(
     fs_read: &[std::path::PathBuf],
     fs_write: &[std::path::PathBuf],
     net: &crate::policy::NetworkPolicy,
