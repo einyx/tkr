@@ -3959,6 +3959,7 @@ name = "jkr-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "base64 0.22.1",
  "bytes",
  "deadpool-redis",
@@ -3968,6 +3969,8 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "jkr-agent",
+ "jkr-api",
  "jkr-mesh",
  "jkr-sandbox",
  "k256",
@@ -3981,6 +3984,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "ureq 3.3.0",
+ "uuid",
 ]
 
 [[package]]

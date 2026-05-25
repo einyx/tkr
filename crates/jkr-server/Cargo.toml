@@ -1,5 +1,5 @@
 [package]
-name = "tkr-server"
+name = "jkr-server"
 publish = false
 version = "0.1.0"
 edition = "2021"
@@ -7,7 +7,7 @@ rust-version.workspace = true
 license = "Apache-2.0"
 
 [[bin]]
-name = "tkr-server"
+name = "jkr-server"
 path = "src/main.rs"
 
 [dependencies]
@@ -23,10 +23,14 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 tokio-tungstenite = { version = "0.24", default-features = false }
-tkr-mesh = { path = "../tkr-mesh" }
+jkr-mesh = { path = "../jkr-mesh" }
 # Sandboxed exec primitive — Landlock on Linux, sandbox-exec on macOS.
-# Exposed via POST /api/v1/sandbox/exec when TKR_SANDBOX_EXEC=true.
-tkr-sandbox = { path = "../tkr-sandbox" }
+# Exposed via POST /api/v1/sandbox/exec when JKR_SANDBOX_EXEC=true.
+jkr-sandbox = { path = "../jkr-sandbox", features = ["docker"] }
+jkr-agent = { path = "../jkr-agent" }
+jkr-api = { path = "../jkr-api", version = "0.1.0" }
+async-trait = { workspace = true }
+uuid = { version = "1", features = ["v4"] }
 rand = { workspace = true }
 hex = { workspace = true }
 # ureq drives the upstream-LLM proxy (https + http via rustls). Sync API
@@ -38,7 +42,7 @@ sha2 = { workspace = true }
 # the upstream LLM. Compiled once at startup, applied per request.
 regex = { workspace = true }
 # secp256k1 signing for LLM-call receipts. Keypair persists to disk
-# (TKR_RECEIPT_SIGNING_KEY_PATH) so signatures stay verifiable across
+# (JKR_RECEIPT_SIGNING_KEY_PATH) so signatures stay verifiable across
 # restarts. Same curve as the on-chain MeshEscrow flow uses for
 # EIP-712 claims, leaving the door open for a future settlement path.
 k256 = { version = "0.13", features = ["ecdsa", "ecdh", "sha256"] }
