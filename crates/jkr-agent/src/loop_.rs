@@ -2,8 +2,8 @@ use crate::manifest::Manifest;
 use crate::provider::{ContentBlock, Message, Provider, StopReason};
 use crate::tool::{ToolRegistry, ToolResult};
 use anyhow::{anyhow, Result};
-use tkr_api::{FilterResult, LegacyPlugin as Plugin};
-use tkr_filter::FilterPlugin;
+use jkr_api::{FilterResult, LegacyPlugin as Plugin};
+use jkr_filter::FilterPlugin;
 
 #[derive(Debug, Clone)]
 pub struct RunOutcome {
@@ -211,6 +211,8 @@ mod tests {
             tools: vec![],
             mode: AgentMode::Auto,
             max_steps: 5,
+            sandbox: None,
+            secrets: Default::default(),
         }
     }
 
@@ -292,8 +294,8 @@ mod tests {
 
     #[test]
     fn filter_compresses_tool_output() {
-        use tkr_filter::FilterPlugin;
-        // Rule schema confirmed from tkr-filter/src/rules.rs:
+        use jkr_filter::FilterPlugin;
+        // Rule schema confirmed from jkr-filter/src/rules.rs:
         // rules use `type = "suppress_regex"` with `pattern` field.
         // (Not `match`/`action = "suppress"` as suggested in the plan.)
         let filter_toml = r#"
