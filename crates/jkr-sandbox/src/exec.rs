@@ -68,6 +68,57 @@ fn run_unsandboxed(
     spawn_and_collect(cmd, limits)
 }
 
+/// Run a command under the sandbox policy with the parent's stdio inherited
+/// (real tty), waiting for the child. For interactive launches that must not
+/// be piped or syscall-traced. On Linux this is a Landlock-only path (no
+/// ptrace); on macOS it falls back to the capturing sandbox-exec path.
+pub fn run_sandboxed_interactive(
+    command: &str,
+    args: &[&str],
+    policy: &SandboxPolicy,
+) -> Result<SandboxOutput, SandboxError> {
+    if let Err(e) = policy.validate() {
+        return Err(SandboxError::PolicyViolation(e));
+    }
+    if policy.disabled {
+        return run_unsandboxed_interactive(command, args);
+    }
+    #[cfg(target_os = "linux")]
+    {
+        crate::linux::run_inherit(command, args, policy)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        crate::macos::run(command, args, policy)
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        let _ = (command, args);
+        Err(SandboxError::Unsupported)
+    }
+}
+
+fn run_unsandboxed_interactive(
+    command: &str,
+    args: &[&str],
+) -> Result<SandboxOutput, SandboxError> {
+    let status = Command::new(command)
+        .args(args)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .map_err(|e| SandboxError::Backend(e.to_string()))?
+        .wait()
+        .map_err(|e| SandboxError::Backend(e.to_string()))?;
+    Ok(SandboxOutput {
+        stdout: Vec::new(),
+        stderr: Vec::new(),
+        exit: status.code().unwrap_or(-1),
+        truncated: false,
+    })
+}
+
 /// Spawn `cmd`, read stdout/stderr concurrently up to the output cap, and
 /// enforce the wall-clock timeout. Used by every backend (linux, macos,
 /// unsandboxed) so cap + timeout behavior is consistent across platforms.

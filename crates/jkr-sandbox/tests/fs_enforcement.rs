@@ -1,4 +1,4 @@
-use tkr_sandbox::{run_sandboxed, SandboxPolicy};
+use jkr_sandbox::{run_sandboxed, SandboxPolicy};
 
 fn run_test() {
     let allowed = tempfile::tempdir().unwrap();
@@ -39,10 +39,35 @@ fn run_test() {
     );
 }
 
+/// /dev/urandom must be readable even when the allowlist names only an
+/// unrelated dir — the landlock baseline grants it. Without this, CSPRNG-
+/// seeding runtimes (Bun/Node) abort at startup under the sandbox.
+fn dev_urandom_test() {
+    let only = tempfile::tempdir().unwrap();
+    let policy = SandboxPolicy::builder()
+        .allow_read("/usr")
+        .allow_read("/lib")
+        .allow_read("/lib64")
+        .allow_read(only.path())
+        .build();
+    let (r, _trace) =
+        run_sandboxed("/usr/bin/head", &["-c", "8", "/dev/urandom"], &policy).unwrap();
+    assert_eq!(
+        r.exit, 0,
+        "reading /dev/urandom should succeed via baseline; stderr={}",
+        String::from_utf8_lossy(&r.stderr)
+    );
+}
+
+/// Both linux assertions run in one `#[test]` because every sandboxed run now
+/// goes through the ptrace backend, whose `waitpid(None)` would cross-reap a
+/// sibling test's children if two ran in parallel (the same reason the
+/// ptrace_capture suite is a single serialized test).
 #[cfg(target_os = "linux")]
 #[test]
-fn linux_blocks_write_outside_allowlist() {
+fn linux_fs_enforcement() {
     run_test();
+    dev_urandom_test();
 }
 
 #[cfg(target_os = "macos")]

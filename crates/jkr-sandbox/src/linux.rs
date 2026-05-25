@@ -9,18 +9,50 @@ pub fn run(
     args: &[&str],
     policy: &SandboxPolicy,
 ) -> Result<SandboxOutput, SandboxError> {
+    let mut cmd = Command::new(command);
+    cmd.args(args);
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    install_jail(&mut cmd, policy);
+    spawn_and_collect(cmd, &policy.limits)
+}
+
+/// Landlock-jailed run that **inherits the parent's stdio** (real tty) and
+/// waits for the child, returning only its exit code. Used for interactive
+/// launches (`jkr sandbox claude`) where a captured/piped stdout would break
+/// the agent's TUI and where syscall-level capture (the ptrace backend) is
+/// both unnecessary and too slow.
+pub fn run_inherit(
+    command: &str,
+    args: &[&str],
+    policy: &SandboxPolicy,
+) -> Result<SandboxOutput, SandboxError> {
+    let mut cmd = Command::new(command);
+    cmd.args(args)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
+    install_jail(&mut cmd, policy);
+    let status = cmd
+        .spawn()
+        .map_err(|e| SandboxError::Backend(e.to_string()))?
+        .wait()
+        .map_err(|e| SandboxError::Backend(e.to_string()))?;
+    Ok(SandboxOutput {
+        stdout: Vec::new(),
+        stderr: Vec::new(),
+        exit: status.code().unwrap_or(-1),
+        truncated: false,
+    })
+}
+
+/// Strip the environment to the policy allowlist and install the rlimit +
+/// landlock `pre_exec` hook. PATH is always forwarded so the kernel can
+/// resolve a non-absolute `command`.
+fn install_jail(cmd: &mut Command, policy: &SandboxPolicy) {
     let read = policy.fs_read.clone();
     let write = policy.fs_write.clone();
     let limits = policy.limits.clone();
 
-    let mut cmd = Command::new(command);
-    cmd.args(args);
-    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-    // Strip the parent environment unconditionally, then re-add only the
-    // names listed in policy.env_allow (looking up live values at spawn).
-    // PATH is always forwarded so the kernel can resolve `command` when
-    // it is not an absolute path; refusing it would silently break every
-    // policy that does not think to allowlist it.
     cmd.env_clear();
     if let Ok(path) = std::env::var("PATH") {
         cmd.env("PATH", path);
@@ -47,8 +79,6 @@ pub fn run(
             })
         });
     }
-
-    spawn_and_collect(cmd, &policy.limits)
 }
 
 pub(crate) fn apply_rlimits(limits: &crate::policy::SandboxLimits) -> Result<(), String> {
@@ -90,6 +120,32 @@ pub(crate) fn apply_landlock_full(
             .map_err(|e| format!("handle_access net: {e}"))?;
     }
     let mut ruleset = builder.create().map_err(|e| format!("create: {e}"))?;
+
+    // Baseline device nodes every reasonable program needs. Without
+    // /dev/urandom in particular, runtimes that seed a CSPRNG at startup
+    // (Bun/Node, anything linking rustls/openssl) get EACCES and abort
+    // before doing any work. This mirrors the macOS profile's baseline
+    // allows — the kernel jail must not deny the bytes a process needs just
+    // to boot. Missing nodes are skipped, not fatal.
+    for dev in [
+        "/dev/null",
+        "/dev/zero",
+        "/dev/full",
+        "/dev/random",
+        "/dev/urandom",
+        "/dev/tty",
+        // PTY nodes: interactive TUIs and any program that allocates a
+        // pseudo-terminal (Claude Code's Bash tool via node-pty) open
+        // /dev/ptmx and the /dev/pts subtree. Denying these hangs startup.
+        "/dev/ptmx",
+        "/dev/pts",
+    ] {
+        if let Ok(fd) = PathFd::new(dev) {
+            ruleset = ruleset
+                .add_rule(PathBeneath::new(fd, AccessFs::from_all(abi)))
+                .map_err(|e| format!("add_rule baseline {dev}: {e}"))?;
+        }
+    }
 
     for p in fs_read {
         let fd = PathFd::new(p).map_err(|e| format!("open {}: {}", p.display(), e))?;
