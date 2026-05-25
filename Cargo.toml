@@ -13,12 +13,8 @@ members = [
     "crates/tkr-model",
     "crates/tkr-index",
     "crates/tkr",
+    "crates/tkr-server",
 ]
-# tkr-server is currently broken on main (ureq 3.x migration pending) and not
-# part of the shipped release artifact. Excluding it keeps its vulnerable
-# transitive deps (sqlx 0.8.0 -> rustls 0.21 -> rustls-webpki 0.101) out of
-# the workspace lockfile. Re-add when the ureq migration lands.
-exclude = ["crates/tkr-server"]
 
 # MSRV — keep in sync with rust-toolchain.toml (transitive crates: time, darling, …).
 [workspace.package]
