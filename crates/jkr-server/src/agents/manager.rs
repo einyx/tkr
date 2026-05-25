@@ -155,6 +155,45 @@ impl SessionManager {
         Ok(state)
     }
 
+    /// All sessions owned by `owner`, newest first. Returns
+    /// `(id, agent_name, state)` tuples.
+    pub async fn list_sessions(&self, owner: &str) -> Result<Vec<(String, String, String)>> {
+        let rows: Vec<(String, String, String)> = sqlx::query_as(
+            "SELECT id, agent_name, state FROM agent_sessions \
+             WHERE owner = $1 ORDER BY created_at DESC",
+        )
+        .bind(owner)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Stop a running session: assert ownership, stop the container, mark
+    /// state='stopped'. Owner-scoped — errors if the session isn't owned
+    /// by `owner` (same "not found" shape as the other reads).
+    pub async fn stop_session(&self, owner: &str, sid: &str) -> Result<()> {
+        self.assert_owner(owner, sid).await?;
+        let container_id: Option<String> =
+            sqlx::query_scalar("SELECT container_id FROM agent_sessions WHERE id = $1")
+                .bind(sid)
+                .fetch_optional(&self.pool)
+                .await?;
+        if let Some(container_id) = container_id {
+            let handle = SessionHandle {
+                session_id: sid.to_string(),
+                container_id,
+            };
+            let _ = self.backend.stop(&handle).await;
+        }
+        let now = now_secs();
+        sqlx::query("UPDATE agent_sessions SET state = 'stopped', ended_at = $1 WHERE id = $2")
+            .bind(now)
+            .bind(sid)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     pub async fn reconcile(&self) -> Result<()> {
         let rows: Vec<(String, String)> =
             sqlx::query_as("SELECT id, container_id FROM agent_sessions WHERE state = 'running'")

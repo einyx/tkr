@@ -36,14 +36,14 @@ use tokio::time::sleep;
 // (Full<Bytes>) and streaming bodies (ChannelBody for SSE proxying).
 // Infallible — none of our body sources can fail mid-stream; ureq read
 // errors terminate the stream by closing the channel.
-type Body = BoxBody<Bytes, std::convert::Infallible>;
+pub(crate) type Body = BoxBody<Bytes, std::convert::Infallible>;
 
 #[derive(Clone)]
-struct AppState {
-    inner: Arc<StateInner>,
+pub(crate) struct AppState {
+    pub(crate) inner: Arc<StateInner>,
 }
 
-struct StateInner {
+pub(crate) struct StateInner {
     sessions: Mutex<HashMap<String, SessionState>>,
     next_event_id: AtomicU64,
     needs_setup: bool,
@@ -166,7 +166,13 @@ struct StateInner {
     /// still boots, but stateful features that require it fall back
     /// to the legacy in-memory paths. The compose deployment always
     /// sets it; tests that don't want a database can leave it unset.
-    pg_pool: Option<sqlx::PgPool>,
+    pub(crate) pg_pool: Option<sqlx::PgPool>,
+    /// Agent manifest registry + session manager. Both are `Some` only
+    /// when Postgres is configured AND a Docker backend connected at
+    /// boot; otherwise `None` and the agent/session routes return 503.
+    /// Never unwrapped on the boot path.
+    pub(crate) agent_registry: Option<Arc<crate::agents::AgentRegistry>>,
+    pub(crate) session_manager: Option<Arc<crate::agents::SessionManager>>,
     /// Redis pool for ephemeral hot state with TTLs (OAuth login
     /// state, future rate-limit counters). Same Option semantics as
     /// `pg_pool` — present in compose, absent in unit tests.
@@ -628,7 +634,7 @@ struct StoredSession {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-struct SessionState {
+pub(crate) struct SessionState {
     current_tenant_id: String,
     /// Identity claims pulled from the Logto id_token at sign-in
     /// (`handle_logto_callback`). Empty strings for sessions minted by
@@ -638,7 +644,7 @@ struct SessionState {
     display_name: String,
     /// Stable user identifier — Logto `sub` claim, or `"user-dev"` for
     /// the password fallback. Used as the React UI's user id.
-    user_id: String,
+    pub(crate) user_id: String,
 }
 
 /// Look up a session by ID. Uses Postgres when the pool is wired so
@@ -707,7 +713,7 @@ async fn sessions_insert(
 /// Convenience wrapper combining `session_cookie` + `sessions_get` —
 /// the pattern used by every auth-gated handler. Returns `None` when
 /// there's no cookie OR the cookie's session is unknown/expired.
-async fn require_session(state: &AppState, headers: &HeaderMap) -> Option<SessionState> {
+pub(crate) async fn require_session(state: &AppState, headers: &HeaderMap) -> Option<SessionState> {
     let sid = session_cookie(headers)?;
     sessions_get(state, &sid).await
 }
@@ -845,6 +851,34 @@ async fn async_main() -> anyhow::Result<()> {
         }
     };
 
+    // Agent + session subsystem. Requires both Postgres (durable session
+    // state) and a reachable Docker daemon (sandboxed agent containers).
+    // When either is missing we boot with `None` and the agent/session
+    // routes return 503 — unrelated endpoints and existing tests keep
+    // working. Never panics on the boot path.
+    let (agent_registry, session_manager) = match pg_pool.as_ref() {
+        Some(pool) => match jkr_sandbox::session::docker::DockerBackend::connect() {
+            Ok(backend) => {
+                let registry = Arc::new(agents::AgentRegistry::new(pool.clone()));
+                let manager = Arc::new(agents::SessionManager::new(
+                    pool.clone(),
+                    Arc::clone(&registry),
+                    Arc::new(backend),
+                ));
+                eprintln!("jkr-server: agent sessions enabled (Postgres + Docker)");
+                (Some(registry), Some(manager))
+            }
+            Err(e) => {
+                eprintln!("jkr-server: agent sessions disabled — Docker connect failed: {e}");
+                (None, None)
+            }
+        },
+        None => {
+            eprintln!("jkr-server: agent sessions disabled — Postgres not configured");
+            (None, None)
+        }
+    };
+
     let state = AppState {
         inner: Arc::new(StateInner {
             sessions: Mutex::new(HashMap::new()),
@@ -904,9 +938,19 @@ async fn async_main() -> anyhow::Result<()> {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty()),
             pg_pool,
+            agent_registry,
+            session_manager,
             redis: redis_pool,
         }),
     };
+
+    // Boot reconcile: re-attach drain tasks for sessions left 'running'
+    // by a previous process. No-op when the subsystem is disabled.
+    if let Some(mgr) = &state.inner.session_manager {
+        if let Err(e) = mgr.reconcile().await {
+            eprintln!("jkr-server: agent session reconcile error: {e}");
+        }
+    }
 
     let listener = TcpListener::bind(addr).await?;
     eprintln!("jkr-server listening on http://{addr}");
@@ -1000,6 +1044,30 @@ async fn route(req: Request<Incoming>, state: AppState) -> Result<Response<Body>
                 .and_then(|s| s.strip_suffix("/events"))
                 .unwrap_or("");
             handle_get_events(&req, state, id).await
+        }
+        (&Method::POST, "/v1/agents") => agents::routes::handle_agents_push(req, state).await,
+        (&Method::GET, "/v1/agents") => agents::routes::handle_agents_list(&req, state).await,
+        (&Method::POST, "/v1/sessions") => agents::routes::handle_session_create(req, state).await,
+        (&Method::GET, "/v1/sessions") => agents::routes::handle_sessions_list(&req, state).await,
+        (&Method::GET, p) if p.starts_with("/v1/agents/") => {
+            let name = p.trim_start_matches("/v1/agents/");
+            agents::routes::handle_agent_get(&req, state, name).await
+        }
+        (&Method::POST, p) if p.starts_with("/v1/sessions/") && p.ends_with("/stop") => {
+            let id = p
+                .trim_start_matches("/v1/sessions/")
+                .trim_end_matches("/stop");
+            agents::routes::handle_session_stop(&req, state, id).await
+        }
+        (&Method::GET, p) if p.starts_with("/v1/sessions/") && p.ends_with("/stream") => {
+            let id = p
+                .trim_start_matches("/v1/sessions/")
+                .trim_end_matches("/stream");
+            agents::routes::handle_session_stream(&req, state, id).await
+        }
+        (&Method::GET, p) if p.starts_with("/v1/sessions/") => {
+            let id = p.trim_start_matches("/v1/sessions/");
+            agents::routes::handle_session_get(&req, state, id).await
         }
         _ => json_response(
             req.headers(),
@@ -2334,8 +2402,8 @@ async fn proxy_llm_streaming(
 /// sender ends the stream. Errors aren't possible at this layer —
 /// any upstream read error simply truncates the stream by dropping
 /// the sender.
-struct ChannelBody {
-    rx: tokio::sync::mpsc::Receiver<Bytes>,
+pub(crate) struct ChannelBody {
+    pub(crate) rx: tokio::sync::mpsc::Receiver<Bytes>,
 }
 
 impl hyper::body::Body for ChannelBody {
@@ -3695,7 +3763,7 @@ async fn handle_cli_token_revoke(req: Request<Incoming>, state: AppState) -> Res
 /// Look up a CLI token by its raw value. Returns Some(user_id) when
 /// the token matches a non-revoked row. Updates `last_used_at` as a
 /// side effect so the dashboard can show "last seen N minutes ago".
-async fn cli_token_lookup(state: &AppState, raw_token: &str) -> Option<String> {
+pub(crate) async fn cli_token_lookup(state: &AppState, raw_token: &str) -> Option<String> {
     let pool = state.inner.pg_pool.as_ref()?;
     let hash = token_sha256(raw_token);
     let row: Result<Option<(String,)>, _> = sqlx::query_as(
@@ -4452,7 +4520,7 @@ async fn read_json(req: Request<Incoming>) -> anyhow::Result<serde_json::Value> 
     Ok(serde_json::from_slice(&bytes)?)
 }
 
-fn json_response<T: Serialize>(headers_src: &HeaderMap, status: StatusCode, body: T) -> Response<Body> {
+pub(crate) fn json_response<T: Serialize>(headers_src: &HeaderMap, status: StatusCode, body: T) -> Response<Body> {
     let payload = serde_json::to_vec(&body).expect("json payload");
     let mut builder = Response::builder().status(status);
     let headers = builder.headers_mut().expect("headers");
@@ -4467,7 +4535,7 @@ fn json_response<T: Serialize>(headers_src: &HeaderMap, status: StatusCode, body
         .expect("response")
 }
 
-fn json_error(
+pub(crate) fn json_error(
     status: StatusCode,
     code: &str,
     message: &str,
