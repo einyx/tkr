@@ -10,6 +10,92 @@ use nix::unistd::{fork, ForkResult, Pid};
 use std::collections::HashMap;
 use std::ffi::CString;
 
+#[cfg(target_arch = "x86_64")]
+pub(crate) fn syscall_nr(regs: &libc::user_regs_struct) -> u64 {
+    regs.orig_rax
+}
+#[cfg(target_arch = "x86_64")]
+pub(crate) fn arg(regs: &libc::user_regs_struct, i: usize) -> u64 {
+    [regs.rdi, regs.rsi, regs.rdx, regs.r10, regs.r8, regs.r9][i]
+}
+#[cfg(target_arch = "x86_64")]
+pub(crate) fn retval(regs: &libc::user_regs_struct) -> i64 {
+    regs.rax as i64
+}
+
+#[cfg(target_arch = "aarch64")]
+pub(crate) fn syscall_nr(regs: &libc::user_regs_struct) -> u64 {
+    regs.regs[8]
+}
+#[cfg(target_arch = "aarch64")]
+pub(crate) fn arg(regs: &libc::user_regs_struct, i: usize) -> u64 {
+    regs.regs[i]
+}
+#[cfg(target_arch = "aarch64")]
+pub(crate) fn retval(regs: &libc::user_regs_struct) -> i64 {
+    regs.regs[0] as i64
+}
+
+pub(crate) fn getregs(pid: Pid) -> Option<libc::user_regs_struct> {
+    ptrace::getregs(pid).ok()
+}
+
+/// Read a NUL-terminated string from the tracee's address space, bounded.
+pub(crate) fn read_cstr(pid: Pid, addr: u64) -> String {
+    use std::io::{Read, Seek, SeekFrom};
+    if addr == 0 {
+        return String::new();
+    }
+    let path = format!("/proc/{}/mem", pid.as_raw());
+    let mut buf = [0u8; 4096];
+    if let Ok(mut f) = std::fs::File::open(&path) {
+        if f.seek(SeekFrom::Start(addr)).is_ok() {
+            if let Ok(n) = f.read(&mut buf) {
+                let end = buf[..n].iter().position(|&b| b == 0).unwrap_or(n);
+                return String::from_utf8_lossy(&buf[..end]).into_owned();
+            }
+        }
+    }
+    String::new()
+}
+
+/// Decode a sockaddr at `addr` into ("ip:port", family). Reads family first.
+pub(crate) fn read_sockaddr(
+    pid: Pid,
+    addr: u64,
+) -> Option<(String, crate::capture::trace::NetFamily)> {
+    use crate::capture::trace::NetFamily;
+    use std::io::{Read, Seek, SeekFrom};
+    if addr == 0 {
+        return None;
+    }
+    let path = format!("/proc/{}/mem", pid.as_raw());
+    let mut f = std::fs::File::open(&path).ok()?;
+    f.seek(SeekFrom::Start(addr)).ok()?;
+    let mut hdr = [0u8; 28]; // sockaddr_in6 sized
+    let n = f.read(&mut hdr).ok()?;
+    if n < 2 {
+        return None;
+    }
+    let fam = u16::from_ne_bytes([hdr[0], hdr[1]]) as i32;
+    match fam {
+        libc::AF_INET => {
+            let port = u16::from_be_bytes([hdr[2], hdr[3]]);
+            let ip = std::net::Ipv4Addr::new(hdr[4], hdr[5], hdr[6], hdr[7]);
+            Some((format!("{ip}:{port}"), NetFamily::V4))
+        }
+        libc::AF_INET6 => {
+            let port = u16::from_be_bytes([hdr[2], hdr[3]]);
+            let mut o = [0u8; 16];
+            o.copy_from_slice(&hdr[8..24]);
+            let ip = std::net::Ipv6Addr::from(o);
+            Some((format!("[{ip}]:{port}"), NetFamily::V6))
+        }
+        libc::AF_UNIX => Some(("unix".into(), NetFamily::Unix)),
+        _ => None,
+    }
+}
+
 pub struct LinuxPtraceBackend;
 
 impl CaptureBackend for LinuxPtraceBackend {
