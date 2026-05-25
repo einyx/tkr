@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "tkr",
+    name = "jkr",
     about = "Token-optimized CLI proxy",
     subcommand_precedence_over_arg = true
 )]
@@ -11,7 +11,7 @@ pub struct Cli {
     pub command: Option<Commands>,
 
     /// Hard token-output budget; lines past this point are elided with a
-    /// `(... N more lines elided)` marker. Equivalent to `TKR_MAX_TOKENS=N`.
+    /// `(... N more lines elided)` marker. Equivalent to `JKR_MAX_TOKENS=N`.
     #[arg(long)]
     pub max_tokens: Option<u64>,
 
@@ -19,7 +19,7 @@ pub struct Cli {
     /// whitespace). Buffers stdout, parses, reserializes. Falls back to the
     /// unchanged buffered text when the output isn't JSON. Big win on
     /// `kubectl get -o json`, `aws describe-*`, etc.
-    /// Equivalent to `TKR_COMPACT_JSON=1`.
+    /// Equivalent to `JKR_COMPACT_JSON=1`.
     #[arg(long)]
     pub compact_json: bool,
 
@@ -54,13 +54,13 @@ pub enum Commands {
     },
     /// Suggest concrete filter improvements based on your analytics
     Suggest,
-    /// Explain what tkr filtered in the latest persisted agent run
+    /// Explain what jkr filtered in the latest persisted agent run
     Explain {
-        /// Optional run record JSON path (defaults to most recent in ~/.tkr/runs)
+        /// Optional run record JSON path (defaults to most recent in ~/.jkr/runs)
         #[arg(long)]
         file: Option<std::path::PathBuf>,
     },
-    /// Rewrite a shell command to use tkr (used by hooks).
+    /// Rewrite a shell command to use jkr (used by hooks).
     /// Exit 0 + stdout: rewrite found. Exit 1: no rewrite available.
     Rewrite {
         /// The full shell command line to rewrite.
@@ -79,7 +79,7 @@ pub enum Commands {
         #[arg(long)]
         yes: bool,
     },
-    /// Install the tkr hook into AI coding tools.
+    /// Install the jkr hook into AI coding tools.
     /// Auto-detects installed tools when no flag is given.
     Install {
         /// Install only into Claude Code (~/.claude/settings.json)
@@ -88,16 +88,16 @@ pub enum Commands {
         /// Install only into Codex CLI (~/.codex/config.toml)
         #[arg(long)]
         codex: bool,
-        /// Install only into Cursor (~/.cursor/rules/tkr.mdc)
+        /// Install only into Cursor (~/.cursor/rules/jkr.mdc)
         #[arg(long)]
         cursor: bool,
         /// Also install the foundry toolchain (forge/anvil/cast) needed for
-        /// tkr-mesh smart-contract development. Idempotent — skips if forge
+        /// jkr-mesh smart-contract development. Idempotent — skips if forge
         /// is already on PATH.
         #[arg(long)]
         with_foundry: bool,
     },
-    /// Remove the tkr hook from AI coding tools.
+    /// Remove the jkr hook from AI coding tools.
     /// Auto-detects installed tools when no flag is given.
     Uninstall {
         /// Remove only from Claude Code (~/.claude/settings.json)
@@ -106,14 +106,14 @@ pub enum Commands {
         /// Remove only from Codex CLI (~/.codex/config.toml)
         #[arg(long)]
         codex: bool,
-        /// Remove only from Cursor (~/.cursor/rules/tkr.mdc)
+        /// Remove only from Cursor (~/.cursor/rules/jkr.mdc)
         #[arg(long)]
         cursor: bool,
     },
-    /// Benchmark how much tkr would save on a given command.
+    /// Benchmark how much jkr would save on a given command.
     /// Runs raw vs filtered, compares chars/tokens, prints ratio.
     Bench {
-        /// The command + args to benchmark (e.g. `tkr bench cargo check`).
+        /// The command + args to benchmark (e.g. `jkr bench cargo check`).
         #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
         command: Vec<String>,
     },
@@ -131,7 +131,7 @@ pub enum Commands {
         #[arg(long)]
         force: bool,
     },
-    /// Encrypted vault (plugin storage under ~/.tkr/vault/)
+    /// Encrypted vault (plugin storage under ~/.jkr/vault/)
     Vault {
         #[command(subcommand)]
         cmd: Option<VaultCmd>,
@@ -141,27 +141,27 @@ pub enum Commands {
         #[command(subcommand)]
         cmd: AdminCmd,
     },
-    /// tkr-mesh agent payments (Base / EVM). On-chain settlement runs
+    /// jkr-mesh agent payments (Base / EVM). On-chain settlement runs
     /// against MeshEscrow.sol; off-chain receipts are EIP-712 signatures.
     Pay {
         #[command(subcommand)]
         cmd: PayCmd,
     },
-    /// tkr-mesh peer messaging — join a mesh, tail incoming messages,
+    /// jkr-mesh peer messaging — join a mesh, tail incoming messages,
     /// send DMs to other peers.
     Mesh {
         #[command(subcommand)]
         cmd: MeshCmd,
     },
-    /// Run tkr's MCP server on stdio (default), or manage MCP wire-up.
-    /// `tkr mcp` (no subcommand) runs the server — that's what the entries
-    /// in `.mcp.json` / `~/.claude.json` invoke. `tkr mcp install` writes
+    /// Run jkr's MCP server on stdio (default), or manage MCP wire-up.
+    /// `jkr mcp` (no subcommand) runs the server — that's what the entries
+    /// in `.mcp.json` / `~/.claude.json` invoke. `jkr mcp install` writes
     /// those entries for you.
     Mcp {
         #[command(subcommand)]
         cmd: Option<McpCmd>,
     },
-    /// Run a command in a tkr sandbox (landlock on Linux, sandbox-exec on
+    /// Run a command in a jkr sandbox (landlock on Linux, sandbox-exec on
     /// macOS). Defaults to deny-all: empty env, no fs access. Pass --read /
     /// --write / --env to grant explicit access, --memory / --cpu / --timeout
     /// to cap resources, --max-output to cap captured output bytes.
@@ -169,13 +169,13 @@ pub enum Commands {
         #[command(subcommand)]
         cmd: SandboxCmd,
     },
-    /// Sign in to a tkr-server. Stores a per-user CLI bearer token
+    /// Sign in to a jkr-server. Stores a per-user CLI bearer token
     /// in the OS keychain so sandboxed runs (and future CLI-authed
     /// endpoints) can report into your dashboard without a shared
     /// env-var secret. The token is minted server-side from your
     /// Logto session — log in to the dashboard first, then run this.
     Login {
-        /// tkr-server base URL (e.g. https://tkr.prysm.sh).
+        /// jkr-server base URL (e.g. https://tkr.prysm.sh).
         #[arg(long, default_value = "https://tkr.prysm.sh")]
         url: String,
         /// Paste a pre-minted token instead of opening the dashboard.
@@ -185,7 +185,7 @@ pub enum Commands {
         #[arg(long)]
         no_browser: bool,
     },
-    /// Show the currently-active tkr-server URL and token status.
+    /// Show the currently-active jkr-server URL and token status.
     Whoami,
     /// Remove the stored CLI token from the OS keychain.
     Logout,
@@ -199,20 +199,20 @@ pub enum Commands {
 
 #[derive(clap::Subcommand, Debug)]
 pub enum McpCmd {
-    /// Wire up the tkr MCP server in Claude Code's config so agents in
-    /// this project can call `mcp__tkr__*` tools. By default writes
+    /// Wire up the jkr MCP server in Claude Code's config so agents in
+    /// this project can call `mcp__jkr__*` tools. By default writes
     /// `./.mcp.json` (project-scope); pass `--scope=user` for
     /// `~/.claude.json`. Idempotent — re-running updates the existing
-    /// `tkr` entry without touching other servers.
+    /// `jkr` entry without touching other servers.
     Install {
         /// project: write ./.mcp.json (shared via git, applies to this repo).
-        /// user: update ~/.claude.json so tkr is available in every project.
+        /// user: update ~/.claude.json so jkr is available in every project.
         #[arg(long = "scope", default_value = "project")]
         scope: McpScope,
         /// Print the config snippet that would be written, but don't touch any file.
         #[arg(long = "print")]
         print: bool,
-        /// Overwrite an existing `tkr` entry (otherwise the command no-ops if one is already present).
+        /// Overwrite an existing `jkr` entry (otherwise the command no-ops if one is already present).
         #[arg(long = "force")]
         force: bool,
     },
@@ -227,7 +227,7 @@ pub enum McpScope {
 #[derive(clap::Subcommand, Debug)]
 pub enum SandboxCmd {
     /// Run `<cmd> [args...]` under the sandbox. Output is captured; exit
-    /// code is propagated to tkr's exit code.
+    /// code is propagated to jkr's exit code.
     Run {
         /// Auto-include `/bin /usr /lib /lib64 /etc` in --read so the
         /// child can actually exec the binary you asked for. Defaults to on;
@@ -265,11 +265,18 @@ pub enum SandboxCmd {
         /// Allow TCP bind/listen on this port. Implies block-everything-else.
         #[arg(long = "allow-bind", value_name = "PORT")]
         allow_bind: Vec<u16>,
+        /// Print a behavioral-trace verdict summary to stderr after the run
+        /// (Linux ptrace backend only; other platforms report "not captured").
+        #[arg(long = "trace")]
+        trace: bool,
+        /// Print the full behavioral trace as JSON to stderr. Overrides --trace.
+        #[arg(long = "trace-json")]
+        trace_json: bool,
         /// The command + args to run. Use `--` before it if any flags collide.
         #[arg(trailing_var_arg = true, required = true)]
         argv: Vec<String>,
     },
-    /// Launch Claude Code (or any agent CLI) inside a tkr sandbox with
+    /// Launch Claude Code (or any agent CLI) inside a jkr sandbox with
     /// agent-friendly defaults: the current working directory is the
     /// only writable filesystem path; system libraries + the user's
     /// ~/.claude config are read-only; auth + locale env vars are
@@ -306,7 +313,7 @@ pub enum SandboxCmd {
     },
 }
 
-/// Public tkr devnet defaults — used when --rpc-url / --board aren't
+/// Public jkr devnet defaults — used when --rpc-url / --board aren't
 /// passed and the corresponding env var isn't set. These point at the
 /// live devnet at tkr.prysm.sh; override for any other chain.
 pub const DEFAULT_RPC_URL: &str = "https://tkr.prysm.sh/api/v1/chain/rpc";
@@ -333,10 +340,10 @@ pub enum JobCmd {
         /// Deadline as a unix timestamp in seconds.
         #[arg(long)]
         deadline: u64,
-        /// JobBoard contract address. Env: TKR_JOB_BOARD. Default: tkr devnet.
+        /// JobBoard contract address. Env: JKR_JOB_BOARD. Default: jkr devnet.
         #[arg(long, default_value = DEFAULT_JOB_BOARD)]
         board: String,
-        /// EVM JSON-RPC URL. Env: TKR_RPC_URL. Default: tkr devnet.
+        /// EVM JSON-RPC URL. Env: JKR_RPC_URL. Default: jkr devnet.
         #[arg(long, default_value = DEFAULT_RPC_URL)]
         rpc_url: String,
         /// Path to private key file.
@@ -407,7 +414,7 @@ pub enum JobCmd {
 pub enum MeshCmd {
     /// Join a mesh via an invite URL (https://.../join/<token> or bare token).
     /// Generates a fresh secp256k1 identity, calls POST /join, persists the
-    /// JoinedMesh record to ~/.tkr/mesh/<slug>.json (chmod 0600).
+    /// JoinedMesh record to ~/.jkr/mesh/<slug>.json (chmod 0600).
     Join {
         /// Invite URL or bare base64url token from the mesh owner
         #[arg(value_name = "INVITE_URL")]
@@ -421,7 +428,7 @@ pub enum MeshCmd {
     /// Connect to a joined mesh and tail incoming messages. Run in one
     /// terminal while another peer sends DMs to your address.
     Tail {
-        /// Mesh slug (from `tkr mesh list`)
+        /// Mesh slug (from `jkr mesh list`)
         slug: String,
         /// Reconnect with exponential backoff (1s → 60s, jittered) when the
         /// broker disconnects, instead of exiting. Use this for long-running
@@ -431,13 +438,13 @@ pub enum MeshCmd {
     },
     /// Send a plaintext direct message to a peer in the mesh.
     Send {
-        /// Mesh slug (from `tkr mesh list`)
+        /// Mesh slug (from `jkr mesh list`)
         slug: String,
         /// Recipient mesh address (0x... EIP-55)
         #[arg(long)]
         to: String,
         /// Recipient's secp256k1 public key (compressed, 33-byte hex 0x02.../0x03...)
-        /// — the recipient prints this with `tkr mesh whoami`.
+        /// — the recipient prints this with `jkr mesh whoami`.
         #[arg(long)]
         recipient_pubkey: String,
         /// Message body (UTF-8). Use `-` to read from stdin.
@@ -446,7 +453,7 @@ pub enum MeshCmd {
     /// Print this peer's mesh address + compressed public key (share the
     /// public key with peers who want to send you DMs).
     Whoami {
-        /// Mesh slug (from `tkr mesh list`)
+        /// Mesh slug (from `jkr mesh list`)
         slug: String,
     },
     /// Mint a signed invite URL. The owner key signs it; share the URL
@@ -459,7 +466,7 @@ pub enum MeshCmd {
         /// (e.g. wss://tkr.prysm.sh/api/v1/mesh/ws)
         #[arg(long)]
         broker_url: String,
-        /// Path to the mesh owner's private key file (TKR_PAYMENT_KEY=0x...)
+        /// Path to the mesh owner's private key file (JKR_PAYMENT_KEY=0x...)
         #[arg(long)]
         owner_key_file: std::path::PathBuf,
         /// Invite lifetime in hours. Default: 24.
@@ -505,7 +512,7 @@ pub enum PayCmd {
     /// recipient or the call reverts.
     Claim {
         /// Path to the JSON receipt file (the same shape produced by
-        /// `tkr pay receipt-issue`)
+        /// `jkr pay receipt-issue`)
         #[arg(long)]
         receipt: String,
         /// EVM JSON-RPC URL (e.g. https://mainnet.base.org or http://127.0.0.1:8545)
@@ -517,7 +524,7 @@ pub enum PayCmd {
     },
 }
 
-/// Subcommands for `tkr vault`. When omitted, defaults to `status`.
+/// Subcommands for `jkr vault`. When omitted, defaults to `status`.
 #[derive(Subcommand, Debug, Clone)]
 pub enum VaultCmd {
     /// Print vault seal state and paths
@@ -584,5 +591,8 @@ pub enum AgentCmd {
     Run {
         /// Path to a TOML manifest
         manifest: std::path::PathBuf,
+        /// Emit structured NDJSON events on stdout instead of human text
+        #[arg(long)]
+        stream: bool,
     },
 }

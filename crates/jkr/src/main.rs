@@ -25,13 +25,13 @@ use std::io::IsTerminal;
 
 fn vault_main(cmd: Option<VaultCmd>) -> ! {
     if let Err(e) = host::boot::ensure_full() {
-        eprintln!("tkr: host boot failed: {e}");
+        eprintln!("jkr: host boot failed: {e}");
         std::process::exit(1);
     }
     match vault_run(cmd.unwrap_or(VaultCmd::Status)) {
         Ok(code) => std::process::exit(code),
         Err(e) => {
-            eprintln!("tkr vault: {e:#}");
+            eprintln!("jkr vault: {e:#}");
             std::process::exit(1);
         }
     }
@@ -42,7 +42,7 @@ fn vault_run(cmd: VaultCmd) -> anyhow::Result<i32> {
     use host::cli_cmds::vault as vcmd;
 
     let home = dirs::home_dir().unwrap_or_default();
-    let vault_root = home.join(".tkr").join("vault");
+    let vault_root = home.join(".jkr").join("vault");
     let vault_arc = host::boot::vault();
     let vault = &vault_arc;
 
@@ -58,20 +58,20 @@ fn vault_run(cmd: VaultCmd) -> anyhow::Result<i32> {
             let new_master = vcmd::rotate(vault, &vault_root)?;
             let vault_root_str = vault_root.to_string_lossy().into_owned();
             if let Err(e) =
-                host::vault::keychain::set_master_key("tkr-vault", &vault_root_str, &new_master)
+                host::vault::keychain::set_master_key("jkr-vault", &vault_root_str, &new_master)
             {
                 // Never print the raw key — stderr is captured by terminal
                 // scrollback, tmux logs, and parent processes (e.g. CI,
                 // Claude Code). Direct the operator to back up the
                 // already-persisted master.key file by other means.
                 let _ = new_master;
-                eprintln!("tkr: error: could not persist master key after rotate: {e}");
+                eprintln!("jkr: error: could not persist master key after rotate: {e}");
                 eprintln!(
-                    "tkr: the new key was generated and the vault re-encrypted, but \
+                    "jkr: the new key was generated and the vault re-encrypted, but \
                      the OS keyring write failed."
                 );
                 eprintln!(
-                    "tkr: copy {} to a safe location now (file is mode 0600).",
+                    "jkr: copy {} to a safe location now (file is mode 0600).",
                     vault_root.join("master.key").display()
                 );
                 return Ok(1);
@@ -95,7 +95,7 @@ fn vault_run(cmd: VaultCmd) -> anyhow::Result<i32> {
 
 fn admin_main(cmd: AdminCmd) -> ! {
     if let Err(e) = host::boot::ensure_full() {
-        eprintln!("tkr: host boot failed: {e}");
+        eprintln!("jkr: host boot failed: {e}");
         std::process::exit(1);
     }
     use host::cli_cmds::admin;
@@ -105,7 +105,7 @@ fn admin_main(cmd: AdminCmd) -> ! {
     match admin::reset(vault, &plugin) {
         Ok(code) => std::process::exit(code),
         Err(e) => {
-            eprintln!("tkr admin: {e:#}");
+            eprintln!("jkr admin: {e:#}");
             std::process::exit(1);
         }
     }
@@ -113,9 +113,9 @@ fn admin_main(cmd: AdminCmd) -> ! {
 
 fn clean_stats(yes: bool) -> anyhow::Result<()> {
     let home = dirs::home_dir().unwrap_or_default();
-    let legacy_db = home.join(".tkr/analytics.db");
-    let migrated_db = home.join(".tkr/analytics.db.migrated");
-    let vault_dir = home.join(".tkr/vault");
+    let legacy_db = home.join(".jkr/analytics.db");
+    let migrated_db = home.join(".jkr/analytics.db.migrated");
+    let vault_dir = home.join(".jkr/vault");
 
     let mut targets: Vec<std::path::PathBuf> = Vec::new();
     for p in [&legacy_db, &migrated_db, &vault_dir] {
@@ -159,7 +159,7 @@ fn clean_stats(yes: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// If clap did not match a subcommand but the user typed `tkr update …`, run the
+/// If clap did not match a subcommand but the user typed `jkr update …`, run the
 /// self-updater instead of proxying to a non-existent binary named `update`
 /// (builds without the `Update` variant, or rare parser edge cases).
 fn dispatch_update_from_passthrough(cli: &Cli) -> Option<anyhow::Result<()>> {
@@ -177,7 +177,7 @@ fn dispatch_update_from_passthrough(cli: &Cli) -> Option<anyhow::Result<()>> {
             "--force" => force = true,
             _ => {
                 return Some(Err(anyhow::anyhow!(
-                    "unknown argument to `tkr update`: {arg}"
+                    "unknown argument to `jkr update`: {arg}"
                 )));
             }
         }
@@ -207,7 +207,7 @@ fn main() -> anyhow::Result<()> {
     );
     if needs_full_boot {
         if let Err(e) = host::boot::ensure_full() {
-            eprintln!("tkr: host boot failed: {e}");
+            eprintln!("jkr: host boot failed: {e}");
             std::process::exit(1);
         }
     }
@@ -251,7 +251,7 @@ fn main() -> anyhow::Result<()> {
             }
         },
         Some(Commands::Mcp { cmd }) => match cmd {
-            None => tkr_mcp::Server::run(),
+            None => jkr_mcp::Server::run(),
             Some(McpCmd::Install {
                 scope,
                 print,
@@ -271,6 +271,8 @@ fn main() -> anyhow::Result<()> {
                 no_network,
                 allow_connect,
                 allow_bind,
+                trace,
+                trace_json,
                 argv,
             } => cmds::sandbox::run(
                 system,
@@ -284,6 +286,9 @@ fn main() -> anyhow::Result<()> {
                 no_network,
                 allow_connect,
                 allow_bind,
+                trace,
+                trace_json,
+                false,
                 argv,
             ),
             SandboxCmd::Claude {
@@ -328,7 +333,7 @@ fn main() -> anyhow::Result<()> {
             HookTarget::Post => cmds::hook::run_post(),
         },
         Some(Commands::Version) => {
-            println!("tkr {}", env!("CARGO_PKG_VERSION"));
+            println!("jkr {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
         Some(Commands::CleanStats { yes }) => clean_stats(yes),
@@ -336,20 +341,20 @@ fn main() -> anyhow::Result<()> {
         Some(Commands::Uninstall { claude, codex, cursor }) => cmds::install::uninstall(claude, codex, cursor),
         Some(Commands::Bench { command }) => cmds::bench::run(&command),
         Some(Commands::Agent { cmd }) => match cmd {
-            AgentCmd::Run { manifest } => agent_cmd::run_agent(&manifest),
+            AgentCmd::Run { manifest, stream } => agent_cmd::run_agent(&manifest, stream),
         },
         Some(Commands::Update { check, force }) => cmds::update::run(check, force),
         None => {
             if cli.passthrough.is_empty() {
-                eprintln!("Usage: tkr <command> [args...] or tkr --help");
+                eprintln!("Usage: jkr <command> [args...] or jkr --help");
                 std::process::exit(1);
             }
             // Wire --max-tokens / --compact-json through env so stream.rs sees them.
             if let Some(n) = cli.max_tokens {
-                std::env::set_var("TKR_MAX_TOKENS", n.to_string());
+                std::env::set_var("JKR_MAX_TOKENS", n.to_string());
             }
             if cli.compact_json {
-                std::env::set_var("TKR_COMPACT_JSON", "1");
+                std::env::set_var("JKR_COMPACT_JSON", "1");
             }
             let cfg = config::load()?;
             proxy::run(cfg, &cli.passthrough)

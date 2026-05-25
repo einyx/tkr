@@ -1,13 +1,34 @@
 use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
+use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
-use jkr_agent::{tools::echo::EchoTool, ContentBlock, Manifest, Message, RunReceipt, ToolRegistry};
+use jkr_agent::{tools::echo::EchoTool, ContentBlock, EventSink, Manifest, Message, RunReceipt, ToolRegistry};
+use jkr_api::AgentEvent;
 use jkr_providers::AnthropicProvider;
 
 use jkr::run_record;
 
-pub fn run_agent(manifest_path: &Path) -> Result<()> {
+/// Writes each event as one NDJSON line, flushing per line so a reader
+/// (e.g. a Docker log stream) sees events as they happen.
+pub struct NdjsonSink<W: Write> {
+    out: W,
+}
+
+impl<W: Write> NdjsonSink<W> {
+    pub fn new(out: W) -> Self {
+        Self { out }
+    }
+}
+
+impl<W: Write> EventSink for NdjsonSink<W> {
+    fn write(&mut self, event: AgentEvent) {
+        let _ = writeln!(self.out, "{}", event.to_ndjson());
+        let _ = self.out.flush();
+    }
+}
+
+pub fn run_agent(manifest_path: &Path, stream: bool) -> Result<()> {
     let manifest_toml = std::fs::read_to_string(manifest_path)
         .with_context(|| format!("reading manifest {}", manifest_path.display()))?;
     let manifest = Manifest::parse(&manifest_toml)
@@ -37,15 +58,23 @@ pub fn run_agent(manifest_path: &Path) -> Result<()> {
     let started_at = Utc::now();
     let clock = Instant::now();
 
-    let run_result = jkr_agent::run(&manifest, &provider, &mut tools, None, None);
+    let run_result = if stream {
+        let stdout = std::io::stdout();
+        let mut sink = NdjsonSink::new(stdout.lock());
+        jkr_agent::run(&manifest, &provider, &mut tools, None, Some(&mut sink))
+    } else {
+        jkr_agent::run(&manifest, &provider, &mut tools, None, None)
+    };
     let duration_ms = clock.elapsed().as_millis() as u64;
 
     match run_result {
         Ok(outcome) => {
-            println!("{}", outcome.final_text);
-            println!();
-            let receipt = RunReceipt::from_outcome(&manifest.name, &outcome);
-            println!("{receipt}");
+            if !stream {
+                println!("{}", outcome.final_text);
+                println!();
+                let receipt = RunReceipt::from_outcome(&manifest.name, &outcome);
+                println!("{receipt}");
+            }
 
             let record = run_record::record_from_run(
                 &manifest,
@@ -58,7 +87,11 @@ pub fn run_agent(manifest_path: &Path) -> Result<()> {
             );
 
             match run_record::persist(&record) {
-                Ok(path) => println!("   record:        {}", path.display()),
+                Ok(path) => {
+                    if !stream {
+                        println!("   record:        {}", path.display());
+                    }
+                }
                 Err(e) => eprintln!("jkr: warning: could not persist run record: {e}"),
             }
 
@@ -98,5 +131,26 @@ pub fn run_agent(manifest_path: &Path) -> Result<()> {
 
             Err(err)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use jkr_api::{AgentEvent, AgentEventKind};
+
+    #[test]
+    fn ndjson_sink_writes_one_line_per_event() {
+        let mut buf: Vec<u8> = Vec::new();
+        let mut sink = NdjsonSink::new(&mut buf);
+
+        sink.write(AgentEvent { seq: 0, kind: AgentEventKind::Step { step: 1, max: 5 } });
+        sink.write(AgentEvent { seq: 1, kind: AgentEventKind::Done { exit: 0, steps: 1 } });
+
+        let output = String::from_utf8(buf).unwrap();
+        let lines: Vec<&str> = output.lines().collect();
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].contains("\"t\":\"step\""), "line0: {}", lines[0]);
+        assert!(lines[1].contains("\"t\":\"done\""), "line1: {}", lines[1]);
     }
 }
