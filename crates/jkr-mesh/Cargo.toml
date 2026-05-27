@@ -26,6 +26,6 @@ tokio-tungstenite = { version = "0.24", default-features = false, features = ["c
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 
 [dev-dependencies]
-hex-literal = "0.4"
+hex-literal = "1.1"
 mockito = { workspace = true }
 tokio = { workspace = true, features = ["macros"] }
