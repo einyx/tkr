@@ -28,7 +28,7 @@ async-trait = { workspace = true, optional = true }
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock = { workspace = true }
 rlimit = "0.10"
-nix = { version = "0.29", features = ["ptrace", "process", "signal", "fs"] }
+nix = { version = "0.31", features = ["ptrace", "process", "signal", "fs"] }
 syscalls = "0.6"
 libc = "0.2"
 
